@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The file finder client action."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from typing import Callable, Text, Iterator
 
@@ -34,26 +38,24 @@ class VfsFileFinder(actions.ActionPlugin):
     for path in _GetExpandedPaths(args, heartbeat_cb=self.Progress):
       self.Progress()
       pathspec = rdf_paths.PathSpec(path=path, pathtype=args.pathtype)
-      if args.HasField("implementation_type"):
-        pathspec.implementation_type = args.implementation_type
 
       with vfs.VFSOpen(pathspec) as vfs_file:
         stat_entry = vfs_file.Stat()
 
-        # Conversion from StatEntry to os.stat_result is lossy. Some checks do
-        # not work (e.g. extended attributes).
-        stat_obj = client_utils.StatResultFromStatEntry(stat_entry)
-        fs_stat = filesystem.Stat(path=path, stat_obj=stat_obj)
-        if not all(cond.Check(fs_stat) for cond in metadata_conditions):
-          continue
+      # Conversion from StatEntry to os.stat_result is lossy. Some checks do
+      # not work (e.g. extended attributes).
+      stat_obj = client_utils.StatResultFromStatEntry(stat_entry)
+      fs_stat = filesystem.Stat(path=path, stat_obj=stat_obj)
+      if not all(cond.Check(fs_stat) for cond in metadata_conditions):
+        continue
 
-        matches = _CheckConditionsShortCircuit(content_conditions, pathspec)
-        if content_conditions and not matches:
-          continue  # Skip if any condition yielded no matches.
+      matches = _CheckConditionsShortCircuit(content_conditions, pathspec)
+      if content_conditions and not matches:
+        continue  # Skip if any condition yielded no matches.
 
-        result = action(stat_entry=stat_entry, fd=vfs_file)
-        result.matches = matches
-        self.SendReply(result)
+      result = action(stat_entry=stat_entry, fd=vfs_file)
+      result.matches = matches
+      self.SendReply(result)
 
   def _ParseAction(
       self, args: rdf_file_finder.FileFinderArgs) -> vfs_subactions.Action:
@@ -71,11 +73,7 @@ def _CheckConditionsShortCircuit(content_conditions, pathspec):
   matches = []
   for cond in content_conditions:
     with vfs.VFSOpen(pathspec) as vfs_file:
-      if vfs_file.size == 0 or vfs_file.size is None:
-        # Skip directories.
-        cur_matches = []
-      else:
-        cur_matches = list(cond.Search(vfs_file))
+      cur_matches = list(cond.Search(vfs_file))
     if cur_matches:
       matches.extend(cur_matches)
     else:  # As soon as one condition does not match, we skip the file.
@@ -88,14 +86,8 @@ def _GetExpandedPaths(
     heartbeat_cb: Callable[[], None] = _NoOp,
 ) -> Iterator[Text]:
   """Yields all possible expansions from given path patterns."""
-  if args.HasField("implementation_type"):
-    implementation_type = args.implementation_type
-  else:
-    implementation_type = None
   opts = globbing.PathOpts(
-      follow_links=args.follow_links,
-      pathtype=args.pathtype,
-      implementation_type=implementation_type)
+      follow_links=args.follow_links, pathtype=args.pathtype)
 
   for path in args.paths:
     for expanded_path in globbing.ExpandPath(str(path), opts, heartbeat_cb):

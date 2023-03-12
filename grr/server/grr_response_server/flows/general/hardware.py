@@ -1,7 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """These are low-level related flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_proto import flows_pb2
 from grr_response_server import flow_base
 from grr_response_server import server_stubs
@@ -25,7 +30,7 @@ class DumpFlashImage(flow_base.FlowBase):
     self.CallFlow(
         collectors.ArtifactCollectorFlow.__name__,
         artifact_list=["LinuxHardwareInfo"],
-        next_state=self.DumpImage.__name__)
+        next_state=compatibility.GetName(self.DumpImage))
 
   def DumpImage(self, responses):
     """Store hardware information and initiate dumping of the flash image."""
@@ -35,7 +40,7 @@ class DumpFlashImage(flow_base.FlowBase):
         log_level=self.args.log_level,
         chunk_size=self.args.chunk_size,
         notify_syslog=self.args.notify_syslog,
-        next_state=self.CollectImage.__name__)
+        next_state=compatibility.GetName(self.CollectImage))
 
   def CollectImage(self, responses):
     """Collect the image and store it into the database."""
@@ -57,7 +62,7 @@ class DumpFlashImage(flow_base.FlowBase):
           transfer.MultiGetFile.__name__,
           pathspecs=[image_path],
           request_data={"image_path": image_path},
-          next_state=self.DeleteTemporaryImage.__name__)
+          next_state=compatibility.GetName(self.DeleteTemporaryImage))
 
   def DeleteTemporaryImage(self, responses):
     """Remove the temporary image from the client."""
@@ -72,7 +77,7 @@ class DumpFlashImage(flow_base.FlowBase):
     self.CallClient(
         server_stubs.DeleteGRRTempFiles,
         responses.request_data["image_path"],
-        next_state=self.TemporaryImageRemoved.__name__)
+        next_state=compatibility.GetName(self.TemporaryImageRemoved))
 
   def TemporaryImageRemoved(self, responses):
     """Verify that the temporary image has been removed successfully."""
@@ -109,7 +114,7 @@ class DumpACPITable(flow_base.FlowBase):
           logging=self.args.logging,
           table_signature=table_signature,
           request_data={"table_signature": table_signature},
-          next_state=self.TableReceived.__name__)
+          next_state=compatibility.GetName(self.TableReceived))
 
   def TableReceived(self, responses):
     """Store received ACPI tables from client in AFF4."""

@@ -1,6 +1,11 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Unit test for the linux pam config parser."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import platform
 import unittest
@@ -129,7 +134,7 @@ class LinuxPAMParserTest(test_lib.GRRBaseTest):
   """Test parsing of PAM config files."""
 
   def setUp(self):
-    super().setUp()
+    super(LinuxPAMParserTest, self).setUp()
     self.kb = rdf_client.KnowledgeBase(fqdn='test.example.com', os='Linux')
 
   def _EntryToTuple(self, entry):

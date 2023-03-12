@@ -1,21 +1,22 @@
 #!/usr/bin/env python
-import logging
-
-from unittest import mock
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
-from absl.testing import absltest
+import mock
 
 from grr_response_client import comms
-from grr_response_client import communicator
 from grr_response_client import fleetspeak_client
+from grr_response_core.lib import communicator
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr.test_lib import test_lib
 from fleetspeak.src.common.proto.fleetspeak import common_pb2 as fs_common_pb2
 from fleetspeak.client_connector import connector as fs_client
 
 
-class FleetspeakClientTest(absltest.TestCase):
+class FleetspeakClientTest(test_lib.GRRBaseTest):
 
   @mock.patch.object(fs_client, "FleetspeakConnection")
   @mock.patch.object(comms, "GRRClientWorker")
@@ -74,28 +75,6 @@ class FleetspeakClientTest(absltest.TestCase):
             packed_message_list.SerializeToString()))
     self.assertListEqual(list(message_list.job), grr_messages)
     self.assertEqual(fs_message.annotations, expected_annotations)
-
-  @mock.patch.object(fs_client, "FleetspeakConnection")
-  @mock.patch.object(comms, "GRRClientWorker")
-  def testBrokenFSConnection(self, mock_worker_class, mock_con_class):
-    # We stub out the worker class since it starts threads in its
-    # __init__ method.
-
-    del mock_worker_class  # Unused
-
-    mock_conn = mock.Mock()
-    mock_conn.Recv.side_effect = IOError("Broken FS Connection")
-    mock_con_class.return_value = mock_conn
-
-    with mock.patch.object(logging, "critical") as l:
-      client = fleetspeak_client.GRRFleetspeakClient()
-      try:
-        client._RunInLoop(client._ReceiveOp)
-      except fleetspeak_client.BrokenFSConnectionError:
-        pass
-
-      self.assertEqual(l.call_count, 1)
-      self.assertIn("Broken local Fleetspeak connection", l.call_args[0][0])
 
 
 if __name__ == "__main__":

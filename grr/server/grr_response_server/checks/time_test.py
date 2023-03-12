@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Tests for the time synchronization state checks."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -13,7 +18,7 @@ class TimeSyncTests(checks_test_lib.HostCheckTest):
   checks_loaded = False
 
   def setUp(self, *args, **kwargs):
-    super().setUp(*args, **kwargs)
+    super(TimeSyncTests, self).setUp(*args, **kwargs)
     if not self.checks_loaded:
       self.LoadCheck("time.yaml")
       self.checks_loaded = True

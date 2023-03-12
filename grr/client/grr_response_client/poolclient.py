@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This is the GRR client for thread pools."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import base64
 import logging
@@ -24,24 +28,23 @@ from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 
-_NRCLIENTS = flags.DEFINE_integer("nrclients", 1, "Number of clients to start")
+flags.DEFINE_integer("nrclients", 1, "Number of clients to start")
 
-_CERT_FILE = flags.DEFINE_string(
+flags.DEFINE_string(
     "cert_file", "", "Path to a file that stores all certificates for"
     "the client pool.")
 
-_ENROLL_ONLY = flags.DEFINE_bool(
-    "enroll_only", False,
-    "If specified, the script will enroll all clients and exit.")
+flags.DEFINE_bool("enroll_only", False,
+                  "If specified, the script will enroll all clients and exit.")
 
-_FAST_POLL = flags.DEFINE_bool(
+flags.DEFINE_bool(
     "fast_poll", False,
     "If specified, every client in the pool will work in the "
     "fast poll mode. This is useful for benchmarks, as in fast "
     "poll mode the timeouts are predictable and benchmarks "
     "results are more stable.")
 
-_SEND_FOREMAN_REQUEST = flags.DEFINE_bool(
+flags.DEFINE_bool(
     "send_foreman_request", False,
     "If specified, every client will send a foreman poll request "
     "right after startup. Useful for testing hunts.")
@@ -92,7 +95,7 @@ def CreateClientPool(n):
   # Load previously stored clients.
   try:
     certificates = []
-    with open(_CERT_FILE.value, "rb") as fd:
+    with open(flags.FLAGS.cert_file, "rb") as fd:
       # Certificates are base64-encoded, so that we can use new-lines as
       # separators.
       for l in fd:
@@ -104,8 +107,8 @@ def CreateClientPool(n):
           PoolGRRClient(
               private_key=certificate,
               ca_cert=config.CONFIG["CA.certificate"],
-              fast_poll=_FAST_POLL.value,
-              send_foreman_request=_SEND_FOREMAN_REQUEST.value,
+              fast_poll=flags.FLAGS.fast_poll,
+              send_foreman_request=flags.FLAGS.send_foreman_request,
           ))
 
     clients_loaded = True
@@ -129,7 +132,7 @@ def CreateClientPool(n):
 
   start_time = rdfvalue.RDFDatetime.Now()
   try:
-    if _ENROLL_ONLY.value:
+    if flags.FLAGS.enroll_only:
       while True:
         time.sleep(1)
         enrolled = len([x for x in clients if x.enrolled])
@@ -167,7 +170,7 @@ def CreateClientPool(n):
   # same data.
   if not clients_loaded:
     logging.info("Saving certificates.")
-    with open(_CERT_FILE.value, "wb") as fd:
+    with open(flags.FLAGS.cert_file, "wb") as fd:
       # We're base64-encoding ceritificates so that we can use new-lines
       # as separators.
       b64_certs = [
@@ -207,7 +210,7 @@ def main(argv):
   # thread safe.
   vfs.VFS_HANDLERS[_UseOSForTSKFile.supported_pathtype] = _UseOSForTSKFile
 
-  CreateClientPool(_NRCLIENTS.value)
+  CreateClientPool(flags.FLAGS.nrclients)
 
 
 if __name__ == "__main__":

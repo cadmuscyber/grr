@@ -1,9 +1,14 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Tests for Splunk output plugin."""
-import json
-from unittest import mock
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
+import mock
+
 import requests
 
 from grr_response_core.lib import rdfvalue
@@ -11,6 +16,7 @@ from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
+from grr_response_core.lib.util.compat import json
 from grr_response_server import data_store
 from grr_response_server.output_plugins import splunk_plugin
 from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
@@ -24,7 +30,7 @@ class SplunkOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
   """Tests Splunk hunt output plugin."""
 
   def setUp(self):
-    super().setUp()
+    super(SplunkOutputPluginTest, self).setUp()
 
     self.client_id = self.SetupClient(0)
     self.flow_id = '12345678'
@@ -50,7 +56,7 @@ class SplunkOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
 
     plugin_cls = splunk_plugin.SplunkOutputPlugin
     plugin, plugin_state = plugin_cls.CreatePluginAndDefaultState(
-        source_urn=source_id, args=plugin_args)
+        source_urn=source_id, args=plugin_args, token=self.token)
 
     if patcher is None:
       patcher = mock.patch.object(requests, 'post')
@@ -64,7 +70,7 @@ class SplunkOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
 
   def _ParseEvents(self, patched):
     request = patched.call_args[KWARGS]['data']
-    return [json.loads(part) for part in request.split('\n\n')]
+    return [json.Parse(part) for part in request.split('\n\n')]
 
   def testPopulatesEventCorrectly(self):
     with test_lib.ConfigOverrider({

@@ -2,7 +2,7 @@
 name: LinuxCronParentFolders
 doc: Collect stat information on parent folders of cron and at jobs.
 sources:
-- type: PATH
+- type: DIRECTORY
   attributes:
     paths:
       - '/etc/cron.daily'

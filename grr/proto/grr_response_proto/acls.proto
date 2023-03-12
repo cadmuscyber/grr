@@ -1,9 +1,9 @@
 
+
 syntax = "proto2";
 
 import "grr_response_proto/semantic.proto";
 
-package grr;
 
 message ClientApprovalAuthorization {
   optional string label = 1 [

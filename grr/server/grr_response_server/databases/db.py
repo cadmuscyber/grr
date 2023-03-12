@@ -1,19 +1,24 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The GRR relational database abstraction.
 
 This defines the Database abstraction, which defines the methods used by GRR on
 a logical relational database model.
+
+WIP, will eventually replace datastore.py.
+
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 import collections
 import re
-from typing import Collection
 from typing import Dict
+from typing import Generator
 from typing import Iterable
-from typing import Iterator
 from typing import List
-from typing import NamedTuple
 from typing import Optional
 from typing import Sequence
 from typing import Set
@@ -29,8 +34,8 @@ from grr_response_core.lib.rdfvalues import client_network as rdf_client_network
 from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
-from grr_response_core.lib.rdfvalues import search as rdf_search
 from grr_response_core.lib.rdfvalues import stats as rdf_stats
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 from grr_response_server import fleet_utils
 from grr_response_server import foreman_rules
@@ -93,7 +98,7 @@ class Error(Exception):
     self.message = None
 
   def __str__(self):
-    message = self.message or super().__str__()
+    message = self.message or super(Error, self).__str__()
 
     if self.cause is not None:
       return "%s: %s" % (message, self.cause)
@@ -215,8 +220,8 @@ class UnknownRuleError(NotFoundError):
 class UnknownGRRUserError(NotFoundError):
   """An error thrown when no user is found for a given username."""
 
-  def __init__(self, username, cause=None):
-    super().__init__(username, cause=cause)
+  def __init__(self, username):
+    super().__init__(username)
     self.username = username
 
     self.message = "Cannot find user with username %r" % self.username
@@ -262,20 +267,6 @@ class UnknownFlowError(NotFoundError):
 
     self.message = ("Flow with client id '%s' and flow id '%s' does not exist" %
                     (self.client_id, self.flow_id))
-
-
-class UnknownScheduledFlowError(NotFoundError):
-  """Raised when a nonexistent ScheduledFlow is accessed."""
-
-  def __init__(self, client_id, creator, scheduled_flow_id, cause=None):
-    super().__init__(client_id, creator, scheduled_flow_id, cause=cause)
-
-    self.client_id = client_id
-    self.creator = creator
-    self.scheduled_flow_id = scheduled_flow_id
-
-    self.message = "ScheduledFlow {}/{}/{} does not exist.".format(
-        self.client_id, self.creator, self.scheduled_flow_id)
 
 
 class UnknownHuntError(NotFoundError):
@@ -426,7 +417,6 @@ HuntCounters = collections.namedtuple("HuntCounters", [
     "num_failed_clients",
     "num_clients_with_results",
     "num_crashed_clients",
-    "num_running_clients",
     "num_results",
     "total_cpu_seconds",
     "total_network_bytes_sent",
@@ -437,19 +427,6 @@ FlowStateAndTimestamps = collections.namedtuple("FlowStateAndTimestamps", [
     "create_time",
     "last_update_time",
 ])
-
-
-class SearchClientsResult(NamedTuple):
-  """The result of a structured search."""
-
-  clients: Sequence[str]
-  """Sequence of clients."""
-
-  continuation_token: bytes
-  """The continuation token for the search."""
-
-  num_remaining_results: int
-  """Estimated number of remaining results."""
 
 
 class ClientPath(object):
@@ -480,18 +457,13 @@ class ClientPath(object):
     return cls(client_id=client_id, path_type=path_type, components=components)
 
   @classmethod
-  def NTFS(cls, client_id, components):
-    path_type = rdf_objects.PathInfo.PathType.NTFS
-    return cls(client_id=client_id, path_type=path_type, components=components)
-
-  @classmethod
   def Registry(cls, client_id, components):
     path_type = rdf_objects.PathInfo.PathType.REGISTRY
     return cls(client_id=client_id, path_type=path_type, components=components)
 
   @classmethod
   def Temp(cls, client_id, components):
-    path_type = rdf_objects.PathInfo.PathType.TEMP
+    path_type = rdf_objects.PathInfo.PathType.Temp
     return cls(client_id=client_id, path_type=path_type, components=components)
 
   @classmethod
@@ -547,8 +519,8 @@ class ClientPath(object):
 
   def __repr__(self):
     return "<%s client_id=%r path_type=%r components=%r>" % (
-        self.__class__.__name__, self.client_id, self.path_type,
-        self.components)
+        compatibility.GetName(
+            self.__class__), self.client_id, self.path_type, self.components)
 
 
 class ClientPathHistory(object):
@@ -573,10 +545,6 @@ class Database(metaclass=abc.ABCMeta):
   """The GRR relational database abstraction."""
 
   unchanged = "__unchanged__"
-
-  @abc.abstractmethod
-  def Now(self) -> rdfvalue.RDFDatetime:
-    """Retrieves current time as reported by the database."""
 
   @abc.abstractmethod
   def WriteArtifact(self, artifact):
@@ -619,17 +587,15 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def WriteClientMetadata(
-      self,
-      client_id,
-      certificate=None,
-      fleetspeak_enabled=None,
-      first_seen=None,
-      last_ping=None,
-      last_clock=None,
-      last_ip=None,
-      last_foreman=None,
-      fleetspeak_validation_info: Optional[Dict[str, str]] = None):
+  def WriteClientMetadata(self,
+                          client_id,
+                          certificate=None,
+                          fleetspeak_enabled=None,
+                          first_seen=None,
+                          last_ping=None,
+                          last_clock=None,
+                          last_ip=None,
+                          last_foreman=None):
     """Write metadata about the client.
 
     Updates one or more client metadata fields for the given client_id. Any of
@@ -652,10 +618,8 @@ class Database(metaclass=abc.ABCMeta):
         ip address for the client.
       last_foreman: An rdfvalue.Datetime, indicating the last time that the
         client sent a foreman message to the server.
-      fleetspeak_validation_info: A dict with validation info from Fleetspeak.
     """
 
-  @abc.abstractmethod
   def DeleteClient(self, client_id):
     """Deletes a client with all associated metadata.
 
@@ -664,6 +628,10 @@ class Database(metaclass=abc.ABCMeta):
     Args:
       client_id: A GRR client id string, e.g. "C.ea3b2b71840d6fa7".
     """
+    # TODO: Cascaded deletion of data is only implemented in MySQL
+    # yet. When the functionality for deleting clients is required, make sure to
+    # delete all associated metadata (history, stats, flows, messages, ...).
+    raise NotImplementedError("Deletetion of Clients is not yet implemented.")
 
   @abc.abstractmethod
   def MultiReadClientMetadata(self, client_ids):
@@ -838,7 +806,7 @@ class Database(metaclass=abc.ABCMeta):
         record up to 'to'", to==None means all records from 'from'). If both
         "to" and "from" are None or the timerange itself is None, all history
         items are fetched. Note: "from" and "to" are inclusive: i.e. a from <=
-        time <= to condition is applied.
+          time <= to condition is applied.
 
     Returns:
       A list of rdfvalues.objects.ClientSnapshot, newest snapshot first.
@@ -858,8 +826,7 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def ReadClientStartupInfo(self,
-                            client_id: str) -> Optional[rdf_client.StartupInfo]:
+  def ReadClientStartupInfo(self, client_id):
     """Reads the latest client startup record for a single client.
 
     Args:
@@ -880,7 +847,7 @@ class Database(metaclass=abc.ABCMeta):
         record up to 'to'", to==None means all records from 'from'). If both
         "to" and "from" are None or the timerange itself is None, all history
         items are fetched. Note: "from" and "to" are inclusive: i.e. a from <=
-        time <= to condition is applied.
+          time <= to condition is applied.
 
     Returns:
       A list of rdfvalues.client.StartupInfo objects sorted by timestamp,
@@ -923,6 +890,7 @@ class Database(metaclass=abc.ABCMeta):
       newest entry first.
     """
 
+  @abc.abstractmethod
   def AddClientKeywords(self, client_id: Text,
                         keywords: Iterable[Text]) -> None:
     """Associates the provided keywords with the client.
@@ -933,26 +901,6 @@ class Database(metaclass=abc.ABCMeta):
 
     Raises:
       UnknownClientError: The client_id is not known yet.
-    """
-    try:
-      self.MultiAddClientKeywords([client_id], set(keywords))
-    except AtLeastOneUnknownClientError as error:
-      raise UnknownClientError(client_id) from error
-
-  @abc.abstractmethod
-  def MultiAddClientKeywords(
-      self,
-      client_ids: Collection[str],
-      keywords: Collection[str],
-  ) -> None:
-    """Associates the provided keywords with the specified clients.
-
-    Args:
-      client_ids: A list of client identifiers to associate with the keywords.
-      keywords: A list of keywords to associate with the clients.
-
-    Raises:
-      AtLeastOneUnknownClientError: At least one of the clients is not known.
     """
 
   @abc.abstractmethod
@@ -982,6 +930,7 @@ class Database(metaclass=abc.ABCMeta):
       keyword: The keyword to delete.
     """
 
+  @abc.abstractmethod
   def AddClientLabels(self, client_id: Text, owner: Text,
                       labels: List[Text]) -> None:
     """Attaches a user label to a client.
@@ -990,25 +939,6 @@ class Database(metaclass=abc.ABCMeta):
       client_id: A GRR client id string, e.g. "C.ea3b2b71840d6fa7".
       owner: Username string that owns the created labels.
       labels: The labels to attach as a list of strings.
-    """
-    try:
-      self.MultiAddClientLabels([client_id], owner, labels)
-    except AtLeastOneUnknownClientError as error:
-      raise UnknownClientError(client_id) from error
-
-  @abc.abstractmethod
-  def MultiAddClientLabels(
-      self,
-      client_ids: Collection[str],
-      owner: str,
-      labels: Collection[str],
-  ) -> None:
-    """Attaches user labels to the specified clients.
-
-    Args:
-      client_ids: A list a client identifiers to attach the labels to.
-      owner: A name of the user that owns the attached labels.
-      labels: Labels to attach.
     """
 
   @abc.abstractmethod
@@ -1050,11 +980,11 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def ReadAllClientLabels(self) -> Collection[str]:
+  def ReadAllClientLabels(self) -> List[rdf_objects.ClientLabel]:
     """Lists all client labels known to the system.
 
     Returns:
-      A collection of labels in the system.
+      A list of rdfvalue.objects.ClientLabel values.
     """
 
   @abc.abstractmethod
@@ -1098,25 +1028,23 @@ class Database(metaclass=abc.ABCMeta):
   @abc.abstractmethod
   def DeleteOldClientStats(
       self,
-      cutoff_time: rdfvalue.RDFDatetime,
-      batch_size: Optional[int] = None,
-  ) -> Iterator[int]:
-    """Deletes client stats older than the specified cutoff time.
+      yield_after_count: int,
+      retention_time: Optional[rdfvalue.RDFDatetime] = None
+  ) -> Generator[int, None, None]:
+    """Deletes ClientStats older than a given timestamp.
 
-    This function does not delete all clients at once but does it many batches
-    with one batch being deleted during one iteration cycle. The exact size of
-    the batch can by controlled through a parameter but it is better to leave it
-    up for a specific database implementation.
-
-    After every deleted batch, the function will yield the number of deleted
-    stats. The returned iterator stops once all outdated client stats are gone.
+    This function yields after deleting at most `yield_after_count` ClientStats.
 
     Args:
-      cutoff_time: A point in time before each all stats are to be deleted.
-      batch_size: An (optional) number of stats deleted at a single iteration.
+      yield_after_count: A positive integer, representing the maximum number of
+        deleted entries, after which this function must yield to allow
+        heartbeats.
+      retention_time: An RDFDateTime representing the oldest create_time of
+        ClientStats that remains after deleting all older entries. If not
+        specified, defaults to Now() - db.CLIENT_STATS_RETENTION.
 
     Yields:
-      The number of client stats that were deleted in the last batch.
+      The number of ClientStats that were deleted since the last yield.
     """
 
   @abc.abstractmethod
@@ -1299,12 +1227,11 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def ReadApprovalRequests(
-      self,
-      requestor_username,
-      approval_type,
-      subject_id=None,
-      include_expired=False) -> Sequence[rdf_objects.ApprovalRequest]:
+  def ReadApprovalRequests(self,
+                           requestor_username,
+                           approval_type,
+                           subject_id=None,
+                           include_expired=False):
     """Reads approval requests of a given type for a given user.
 
     Args:
@@ -1315,8 +1242,8 @@ class Database(metaclass=abc.ABCMeta):
         returned.
       include_expired: If True, will also yield already expired approvals.
 
-    Returns:
-      A list of rdfvalues.objects.ApprovalRequest objects.
+    Yields:
+      rdfvalues.objects.ApprovalRequest objects.
     """
 
   @abc.abstractmethod
@@ -1457,6 +1384,15 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
+  def MultiWritePathInfos(self, path_infos):
+    """Writes a collection of path info records for specified clients.
+
+    Args:
+      path_infos: A dictionary mapping client ids to `rdf_objects.PathInfo`
+        instances.
+    """
+
+  @abc.abstractmethod
   def ReadPathInfosHistories(
       self,
       client_id: Text,
@@ -1549,7 +1485,7 @@ class Database(metaclass=abc.ABCMeta):
         record up to 'to'", to==None means all records from 'from'). If both
         "to" and "from" are None or the timerange itself is None, all
         notifications are fetched. Note: "from" and "to" are inclusive: i.e. a
-        from <= time <= to condition is applied.
+          from <= time <= to condition is applied.
 
     Returns:
       List of objects.UserNotification objects.
@@ -1652,8 +1588,8 @@ class Database(metaclass=abc.ABCMeta):
     Args:
       handler: Method, which will be called repeatedly with lists of leased
         objects.MessageHandlerRequest. Required.
-      lease_time: rdfvalue.Duration indicating how long the lease should be
-        valid. Required.
+      lease_time: rdfvalue.Duration indicating how long the lease should
+        be valid. Required.
       limit: Limit for the number of leased requests to give one execution of
         handler.
     """
@@ -1767,8 +1703,8 @@ class Database(metaclass=abc.ABCMeta):
     Args:
       cronjob_ids: A list of cronjob ids that should be leased. If None, all
         available cronjobs will be leased.
-      lease_time: rdfvalue.Duration indicating how long the lease should be
-        valid.
+      lease_time: rdfvalue.Duration indicating how long the lease should
+        be valid.
 
     Returns:
       A list of cronjobs.CronJob objects that were leased.
@@ -1829,10 +1765,7 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def WriteHashBlobReferences(
-      self, references_by_hash: Dict[rdf_objects.SHA256HashID,
-                                     Iterable[rdf_objects.BlobReference]]
-  ) -> None:
+  def WriteHashBlobReferences(self, references_by_hash):
     """Writes blob references for a given set of hashes.
 
     Every file known to GRR has a history of PathInfos. Every PathInfo has a
@@ -1853,10 +1786,7 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def ReadHashBlobReferences(
-      self, hashes: Iterable[rdf_objects.SHA256HashID]
-  ) -> Dict[rdf_objects.SHA256HashID,
-            Optional[Iterable[rdf_objects.BlobReference]]]:
+  def ReadHashBlobReferences(self, hashes):
     """Reads blob references of a given set of hashes.
 
     Every file known to GRR has a history of PathInfos. Every PathInfo has a
@@ -1898,8 +1828,8 @@ class Database(metaclass=abc.ABCMeta):
 
     Args:
       client_id: The client for which the requests should be leased.
-      lease_time: rdfvalue.Duration indicating how long the lease should be
-        valid.
+      lease_time: rdfvalue.Duration indicating how long the lease should
+        be valid.
       limit: Lease at most <limit> requests. If set, must be less than 10000.
         Default is 5000.
 
@@ -1956,27 +1886,24 @@ class Database(metaclass=abc.ABCMeta):
   def ReadAllFlowObjects(
       self,
       client_id: Optional[Text] = None,
-      parent_flow_id: Optional[str] = None,
       min_create_time: Optional[rdfvalue.RDFDatetime] = None,
       max_create_time: Optional[rdfvalue.RDFDatetime] = None,
       include_child_flows: bool = True,
-      not_created_by: Optional[Iterable[str]] = None,
   ) -> List[rdf_flow_objects.Flow]:
     """Returns all flow objects.
 
     Args:
       client_id: The client id.
-      parent_flow_id: An (optional) identifier of a parent of listed flows.
       min_create_time: the minimum creation time (inclusive)
       max_create_time: the maximum creation time (inclusive)
       include_child_flows: include child flows in the results. If False, only
-        parent flows are returned. Must be `True` if the parent flow is given.
-      not_created_by: exclude flows created by any of the users in this list.
+        parent flows are returned.
 
     Returns:
       A list of rdf_flow_objects.Flow objects.
     """
 
+  @abc.abstractmethod
   def ReadChildFlowObjects(self, client_id, flow_id):
     """Reads flow objects that were started by a given flow from the database.
 
@@ -1987,8 +1914,6 @@ class Database(metaclass=abc.ABCMeta):
     Returns:
       A list of rdf_flow_objects.Flow objects.
     """
-    return self.ReadAllFlowObjects(
-        client_id=client_id, parent_flow_id=flow_id, include_child_flows=True)
 
   @abc.abstractmethod
   def LeaseFlowForProcessing(self, client_id, flow_id, processing_time):
@@ -2033,6 +1958,7 @@ class Database(metaclass=abc.ABCMeta):
                  flow_obj=unchanged,
                  flow_state=unchanged,
                  client_crash_info=unchanged,
+                 pending_termination=unchanged,
                  processing_on=unchanged,
                  processing_since=unchanged,
                  processing_deadline=unchanged):
@@ -2044,10 +1970,23 @@ class Database(metaclass=abc.ABCMeta):
       flow_obj: An updated rdf_flow_objects.Flow object.
       flow_state: An update rdf_flow_objects.Flow.FlowState value.
       client_crash_info: A rdf_client.ClientCrash object to store with the flow.
+      pending_termination: An rdf_flow_objects.PendingFlowTermination object.
+        Indicates that this flow is scheduled for termination.
       processing_on: Worker this flow is currently processed on.
       processing_since: Timestamp when the worker started processing this flow.
       processing_deadline: Time after which this flow will be considered stuck
         if processing hasn't finished.
+    """
+
+  @abc.abstractmethod
+  def UpdateFlows(self, client_id_flow_id_pairs, pending_termination=unchanged):
+    """Updates flow objects in the database.
+
+    Args:
+      client_id_flow_id_pairs: An iterable with tuples of (client_id, flow_id)
+        identifying flows to update.
+      pending_termination: An rdf_flow_objects.PendingFlowTermination object.
+        Indicates that this flow is scheduled for termination.
     """
 
   @abc.abstractmethod
@@ -2056,21 +1995,6 @@ class Database(metaclass=abc.ABCMeta):
 
     Args:
       requests: List of rdf_flow_objects.FlowRequest objects.
-    """
-
-  @abc.abstractmethod
-  def UpdateIncrementalFlowRequests(self, client_id: str, flow_id: str,
-                                    next_response_id_updates: Dict[int, int]):
-    """Updates next response ids of given requests.
-
-    Used to update incremental requests (requests with a callback_state
-    specified) after each new batch of responses is processed.
-
-    Args:
-      client_id: The client id on which the flow is running.
-      flow_id: The flow id of the flow with requests to update.
-      next_response_id_updates: A map from request ids to new "next_response_id"
-        values.
     """
 
   @abc.abstractmethod
@@ -2127,19 +2051,6 @@ class Database(metaclass=abc.ABCMeta):
                                          flow_id,
                                          next_needed_request=None):
     """Reads all requests for a flow that can be processed by the worker.
-
-    There are 2 kinds of requests that are going to be returned by this call:
-    1. Completed requests. These are requests that received all the
-       responses, including the status message, and their
-       "needs_processing" attribute is set to True.
-    2. Incremental requests. These are requests that have the callback state
-       specified (via the "callback_state" attribute) and are not yet
-       completed.
-
-    Completed requests are going to be returned with all the corresponding
-    responses. Incremental requests are going to be returned with new
-    responses only (that is, with responses having ids greater or equal to
-    request's 'next_response_id' attribute).
 
     Args:
       client_id: The client id on which this flow is running.
@@ -2271,89 +2182,11 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def CountFlowErrorsByType(self, client_id: str,
-                            flow_id: str) -> Dict[str, int]:
-    """Returns counts of flow errors grouped by error type.
+  def WriteFlowLogEntries(self, entries):
+    """Writes flow log entries for a given flow.
 
     Args:
-      client_id: The client id on which the flow is running.
-      flow_id: The id of the flow to count errors for.
-
-    Returns:
-      A dictionary of "type name" => <number of items>.
-    """
-
-  @abc.abstractmethod
-  def WriteFlowErrors(self, errors: Iterable[rdf_flow_objects.FlowError]):
-    """Writes flow errors for a given flow.
-
-    Args:
-      errors: An iterable with FlowError rdfvalues.
-    """
-
-  @abc.abstractmethod
-  def ReadFlowErrors(
-      self,
-      client_id: str,
-      flow_id: str,
-      offset: int,
-      count: int,
-      with_tag: Optional[str] = None,
-      with_type: Optional[str] = None) -> List[rdf_flow_objects.FlowError]:
-    """Reads flow errors of a given flow using given query options.
-
-    If both with_tag and with_type and/or with_substring arguments are provided,
-    they will be applied using AND boolean operator.
-
-    Args:
-      client_id: The client id on which this flow is running.
-      flow_id: The id of the flow to read errors for.
-      offset: An integer specifying an offset to be used when reading errors.
-        "offset" is applied after with_tag/with_type/with_substring filters are
-        applied.
-      count: Number of errors to read. "count" is applied after
-        with_tag/with_type/with_substring filters are applied.
-      with_tag: (Optional) When specified, should be a string. Only errors
-        having specified tag will be returned.
-      with_type: (Optional) When specified, should be a string. Only errors of a
-        specified type will be returned.
-
-    Returns:
-      A list of FlowError values sorted by timestamp in ascending order.
-    """
-
-  @abc.abstractmethod
-  def CountFlowErrors(self,
-                      client_id: str,
-                      flow_id: str,
-                      with_tag: Optional[str] = None,
-                      with_type: Optional[str] = None) -> int:
-    """Counts flow errors of a given flow using given query options.
-
-    If both with_tag and with_type arguments are provided, they will be applied
-    using AND boolean operator.
-
-    Args:
-      client_id: The client id on which the flow is running.
-      flow_id: The id of the flow to count errors for.
-      with_tag: (Optional) When specified, should be a string. Only errors
-        having specified tag will be accounted for.
-      with_type: (Optional) When specified, should be a string. Only errors of a
-        specified type will be accounted for.
-
-    Returns:
-      A number of flow errors of a given flow matching given query options.
-    """
-
-  @abc.abstractmethod
-  def WriteFlowLogEntry(self, entry: rdf_flow_objects.FlowLogEntry) -> None:
-    """Writes a single flow log entry to the database.
-
-    Args:
-      entry: A log entry to write.
-
-    Returns:
-      Nothing.
+      entries: An iterable of FlowLogEntry values.
     """
 
   @abc.abstractmethod
@@ -2394,14 +2227,11 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def WriteFlowOutputPluginLogEntry(
-      self,
-      entry: rdf_flow_objects.FlowOutputPluginLogEntry,
-  ) -> None:
-    """Writes a single output plugin log entry to the database.
+  def WriteFlowOutputPluginLogEntries(self, entries):
+    """Writes flow output plugin log entries for a given flow.
 
     Args:
-      entry: An output plugin flow entry to write.
+      entries: An iterable of FlowOutputPluginLogEntry values.
     """
 
   @abc.abstractmethod
@@ -2618,16 +2448,12 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def ReadHuntObjects(
-      self,
-      offset,
-      count,
-      with_creator=None,
-      created_after=None,
-      with_description_match=None,
-      created_by=None,
-      not_created_by=None,
-  ):
+  def ReadHuntObjects(self,
+                      offset,
+                      count,
+                      with_creator=None,
+                      created_after=None,
+                      with_description_match=None):
     """Reads hunt objects from the database.
 
     Args:
@@ -2640,31 +2466,19 @@ class Database(metaclass=abc.ABCMeta):
         hunts with create_time after created_after timestamp will be returned.
       with_description_match: When specified, will only return hunts with
         descriptions containing a given substring.
-      created_by: When specified, should be a list of strings corresponding to
-        GRR usernames. Only metadata for hunts created by the matching users
-        will be returned.
-      not_created_by: When specified, should be a list of strings corresponding
-        to GRR usernames. Only metadata for hunts NOT created by any of the
-        matching users will be returned.
 
     Returns:
       A list of rdf_hunt_objects.Hunt objects sorted by create_time in
       descending order.
     """
 
-  # TODO: Cleanup `with_creator`(single user) in favor of
-  # `created_by`(list).
   @abc.abstractmethod
-  def ListHuntObjects(
-      self,
-      offset,
-      count,
-      with_creator=None,
-      created_after=None,
-      with_description_match=None,
-      created_by=None,
-      not_created_by=None,
-  ):
+  def ListHuntObjects(self,
+                      offset,
+                      count,
+                      with_creator=None,
+                      created_after=None,
+                      with_description_match=None):
     """Reads metadata for hunt objects from the database.
 
     Args:
@@ -2679,12 +2493,6 @@ class Database(metaclass=abc.ABCMeta):
         be returned.
       with_description_match: When specified, will only return metadata for
         hunts with descriptions containing a given substring.
-      created_by: When specified, should be a list of strings corresponding to
-        GRR usernames. Only metadata for hunts created by the matching users
-        will be returned.
-      not_created_by: When specified, should be a list of strings corresponding
-        to GRR usernames. Only metadata for hunts NOT created by any of the
-        matching users will be returned.
 
     Returns:
       A list of rdf_hunt_objects.HuntMetadata objects sorted by create_time in
@@ -2775,7 +2583,7 @@ class Database(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def CountHuntResultsByType(self, hunt_id: str) -> Dict[str, int]:
+  def CountHuntResultsByType(self, hunt_id):
     """Returns counts of items in hunt results grouped by type.
 
     Args:
@@ -2975,82 +2783,6 @@ class Database(metaclass=abc.ABCMeta):
       `True` if the blob identifier refers to a YARA signature.
     """
 
-  @abc.abstractmethod
-  def WriteScheduledFlow(
-      self, scheduled_flow: rdf_flow_objects.ScheduledFlow) -> None:
-    """Inserts or updates the ScheduledFlow in the database.
-
-    Args:
-      scheduled_flow: the ScheduledFlow to insert.
-
-    Raises:
-      UnknownClientError: if no client with client_id exists.
-      UnknownGRRUserError: if creator does not exist as user.
-    """
-
-  @abc.abstractmethod
-  def DeleteScheduledFlow(self, client_id: str, creator: str,
-                          scheduled_flow_id: str) -> None:
-    """Deletes the ScheduledFlow from the database.
-
-    Args:
-      client_id: The ID of the client of the ScheduledFlow.
-      creator: The username of the user who created the ScheduledFlow.
-      scheduled_flow_id: The ID of the ScheduledFlow.
-
-    Raises:
-      UnknownScheduledFlowError: if no such ScheduledFlow exists.
-    """
-
-  @abc.abstractmethod
-  def ListScheduledFlows(
-      self, client_id: str,
-      creator: str) -> Sequence[rdf_flow_objects.ScheduledFlow]:
-    """Lists all ScheduledFlows for the client and creator."""
-
-  @abc.abstractmethod
-  def StructuredSearchClients(self, expression: rdf_search.SearchExpression,
-                              sort_order: rdf_search.SortOrder,
-                              continuation_token: bytes,
-                              number_of_results: int) -> SearchClientsResult:
-    """Perform a search for clients.
-
-    Args:
-      expression: The search expression to use for the search.
-      sort_order: The sorting order to return the results in.
-      continuation_token: The continuation token, if any.
-      number_of_results: The number of clients to return at most.
-
-    Returns:
-      A tuple containing a sequence of client IDs, a continuation token and the
-      number of remaining results.
-    """
-
-  @abc.abstractmethod
-  def WriteBlobEncryptionKeys(
-      self,
-      key_names: Dict[rdf_objects.BlobID, str],
-  ) -> None:
-    """Associates the specified blobs with the given encryption keys.
-
-    Args:
-      key_names: A mapping from blobs to key names to associate.
-    """
-
-  @abc.abstractmethod
-  def ReadBlobEncryptionKeys(
-      self,
-      blob_ids: Collection[rdf_objects.BlobID],
-  ) -> Dict[rdf_objects.BlobID, Optional[str]]:
-    """Retrieves encryption keys associated with blobs.
-
-    Args:
-      blob_ids: A collection of blob identifiers to retrieve the key names for.
-
-    Returns:
-      An mapping from blob to a key name associated with it (if available).
-    """
-
 
 class DatabaseValidationWrapper(Database):
   """Database wrapper that validates the arguments."""
@@ -3058,9 +2790,6 @@ class DatabaseValidationWrapper(Database):
   def __init__(self, delegate: Database):
     super().__init__()
     self.delegate = delegate
-
-  def Now(self) -> rdfvalue.RDFDatetime:
-    return self.delegate.Now()
 
   def WriteArtifact(self, artifact):
     precondition.AssertType(artifact, rdf_artifacts.Artifact)
@@ -3073,26 +2802,46 @@ class DatabaseValidationWrapper(Database):
 
   def ReadArtifact(self, name):
     precondition.AssertType(name, Text)
-    return self.delegate.ReadArtifact(name)
+    return self._PatchArtifact(self.delegate.ReadArtifact(name))
 
   def ReadAllArtifacts(self):
-    return self.delegate.ReadAllArtifacts()
+    return list(map(self._PatchArtifact, self.delegate.ReadAllArtifacts()))
 
   def DeleteArtifact(self, name):
     precondition.AssertType(name, Text)
     return self.delegate.DeleteArtifact(name)
 
-  def WriteClientMetadata(
-      self,
-      client_id,
-      certificate=None,
-      fleetspeak_enabled=None,
-      first_seen=None,
-      last_ping=None,
-      last_clock=None,
-      last_ip=None,
-      last_foreman=None,
-      fleetspeak_validation_info: Optional[Dict[str, str]] = None):
+  # TODO: This patching behaviour can be removed once we are sure
+  # that all artifacts have been properly migrated to use Python 3 serialized
+  # representation.
+  def _PatchArtifact(
+      self, artifact: rdf_artifacts.Artifact) -> rdf_artifacts.Artifact:
+    """Patches artifact to not contain byte-string source attributes."""
+    patched = False
+
+    for source in artifact.sources:
+      attributes = source.attributes.ToDict()
+      unicode_attributes = compatibility.UnicodeJson(attributes)
+
+      if attributes != unicode_attributes:
+        source.attributes = unicode_attributes
+        patched = True
+
+    if patched:
+      self.DeleteArtifact(str(artifact.name))
+      self.WriteArtifact(artifact)
+
+    return artifact
+
+  def WriteClientMetadata(self,
+                          client_id,
+                          certificate=None,
+                          fleetspeak_enabled=None,
+                          first_seen=None,
+                          last_ping=None,
+                          last_clock=None,
+                          last_ip=None,
+                          last_foreman=None):
     precondition.ValidateClientId(client_id)
     precondition.AssertOptionalType(certificate, rdf_crypto.RDFX509Cert)
     precondition.AssertOptionalType(fleetspeak_enabled, bool)
@@ -3102,9 +2851,6 @@ class DatabaseValidationWrapper(Database):
     precondition.AssertOptionalType(last_ip, rdf_client_network.NetworkAddress)
     precondition.AssertOptionalType(last_foreman, rdfvalue.RDFDatetime)
 
-    if fleetspeak_validation_info is not None:
-      precondition.AssertDictType(fleetspeak_validation_info, str, str)
-
     return self.delegate.WriteClientMetadata(
         client_id,
         certificate=certificate,
@@ -3113,8 +2859,7 @@ class DatabaseValidationWrapper(Database):
         last_ping=last_ping,
         last_clock=last_clock,
         last_ip=last_ip,
-        last_foreman=last_foreman,
-        fleetspeak_validation_info=fleetspeak_validation_info)
+        last_foreman=last_foreman)
 
   def DeleteClient(self, client_id):
     precondition.ValidateClientId(client_id)
@@ -3196,8 +2941,7 @@ class DatabaseValidationWrapper(Database):
 
     return self.delegate.WriteClientStartupInfo(client_id, startup_info)
 
-  def ReadClientStartupInfo(self,
-                            client_id: str) -> Optional[rdf_client.StartupInfo]:
+  def ReadClientStartupInfo(self, client_id):
     precondition.ValidateClientId(client_id)
 
     return self.delegate.ReadClientStartupInfo(client_id)
@@ -3233,14 +2977,6 @@ class DatabaseValidationWrapper(Database):
 
     return self.delegate.AddClientKeywords(client_id, keywords)
 
-  def MultiAddClientKeywords(
-      self,
-      client_ids: Collection[str],
-      keywords: Collection[str],
-  ) -> None:
-    """Associates the provided keywords with the specified clients."""
-    return self.delegate.MultiAddClientKeywords(client_ids, keywords)
-
   def ListClientsForKeywords(
       self,
       keywords: Iterable[Text],
@@ -3274,15 +3010,6 @@ class DatabaseValidationWrapper(Database):
 
     return self.delegate.AddClientLabels(client_id, owner, labels)
 
-  def MultiAddClientLabels(
-      self,
-      client_ids: Collection[str],
-      owner: str,
-      labels: Collection[str],
-  ) -> None:
-    """Attaches user labels to the specified clients."""
-    return self.delegate.MultiAddClientLabels(client_ids, owner, labels)
-
   def MultiReadClientLabels(
       self,
       client_ids: List[Text]) -> Dict[Text, List[rdf_objects.ClientLabel]]:
@@ -3301,9 +3028,9 @@ class DatabaseValidationWrapper(Database):
 
     return self.delegate.RemoveClientLabels(client_id, owner, labels)
 
-  def ReadAllClientLabels(self) -> Collection[str]:
+  def ReadAllClientLabels(self) -> List[rdf_objects.ClientLabel]:
     result = self.delegate.ReadAllClientLabels()
-    precondition.AssertIterableType(result, str)
+    precondition.AssertIterableType(result, rdf_objects.ClientLabel)
     return result
 
   def WriteClientStats(self, client_id: Text,
@@ -3336,15 +3063,22 @@ class DatabaseValidationWrapper(Database):
 
   def DeleteOldClientStats(
       self,
-      cutoff_time: rdfvalue.RDFDatetime,
-      batch_size: Optional[int] = None,
-  ) -> Iterator[int]:
-    precondition.AssertOptionalType(batch_size, int)
-    if batch_size is not None and batch_size < 1:
-      raise ValueError(f"Batch size must be positive (got '{batch_size}')")
+      yield_after_count: int,
+      retention_time: Optional[rdfvalue.RDFDatetime] = None
+  ) -> Generator[int, None, None]:
+    if retention_time is None:
+      retention_time = rdfvalue.RDFDatetime.Now() - CLIENT_STATS_RETENTION
+    else:
+      _ValidateTimestamp(retention_time)
 
-    return self.delegate.DeleteOldClientStats(
-        cutoff_time, batch_size=batch_size)
+    precondition.AssertType(yield_after_count, int)
+    if yield_after_count < 1:
+      raise ValueError("yield_after_count must be >= 1. Got %r" %
+                       (yield_after_count,))
+
+    for deleted_count in self.delegate.DeleteOldClientStats(
+        yield_after_count, retention_time):
+      yield deleted_count
 
   def WriteForemanRule(self, rule):
     precondition.AssertType(rule, foreman_rules.ForemanCondition)
@@ -3443,12 +3177,11 @@ class DatabaseValidationWrapper(Database):
 
     return self.delegate.ReadApprovalRequest(requestor_username, approval_id)
 
-  def ReadApprovalRequests(
-      self,
-      requestor_username,
-      approval_type,
-      subject_id=None,
-      include_expired=False) -> Sequence[rdf_objects.ApprovalRequest]:
+  def ReadApprovalRequests(self,
+                           requestor_username,
+                           approval_type,
+                           subject_id=None,
+                           include_expired=False):
     _ValidateUsername(requestor_username)
     _ValidateApprovalType(approval_type)
 
@@ -3527,23 +3260,31 @@ class DatabaseValidationWrapper(Database):
     if timestamp is not None:
       _ValidateTimestamp(timestamp)
 
-    return self.delegate.FindPathInfoByPathID(  # pytype: disable=attribute-error
+    return self.delegate.FindPathInfoByPathID(
         client_id, path_type, path_id, timestamp=timestamp)
 
   def FindPathInfosByPathIDs(self, client_id, path_type, path_ids):
     precondition.ValidateClientId(client_id)
 
-    return self.delegate.FindPathInfosByPathIDs(client_id, path_type, path_ids)  # pytype: disable=attribute-error
+    return self.delegate.FindPathInfosByPathIDs(client_id, path_type, path_ids)
 
   def WritePathInfos(self, client_id, path_infos):
     precondition.ValidateClientId(client_id)
     _ValidatePathInfos(path_infos)
     return self.delegate.WritePathInfos(client_id, path_infos)
 
+  def MultiWritePathInfos(self, path_infos):
+    precondition.AssertType(path_infos, dict)
+    for client_id, client_path_infos in path_infos.items():
+      precondition.ValidateClientId(client_id)
+      _ValidatePathInfos(client_path_infos)
+
+    return self.delegate.MultiWritePathInfos(path_infos)
+
   def InitPathInfos(self, client_id, path_infos):
     precondition.ValidateClientId(client_id)
     _ValidatePathInfos(path_infos)
-    return self.delegate.InitPathInfos(client_id, path_infos)  # pytype: disable=attribute-error
+    return self.delegate.InitPathInfos(client_id, path_infos)
 
   def MultiInitPathInfos(self, path_infos):
     precondition.AssertType(path_infos, dict)
@@ -3551,13 +3292,13 @@ class DatabaseValidationWrapper(Database):
       precondition.ValidateClientId(client_id)
       _ValidatePathInfos(client_path_infos)
 
-    return self.delegate.MultiInitPathInfos(path_infos)  # pytype: disable=attribute-error
+    return self.delegate.MultiInitPathInfos(path_infos)
 
   def ClearPathHistory(self, client_id, path_infos):
     precondition.ValidateClientId(client_id)
     _ValidatePathInfos(path_infos)
 
-    return self.delegate.ClearPathHistory(client_id, path_infos)  # pytype: disable=attribute-error
+    return self.delegate.ClearPathHistory(client_id, path_infos)
 
   def MultiClearPathHistory(self, path_infos):
     precondition.AssertType(path_infos, dict)
@@ -3565,7 +3306,7 @@ class DatabaseValidationWrapper(Database):
       precondition.ValidateClientId(client_id)
       _ValidatePathInfos(client_path_infos)
 
-    return self.delegate.MultiClearPathHistory(path_infos)  # pytype: disable=attribute-error
+    return self.delegate.MultiClearPathHistory(path_infos)
 
   def MultiWritePathHistory(self, client_path_histories):
     precondition.AssertType(client_path_histories, dict)
@@ -3573,7 +3314,7 @@ class DatabaseValidationWrapper(Database):
       precondition.AssertType(client_path, ClientPath)
       precondition.AssertType(client_path_history, ClientPathHistory)
 
-    self.delegate.MultiWritePathHistory(client_path_histories)  # pytype: disable=attribute-error
+    self.delegate.MultiWritePathHistory(client_path_histories)
 
   def FindDescendentPathIDs(self,
                             client_id,
@@ -3582,7 +3323,7 @@ class DatabaseValidationWrapper(Database):
                             max_depth=None):
     precondition.ValidateClientId(client_id)
 
-    return self.delegate.FindDescendentPathIDs(  # pytype: disable=attribute-error
+    return self.delegate.FindDescendentPathIDs(
         client_id, path_type, path_id, max_depth=max_depth)
 
   def WriteUserNotification(self, notification):
@@ -3799,11 +3540,8 @@ class DatabaseValidationWrapper(Database):
 
   def WriteFlowObject(self, flow_obj, allow_update=True):
     precondition.AssertType(flow_obj, rdf_flow_objects.Flow)
+    precondition.AssertType(flow_obj.create_time, rdfvalue.RDFDatetime)
     precondition.AssertType(allow_update, bool)
-
-    if flow_obj.HasField("creation_time"):
-      raise ValueError(f"Creation time set on the flow object: {flow_obj}")
-
     return self.delegate.WriteFlowObject(flow_obj, allow_update=allow_update)
 
   def ReadFlowObject(self, client_id, flow_id):
@@ -3814,31 +3552,19 @@ class DatabaseValidationWrapper(Database):
   def ReadAllFlowObjects(
       self,
       client_id: Optional[Text] = None,
-      parent_flow_id: Optional[str] = None,
       min_create_time: Optional[rdfvalue.RDFDatetime] = None,
       max_create_time: Optional[rdfvalue.RDFDatetime] = None,
       include_child_flows: bool = True,
-      not_created_by: Optional[Iterable[str]] = None,
   ) -> List[rdf_flow_objects.Flow]:
     if client_id is not None:
       precondition.ValidateClientId(client_id)
     precondition.AssertOptionalType(min_create_time, rdfvalue.RDFDatetime)
     precondition.AssertOptionalType(max_create_time, rdfvalue.RDFDatetime)
-
-    if parent_flow_id is not None and not include_child_flows:
-      raise ValueError(f"Parent flow id specified ('{parent_flow_id}') in the "
-                       f"childless mode")
-
-    if not_created_by is not None:
-      precondition.AssertIterableType(not_created_by, str)
-
     return self.delegate.ReadAllFlowObjects(
         client_id=client_id,
-        parent_flow_id=parent_flow_id,
         min_create_time=min_create_time,
         max_create_time=max_create_time,
-        include_child_flows=include_child_flows,
-        not_created_by=not_created_by)
+        include_child_flows=include_child_flows)
 
   def ReadChildFlowObjects(self, client_id, flow_id):
     precondition.ValidateClientId(client_id)
@@ -3862,6 +3588,7 @@ class DatabaseValidationWrapper(Database):
                  flow_obj=Database.unchanged,
                  flow_state=Database.unchanged,
                  client_crash_info=Database.unchanged,
+                 pending_termination=Database.unchanged,
                  processing_on=Database.unchanged,
                  processing_since=Database.unchanged,
                  processing_deadline=Database.unchanged):
@@ -3878,6 +3605,9 @@ class DatabaseValidationWrapper(Database):
       _ValidateEnumType(flow_state, rdf_flow_objects.Flow.FlowState)
     if client_crash_info != Database.unchanged:
       precondition.AssertType(client_crash_info, rdf_client.ClientCrash)
+    if pending_termination != Database.unchanged:
+      precondition.AssertType(pending_termination,
+                              rdf_flow_objects.PendingFlowTermination)
     if processing_since != Database.unchanged:
       if processing_since is not None:
         _ValidateTimestamp(processing_since)
@@ -3890,21 +3620,28 @@ class DatabaseValidationWrapper(Database):
         flow_obj=flow_obj,
         flow_state=flow_state,
         client_crash_info=client_crash_info,
+        pending_termination=pending_termination,
         processing_on=processing_on,
         processing_since=processing_since,
         processing_deadline=processing_deadline)
 
+  def UpdateFlows(self,
+                  client_id_flow_id_pairs,
+                  pending_termination=Database.unchanged):
+    for client_id, flow_id in client_id_flow_id_pairs:
+      precondition.ValidateClientId(client_id)
+      precondition.ValidateFlowId(flow_id)
+
+    if pending_termination != Database.unchanged:
+      precondition.AssertType(pending_termination,
+                              rdf_flow_objects.PendingFlowTermination)
+
+    return self.delegate.UpdateFlows(
+        client_id_flow_id_pairs, pending_termination=pending_termination)
+
   def WriteFlowRequests(self, requests):
     precondition.AssertIterableType(requests, rdf_flow_objects.FlowRequest)
     return self.delegate.WriteFlowRequests(requests)
-
-  def UpdateIncrementalFlowRequests(self, client_id: str, flow_id: str,
-                                    next_response_id_updates: Dict[int, int]):
-    precondition.ValidateClientId(client_id)
-    precondition.ValidateFlowId(flow_id)
-    precondition.AssertDictType(next_response_id_updates, int, int)
-    return self.delegate.UpdateIncrementalFlowRequests(
-        client_id, flow_id, next_response_id_updates)
 
   def DeleteFlowRequests(self, requests):
     precondition.AssertIterableType(requests, rdf_flow_objects.FlowRequest)
@@ -4016,64 +3753,15 @@ class DatabaseValidationWrapper(Database):
 
     return self.delegate.CountFlowResultsByType(client_id, flow_id)
 
-  def CountFlowErrorsByType(self, client_id: str,
-                            flow_id: str) -> Dict[str, int]:
-    precondition.ValidateClientId(client_id)
-    precondition.ValidateFlowId(flow_id)
+  def WriteFlowLogEntries(self, entries):
+    for e in entries:
+      precondition.ValidateClientId(e.client_id)
+      precondition.ValidateFlowId(e.flow_id)
+      if e.HasField("hunt_id") and e.hunt_id:
+        _ValidateHuntId(e.hunt_id)
+    precondition.AssertIterableType(entries, rdf_flow_objects.FlowLogEntry)
 
-    return self.delegate.CountFlowErrorsByType(client_id, flow_id)
-
-  def WriteFlowErrors(self, errors: Iterable[rdf_flow_objects.FlowError]):
-    for r in errors:
-      precondition.AssertType(r, rdf_flow_objects.FlowError)
-      precondition.ValidateClientId(r.client_id)
-      precondition.ValidateFlowId(r.flow_id)
-      if r.HasField("hunt_id") and r.hunt_id:
-        _ValidateHuntId(r.hunt_id)
-
-    return self.delegate.WriteFlowErrors(errors)
-
-  def ReadFlowErrors(
-      self,
-      client_id: str,
-      flow_id: str,
-      offset: int,
-      count: int,
-      with_tag: Optional[str] = None,
-      with_type: Optional[str] = None) -> List[rdf_flow_objects.FlowError]:
-    precondition.ValidateClientId(client_id)
-    precondition.ValidateFlowId(flow_id)
-    precondition.AssertOptionalType(with_tag, Text)
-    precondition.AssertOptionalType(with_type, Text)
-
-    return self.delegate.ReadFlowErrors(
-        client_id,
-        flow_id,
-        offset,
-        count,
-        with_tag=with_tag,
-        with_type=with_type)
-
-  def CountFlowErrors(self,
-                      client_id: str,
-                      flow_id: str,
-                      with_tag: Optional[str] = None,
-                      with_type: Optional[str] = None) -> int:
-    precondition.ValidateClientId(client_id)
-    precondition.ValidateFlowId(flow_id)
-    precondition.AssertOptionalType(with_tag, Text)
-    precondition.AssertOptionalType(with_type, Text)
-
-    return self.delegate.CountFlowErrors(
-        client_id, flow_id, with_tag=with_tag, with_type=with_type)
-
-  def WriteFlowLogEntry(self, entry: rdf_flow_objects.FlowLogEntry) -> None:
-    precondition.ValidateClientId(entry.client_id)
-    precondition.ValidateFlowId(entry.flow_id)
-    if entry.HasField("hunt_id") and entry.hunt_id:
-      _ValidateHuntId(entry.hunt_id)
-
-    return self.delegate.WriteFlowLogEntry(entry)
+    return self.delegate.WriteFlowLogEntries(entries)
 
   def ReadFlowLogEntries(self,
                          client_id,
@@ -4094,18 +3782,16 @@ class DatabaseValidationWrapper(Database):
 
     return self.delegate.CountFlowLogEntries(client_id, flow_id)
 
-  def WriteFlowOutputPluginLogEntry(
-      self,
-      entry: rdf_flow_objects.FlowOutputPluginLogEntry,
-  ) -> None:
-    """Writes a single output plugin log entry to the database."""
-    precondition.AssertType(entry, rdf_flow_objects.FlowOutputPluginLogEntry)
-    precondition.ValidateClientId(entry.client_id)
-    precondition.ValidateFlowId(entry.flow_id)
-    if entry.hunt_id:
-      _ValidateHuntId(entry.hunt_id)
+  def WriteFlowOutputPluginLogEntries(self, entries):
+    for e in entries:
+      precondition.AssertType(e, rdf_flow_objects.FlowOutputPluginLogEntry)
 
-    return self.delegate.WriteFlowOutputPluginLogEntry(entry)
+      precondition.ValidateClientId(e.client_id)
+      precondition.ValidateFlowId(e.flow_id)
+      if e.hunt_id:
+        _ValidateHuntId(e.hunt_id)
+
+    return self.delegate.WriteFlowOutputPluginLogEntries(entries)
 
   def ReadFlowOutputPluginLogEntries(self,
                                      client_id,
@@ -4235,65 +3921,43 @@ class DatabaseValidationWrapper(Database):
     _ValidateHuntId(hunt_id)
     return self.delegate.ReadHuntObject(hunt_id)
 
-  def ReadHuntObjects(
-      self,
-      offset,
-      count,
-      with_creator=None,
-      created_after=None,
-      with_description_match=None,
-      created_by=None,
-      not_created_by=None,
-  ):
+  def ReadHuntObjects(self,
+                      offset,
+                      count,
+                      with_creator=None,
+                      created_after=None,
+                      with_description_match=None):
     precondition.AssertOptionalType(offset, int)
     precondition.AssertOptionalType(count, int)
     precondition.AssertOptionalType(with_creator, Text)
     precondition.AssertOptionalType(created_after, rdfvalue.RDFDatetime)
     precondition.AssertOptionalType(with_description_match, Text)
-    if created_by is not None:
-      precondition.AssertIterableType(created_by, str)
-    if not_created_by is not None:
-      precondition.AssertIterableType(not_created_by, str)
 
     return self.delegate.ReadHuntObjects(
         offset,
         count,
         with_creator=with_creator,
         created_after=created_after,
-        with_description_match=with_description_match,
-        created_by=created_by,
-        not_created_by=not_created_by,
-    )
+        with_description_match=with_description_match)
 
-  def ListHuntObjects(
-      self,
-      offset,
-      count,
-      with_creator=None,
-      created_after=None,
-      with_description_match=None,
-      created_by=None,
-      not_created_by=None,
-  ):
+  def ListHuntObjects(self,
+                      offset,
+                      count,
+                      with_creator=None,
+                      created_after=None,
+                      with_description_match=None):
     precondition.AssertOptionalType(offset, int)
     precondition.AssertOptionalType(count, int)
     precondition.AssertOptionalType(with_creator, Text)
     precondition.AssertOptionalType(created_after, rdfvalue.RDFDatetime)
     precondition.AssertOptionalType(with_description_match, Text)
-    if created_by is not None:
-      precondition.AssertIterableType(created_by, str)
-    if not_created_by is not None:
-      precondition.AssertIterableType(not_created_by, str)
 
     return self.delegate.ListHuntObjects(
         offset,
         count,
         with_creator=with_creator,
         created_after=created_after,
-        with_description_match=with_description_match,
-        created_by=created_by,
-        not_created_by=not_created_by,
-    )
+        with_description_match=with_description_match)
 
   def ReadHuntLogEntries(self, hunt_id, offset, count, with_substring=None):
     _ValidateHuntId(hunt_id)
@@ -4410,8 +4074,8 @@ class DatabaseValidationWrapper(Database):
                                time_range=None):
     _ValidateLabel(client_label)
     if (report_type == rdf_stats.ClientGraphSeries.ReportType.UNKNOWN or
-        str(report_type)
-        not in rdf_stats.ClientGraphSeries.ReportType.enum_dict):
+        str(report_type) not in rdf_stats.ClientGraphSeries.ReportType.enum_dict
+       ):
       raise ValueError("Invalid report type given: %s" % report_type)
     precondition.AssertOptionalType(time_range, time_utils.TimeRange)
     return self.delegate.ReadAllClientGraphSeries(
@@ -4420,8 +4084,8 @@ class DatabaseValidationWrapper(Database):
   def ReadMostRecentClientGraphSeries(self, client_label, report_type):
     _ValidateLabel(client_label)
     if (report_type == rdf_stats.ClientGraphSeries.ReportType.UNKNOWN or
-        str(report_type)
-        not in rdf_stats.ClientGraphSeries.ReportType.enum_dict):
+        str(report_type) not in rdf_stats.ClientGraphSeries.ReportType.enum_dict
+       ):
       raise ValueError("Invalid report type given: %s" % report_type)
     return self.delegate.ReadMostRecentClientGraphSeries(
         client_label, report_type)
@@ -4441,51 +4105,6 @@ class DatabaseValidationWrapper(Database):
   ) -> bool:
     _ValidateBlobID(blob_id)
     return self.delegate.VerifyYaraSignatureReference(blob_id)
-
-  def WriteScheduledFlow(
-      self, scheduled_flow: rdf_flow_objects.ScheduledFlow) -> None:
-    _ValidateStringId("scheduled_flow_id", scheduled_flow.scheduled_flow_id)
-    _ValidateUsername(scheduled_flow.creator)
-    precondition.ValidateClientId(scheduled_flow.client_id)
-    return self.delegate.WriteScheduledFlow(scheduled_flow)
-
-  def DeleteScheduledFlow(self, client_id: str, creator: str,
-                          scheduled_flow_id: str) -> None:
-    precondition.ValidateClientId(client_id)
-    _ValidateUsername(creator)
-    _ValidateStringId("scheduled_flow_id", scheduled_flow_id)
-    return self.delegate.DeleteScheduledFlow(client_id, creator,
-                                             scheduled_flow_id)
-
-  def ListScheduledFlows(
-      self, client_id: str,
-      creator: str) -> Sequence[rdf_flow_objects.ScheduledFlow]:
-    precondition.ValidateClientId(client_id)
-    _ValidateUsername(creator)
-    return self.delegate.ListScheduledFlows(client_id, creator)
-
-  def StructuredSearchClients(self, expression: rdf_search.SearchExpression,
-                              continuation_token: bytes,
-                              number_of_results: int) -> SearchClientsResult:
-    return self.delegate.StructuredSearchClient(expression, continuation_token)  # pytype: disable=attribute-error
-
-  def WriteBlobEncryptionKeys(
-      self,
-      key_names: Dict[rdf_objects.BlobID, str],
-  ) -> None:
-    for blob_id in key_names.keys():
-      _ValidateBlobID(blob_id)
-
-    return self.delegate.WriteBlobEncryptionKeys(key_names)
-
-  def ReadBlobEncryptionKeys(
-      self,
-      blob_ids: Collection[rdf_objects.BlobID],
-  ) -> Dict[rdf_objects.BlobID, Optional[str]]:
-    for blob_id in blob_ids:
-      _ValidateBlobID(blob_id)
-
-    return self.delegate.ReadBlobEncryptionKeys(blob_ids)
 
 
 def _ValidateEnumType(value, expected_enum_type):

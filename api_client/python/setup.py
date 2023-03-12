@@ -1,13 +1,24 @@
 #!/usr/bin/env python
 """setup.py file for a GRR API client library."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-import configparser
 import os
 import shutil
+import sys
 
 from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.sdist import sdist
+
+# TODO: Fix this import once support for Python 2 is dropped.
+# pylint: disable=g-import-not-at-top
+if sys.version_info.major == 2:
+  import ConfigParser as configparser
+else:
+  import configparser
+# pylint: enable=g-import-not-at-top
 
 THIS_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
@@ -26,7 +37,7 @@ def get_config():
     if not os.path.exists(ini_path):
       raise RuntimeError("Couldn't find version.ini")
 
-  config = configparser.ConfigParser()
+  config = configparser.SafeConfigParser()
   config.read(ini_path)
   return config
 
@@ -63,13 +74,11 @@ setup_args = dict(
     },
     install_requires=[
         "grr_response_proto==%s" % VERSION.get("Version", "packagedepends"),
-        "cryptography==3.3.2",
-        "requests==2.25.1",
-        "Werkzeug==2.1.2",
+        "cryptography==2.8",
+        "ipython==%s" % ("5.0.0" if sys.version_info < (3, 0) else "7.2.0"),
+        "requests==2.22.0",
+        "Werkzeug==0.16.0",
     ],
-    extra_requires={
-        "shell": ["ipython==7.15.0",],
-    },
     data=["version.ini"])
 
 setup(**setup_args)

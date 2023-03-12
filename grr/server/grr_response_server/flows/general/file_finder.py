@@ -1,16 +1,19 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Search for certain files, filter them by given criteria and do something."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import stat
-from typing import Optional
-from typing import Sequence
+
 
 from grr_response_core.lib import artifact_utils
 from grr_response_core.lib.rdfvalues import client_action as rdf_client_action
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr_response_proto import flows_pb2
+from grr_response_core.lib.util import compatibility
 from grr_response_server import data_store
 from grr_response_server import file_store
 from grr_response_server import flow_base
@@ -73,7 +76,7 @@ class FileFinder(transfer.MultiGetFileLogic, fingerprint.FingerprintFileLogic,
     else:
       use_external_stores = False
 
-    super().Start(use_external_stores=use_external_stores)
+    super(FileFinder, self).Start(use_external_stores=use_external_stores)
 
     self.state.files_found = 0
 
@@ -112,21 +115,15 @@ class FileFinder(transfer.MultiGetFileLogic, fingerprint.FingerprintFileLogic,
       # Registry StatEntries won't pass the file type check.
       self.args.process_non_regular_files = True
 
-    if self.args.HasField("implementation_type"):
-      implementation_type = self.args.implementation_type
-    else:
-      implementation_type = None
-
     self.GlobForPaths(
         self.args.paths,
         pathtype=self.args.pathtype,
-        implementation_type=implementation_type,
         process_non_regular_files=self.args.process_non_regular_files,
         collect_ext_attrs=action.stat.collect_ext_attrs)
 
   def GlobReportMatch(self, response):
     """This method is called by the glob mixin when there is a match."""
-    super().GlobReportMatch(response)
+    super(FileFinder, self).GlobReportMatch(response)
 
     self.ApplyCondition(
         rdf_file_finder.FileFinderResult(stat_entry=response),
@@ -189,7 +186,7 @@ class FileFinder(transfer.MultiGetFileLogic, fingerprint.FingerprintFileLogic,
     self.CallClient(
         server_stubs.Grep,
         request=grep_spec,
-        next_state=self.ProcessGrep.__name__,
+        next_state=compatibility.GetName(self.ProcessGrep),
         request_data=dict(
             original_result=response, condition_index=condition_index + 1))
 
@@ -215,7 +212,7 @@ class FileFinder(transfer.MultiGetFileLogic, fingerprint.FingerprintFileLogic,
     self.CallClient(
         server_stubs.Grep,
         request=grep_spec,
-        next_state=self.ProcessGrep.__name__,
+        next_state=compatibility.GetName(self.ProcessGrep),
         request_data=dict(
             original_result=response, condition_index=condition_index + 1))
 
@@ -261,7 +258,7 @@ class FileFinder(transfer.MultiGetFileLogic, fingerprint.FingerprintFileLogic,
         self.state.files_found += 1
         self.SendReply(response)
       else:
-        if self.client_version and self.client_version < 3221:
+        if self.client_version < 3221:
           self.Error("Client is too old to get requested stat information.")
         request = rdf_client_action.GetFileStatRequest(
             pathspec=response.stat_entry.pathspec,
@@ -270,7 +267,7 @@ class FileFinder(transfer.MultiGetFileLogic, fingerprint.FingerprintFileLogic,
         self.CallClient(
             server_stubs.GetFileStat,
             request,
-            next_state=self.ReceiveFileStat.__name__,
+            next_state=compatibility.GetName(self.ReceiveFileStat),
             request_data=dict(original_result=response))
 
     elif (self.args.process_non_regular_files or
@@ -340,15 +337,9 @@ class FileFinder(transfer.MultiGetFileLogic, fingerprint.FingerprintFileLogic,
           fetch_file = True
 
         if fetch_file:
-          pathspec = response.stat_entry.pathspec.Copy()
-          # If the file size is reported as zero and we're processing
-          # non-regular files, let's assume we're dealing with a
-          # device file and use download.max_size as a size override.
-          if (not response.stat_entry.st_size and
-              self.args.process_non_regular_files):
-            pathspec.file_size_override = self.args.action.download.max_size
           self.StartFileFetch(
-              pathspec, request_data=dict(original_result=response))
+              response.stat_entry.pathspec,
+              request_data=dict(original_result=response))
 
   def ReceiveFileStat(self, responses):
     if "original_result" not in responses.request_data:
@@ -387,7 +378,7 @@ class FileFinder(transfer.MultiGetFileLogic, fingerprint.FingerprintFileLogic,
     self.SendReply(result)
 
   def End(self, responses):
-    super().End(responses)
+    super(FileFinder, self).End(responses)
 
     self.Log("Found and processed %d files.", self.state.files_found)
 
@@ -402,50 +393,30 @@ class ClientFileFinder(flow_base.FlowBase):
 
   def Start(self):
     """Issue the find request."""
-    super().Start()
+    super(ClientFileFinder, self).Start()
 
     if self.args.pathtype == rdf_paths.PathSpec.PathType.OS:
       stub = server_stubs.FileFinderOS
     else:
       stub = server_stubs.VfsFileFinder
 
-    if (paths := self._InterpolatePaths(self.args.paths)) is not None:
-      interpolated_args = self.args.Copy()
-      interpolated_args.paths = paths
-      self.CallClient(
-          stub,
-          request=interpolated_args,
-          next_state=self.StoreResults.__name__)
+    interpolated_args = self.args.Copy()
+    interpolated_args.paths = list(
+        self._InterpolatePaths(interpolated_args.paths))
 
-  def _InterpolatePaths(self, globs: Sequence[str]) -> Optional[Sequence[str]]:
+    self.CallClient(
+        stub,
+        request=interpolated_args,
+        next_state=compatibility.GetName(self.StoreResults))
+
+  def _InterpolatePaths(self, globs):
+
     kb = self.client_knowledge_base
 
-    if kb is None:
-      self.Error("No knowledgebase available for path interpolation")
-      return None
-
-    paths = list()
-    missing_attrs = list()
-    unknown_attrs = list()
-
     for glob in globs:
-      try:
-        paths.extend(artifact_utils.InterpolateKbAttributes(str(glob), kb))
-      except artifact_utils.KbInterpolationMissingAttributesError as error:
-        missing_attrs.extend(error.attrs)
-        self.Log("Missing knowledgebase attributes: %s", error.attrs)
-      except artifact_utils.KbInterpolationUnknownAttributesError as error:
-        unknown_attrs.extend(error.attrs)
-        self.Log("Unknown knowledgebase attributes: %s", error.attrs)
-
-    if missing_attrs:
-      self.Error(f"Missing knowledgebase attributes: {missing_attrs}")
-      return None
-    if unknown_attrs:
-      self.Error(f"Unknown knowledgebase attributes: {unknown_attrs}")
-      return None
-
-    return paths
+      param_path = str(glob)
+      for path in artifact_utils.InterpolateKbAttributes(param_path, kb):
+        yield path
 
   def StoreResults(self, responses):
     """Stores the results returned by the client to the db."""
@@ -511,7 +482,6 @@ class ClientFileFinder(flow_base.FlowBase):
     filesystem.WriteStatEntries(stat_entries, client_id=self.client_id)
 
   def End(self, responses):
-    super().End(responses)
+    super(ClientFileFinder, self).End(responses)
 
-    if self.rdf_flow.flow_state != flows_pb2.Flow.ERROR:
-      self.Log("Found and processed %d files.", self.state.files_found)
+    self.Log("Found and processed %d files.", self.state.files_found)

@@ -1,16 +1,20 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for Windows Volume Shadow Copy flow."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import stat
 
 from absl import app
 
-from grr_response_core import config
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_server import data_store
 from grr_response_server.flows.general import windows_vsc
+from grr_response_server.rdfvalues import objects as rdf_objects
 from grr.test_lib import action_mocks
 from grr.test_lib import flow_test_lib
 from grr.test_lib import test_lib
@@ -71,8 +75,7 @@ class TestClient(action_mocks.ActionMock):
       raise RuntimeError("Missing nested pathspec.")
 
     if (pathspec.nested_path.path != "/" or
-        pathspec.nested_path.pathtype not in (
-            rdf_paths.PathSpec.PathType.TSK, rdf_paths.PathSpec.PathType.NTFS)):
+        pathspec.nested_path.pathtype != rdf_paths.PathSpec.PathType.TSK):
       raise RuntimeError("Invalid nested pathspec.")
 
     result = []
@@ -95,13 +98,10 @@ class TestListVolumeShadowCopies(flow_test_lib.FlowTestsBaseclass):
 
     # Run the flow in the simulated way
     flow_test_lib.TestFlowHelper(
-        flow_name,
-        TestClient(),
-        creator=self.test_username,
-        client_id=client_id)
+        flow_name, TestClient(), token=self.token, client_id=client_id)
 
     children = data_store.REL_DB.ListChildPathInfos(
-        client_id, config.CONFIG["Server.raw_filesystem_access_pathtype"],
+        client_id, rdf_objects.PathInfo.PathType.TSK,
         ["\\\\.\\HarddiskVolumeShadowCopy3"])
 
     self.assertLen(children, 10)

@@ -1,8 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """MySQL implementation of the GRR relational database abstraction.
 
 See grr/server/db.py for interface.
+
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import contextlib
 import logging
@@ -19,11 +24,9 @@ from MySQLdb.constants import CR as mysql_conn_errors
 from MySQLdb.constants import ER as mysql_errors
 
 from grr_response_core import config
-from grr_response_core.lib import rdfvalue
 from grr_response_server import threadpool
 from grr_response_server.databases import db as db_module
 from grr_response_server.databases import mysql_artifacts
-from grr_response_server.databases import mysql_blob_keys
 from grr_response_server.databases import mysql_blobs
 from grr_response_server.databases import mysql_client_reports
 from grr_response_server.databases import mysql_clients
@@ -37,7 +40,6 @@ from grr_response_server.databases import mysql_paths
 from grr_response_server.databases import mysql_pool
 from grr_response_server.databases import mysql_signed_binaries
 from grr_response_server.databases import mysql_users
-from grr_response_server.databases import mysql_utils
 from grr_response_server.databases import mysql_yara
 
 # Maximum size of one SQL statement, including blob and protobuf data.
@@ -47,14 +49,12 @@ MAX_PACKET_SIZE = 20 << 21
 _MAX_RETRY_COUNT = 5
 
 # MySQL error codes:
-_RETRYABLE_ERRORS = frozenset([
+_RETRYABLE_ERRORS = {
     mysql_conn_errors.SERVER_GONE_ERROR,
     mysql_errors.LOCK_WAIT_TIMEOUT,
     mysql_errors.LOCK_DEADLOCK,
     1637,  # TOO_MANY_CONCURRENT_TRXS, unavailable in MySQLdb 1.3.7
-    mysql_conn_errors.CONN_HOST_ERROR,
-    mysql_conn_errors.SERVER_LOST,
-])
+}
 
 # Enforce sensible defaults for MySQL connection and database:
 # Use utf8mb4_unicode_ci collation and utf8mb4 character set.
@@ -426,7 +426,6 @@ def _SleepWithBackoff(exponent):
 # pyformat: disable
 class MysqlDB(mysql_artifacts.MySQLDBArtifactsMixin,
               mysql_blobs.MySQLDBBlobsMixin,  # Implements BlobStore.
-              mysql_blob_keys.MySQLDBBlobKeysMixin,
               mysql_client_reports.MySQLDBClientReportsMixin,
               mysql_clients.MySQLDBClientMixin,
               mysql_cronjobs.MySQLDBCronJobMixin,
@@ -443,7 +442,8 @@ class MysqlDB(mysql_artifacts.MySQLDBArtifactsMixin,
   """Implements db.Database and blob_store.BlobStore using MySQL."""
 
   def ClearTestDB(self):
-    # This is required because GRRBaseTest.setUp() calls it.
+    # TODO(user): This is required because GRRBaseTest.setUp() calls it.
+    # Refactor database test to provide their own logic of cleanup in tearDown.
     pass
 
   _WRITE_ROWS_BATCH_SIZE = 10000
@@ -560,13 +560,6 @@ class MysqlDB(mysql_artifacts.MySQLDBArtifactsMixin,
           if not readonly:
             connection.commit()
           return result
-        except mysql_utils.RetryableError:
-          connection.rollback()
-          if txn_execution_attempts < _MAX_RETRY_COUNT:
-            _SleepWithBackoff(txn_execution_attempts)
-            txn_execution_attempts += 1
-          else:
-            raise
         except MySQLdb.OperationalError as e:
           if e.args[0] == mysql_conn_errors.SERVER_GONE_ERROR:
             # The connection to the MySQL server is broken. That might be
@@ -587,10 +580,3 @@ class MysqlDB(mysql_artifacts.MySQLDBArtifactsMixin,
               txn_execution_attempts += 1
             else:
               raise
-
-  @mysql_utils.WithTransaction()
-  def Now(self, cursor: MySQLdb.cursors.Cursor) -> rdfvalue.RDFDatetime:
-    cursor.execute("SELECT UNIX_TIMESTAMP(NOW(6))")
-    [(timestamp,)] = cursor.fetchall()
-
-    return mysql_utils.TimestampToRDFDatetime(timestamp)

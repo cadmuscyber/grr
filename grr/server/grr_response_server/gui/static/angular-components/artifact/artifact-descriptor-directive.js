@@ -5,17 +5,14 @@ goog.module.declareLegacyNamespace();
 
 /**
  * Controller for ArtifactDescriptorDirective.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @constructor
+ * @ngInject
  */
-const ArtifactDescriptorController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
-  }
+const ArtifactDescriptorController = function($scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 };
 
 

@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This modules contains tests for config API handler."""
-
-from unittest import mock
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
+import mock
 
 from grr_response_core import config
 from grr_response_core.lib import utils
@@ -77,7 +80,7 @@ class ApiGetConfigHandlerTest(api_test_lib.ApiCallHandlerTest):
   """Test for ApiGetConfigHandlerTest."""
 
   def setUp(self):
-    super().setUp()
+    super(ApiGetConfigHandlerTest, self).setUp()
     self.handler = config_plugin.ApiGetConfigHandler()
 
   def _ConfigStub(self, sections=None):
@@ -137,7 +140,7 @@ class ApiGetConfigOptionHandlerTest(api_test_lib.ApiCallHandlerTest):
   """Test for ApiGetConfigOptionHandler."""
 
   def setUp(self):
-    super().setUp()
+    super(ApiGetConfigOptionHandlerTest, self).setUp()
     self.handler = config_plugin.ApiGetConfigOptionHandler()
 
   def _ConfigStub(self, sections=None):
@@ -184,31 +187,6 @@ class ApiGrrBinaryTestMixin(object):
       upload_path = signed_binary_utils.GetAFF4PythonHackRoot().Add("test")
       maintenance_utils.UploadSignedConfigBlob(
           code.encode("utf-8"), aff4_path=upload_path)
-
-
-class ApiGetUiConfigHandlerTest(api_test_lib.ApiCallHandlerTest):
-  """Test for ApiGetUiConfigHandler."""
-
-  def testHandlesConfigOption(self):
-    input_dict = {
-        "AdminUI.heading": "test heading",
-        "AdminUI.report_url": "test report url",
-        "AdminUI.help_url": "test help url",
-        "AdminUI.profile_image_url": "test profile image url",
-        "Source.version_string": "1.2.3.4",
-        "Hunt.default_client_rate": 123,
-    }
-
-    with test_lib.ConfigOverrider(input_dict):
-      request = mock.MagicMock()
-      result = config_plugin.ApiGetUiConfigHandler().Handle(request)
-
-    self.assertEqual(result.heading, "test heading")
-    self.assertEqual(result.report_url, "test report url")
-    self.assertEqual(result.help_url, "test help url")
-    self.assertEqual(result.grr_version, "1.2.3.4")
-    self.assertEqual(result.profile_image_url, "test profile image url")
-    self.assertEqual(result.default_hunt_runner_args.client_rate, 123)
 
 
 def main(argv):

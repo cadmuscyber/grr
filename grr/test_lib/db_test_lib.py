@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 """Test utilities for RELDB-related testing."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import functools
 import sys
-from unittest import mock
 
+import mock
+
+from grr_response_core.lib.util import compatibility
 from grr_response_server import data_store
-from grr_response_server.blob_stores import db_blob_store
 from grr_response_server.databases import db as abstract_db
 from grr_response_server.databases import db_test_mixin
 from grr_response_server.databases import mem
@@ -19,7 +23,7 @@ def TestDatabases(mysql=True):
   def _TestDatabasesDecorator(cls):
     """Decorator that creates additional RELDB-enabled test classes."""
     module = sys.modules[cls.__module__]
-    cls_name = cls.__name__
+    cls_name = compatibility.GetName(cls)
 
     # Prevent MRO issues caused by inheriting the same Mixin multiple times.
     base_classes = ()
@@ -28,9 +32,11 @@ def TestDatabases(mysql=True):
 
     if mysql:
       db_test_cls_name = "{}_MySQLEnabled".format(cls_name)
-      db_test_cls = type(
-          db_test_cls_name,
-          base_classes + (mysql_test.MySQLDatabaseProviderMixin, cls), {})
+      db_test_cls = compatibility.MakeType(
+          name=db_test_cls_name,
+          base_classes=base_classes +
+          (mysql_test.MySQLDatabaseProviderMixin, cls),
+          namespace={})
       setattr(module, db_test_cls_name, db_test_cls)
 
     return cls
@@ -57,31 +63,5 @@ def WithDatabase(func):
     db = abstract_db.DatabaseValidationWrapper(mem.InMemoryDB())
     with mock.patch.object(data_store, "REL_DB", db):
       func(*(args + (db,)), **kwargs)
-
-  return Wrapper
-
-
-def WithDatabaseBlobstore(func):
-  """A decorator for blobstore-dependent test methods.
-
-  This decorator is intended for tests that need to access blobstore in their
-  code. It will also augment the test function signature so that the blobstore
-  object is provided and can be manipulated.
-
-  The created test blobstore will use currently active relational database as a
-  backend.
-
-  Args:
-    func: A test method to be decorated.
-
-  Returns:
-    A blobstore-aware function.
-  """
-
-  @functools.wraps(func)
-  def Wrapper(*args, **kwargs):
-    blobstore = db_blob_store.DbBlobStore()
-    with mock.patch.object(data_store, "BLOBS", blobstore):
-      func(*(args + (blobstore,)), **kwargs)
 
   return Wrapper

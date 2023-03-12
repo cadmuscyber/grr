@@ -1,10 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Helper library for config testing."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import copy
 import logging
-from unittest import mock
 
 
 from grr_response_core import config
@@ -51,8 +54,8 @@ class BuildConfigTestsBase(test_lib.GRRBaseTest):
     for filter_name in self.disabled_filters:
       test_filter_map[filter_name] = config_lib.ConfigFilter
 
-    with mock.patch.object(config_lib.ConfigFilter, "classes_by_name",
-                           test_filter_map):
+    with utils.Stubber(config_lib.ConfigFilter, "classes_by_name",
+                       test_filter_map):
       for config_file in configs:
         errors = self.ValidateConfig(config_file)
 

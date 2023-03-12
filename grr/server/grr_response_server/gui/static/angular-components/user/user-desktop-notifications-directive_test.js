@@ -134,12 +134,7 @@ describe('User desktop notifications directive', () => {
        render();
        $interval.flush(FETCH_INTERVAL);
 
-       try {
-         Notification.calls.mostRecent().returnValue.onclick();
-       } catch (e) {
-         // TODO: Remove after migration to jasmine 3.6.
-         Notification.calls.mostRecent().object.onclick();
-       }
+       Notification.calls.mostRecent().object.onclick();
 
        expect(grrApiService.delete)
            .toHaveBeenCalledWith('users/me/notifications/pending/42000000');

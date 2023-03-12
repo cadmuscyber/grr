@@ -1,10 +1,15 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Test the hunt_view interface."""
-
-from unittest import mock
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
+import mock
 
+from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
@@ -167,8 +172,8 @@ class TestHuntArchiving(gui_test_lib.GRRSeleniumHuntTest):
     def RaisingStub(*unused_args, **unused_kwargs):
       raise RuntimeError("something went wrong")
 
-    with mock.patch.object(archive_generator.CollectionArchiveGenerator,
-                           "Generate", RaisingStub):
+    with utils.Stubber(archive_generator.CollectionArchiveGenerator, "Generate",
+                       RaisingStub):
       self.Open("/")
       self.Click("css=a[grrtarget=hunts]")
       self.Click("css=td:contains('%s')" % hunt_id)
@@ -188,8 +193,8 @@ class TestHuntArchiving(gui_test_lib.GRRSeleniumHuntTest):
       yield b"bar"
       raise RuntimeError("something went wrong")
 
-    with mock.patch.object(archive_generator.CollectionArchiveGenerator,
-                           "Generate", RaisingStub):
+    with utils.Stubber(archive_generator.CollectionArchiveGenerator, "Generate",
+                       RaisingStub):
       self.Open("/")
       self.Click("css=a[grrtarget=hunts]")
       self.Click("css=td:contains('%s')" % hunt_id)
@@ -215,7 +220,7 @@ class TestHuntArchiving(gui_test_lib.GRRSeleniumHuntTest):
     self.WaitUntil(self.IsTextPresent, "42423")
     self.WaitUntilNot(
         self.IsElementPresent,
-        "css=grr-results-collection button:has(span.fa-download)")
+        "css=grr-results-collection button:has(span.glyphicon-download)")
 
   def testShowsPerFileDownloadButtonForFileFinderHunt(self):
     stat_entry = rdf_client_fs.StatEntry(
@@ -230,8 +235,9 @@ class TestHuntArchiving(gui_test_lib.GRRSeleniumHuntTest):
     self.Click("css=td:contains('%s')" % hunt_id)
     self.Click("css=li[heading=Results]")
 
-    self.WaitUntil(self.IsElementPresent,
-                   "css=grr-results-collection button:has(span.fa-download)")
+    self.WaitUntil(
+        self.IsElementPresent,
+        "css=grr-results-collection button:has(span.glyphicon-download)")
 
   def testShowsPerFileDownloadButtonForArtifactDownloaderHunt(self):
     stat_entry = rdf_client_fs.StatEntry(
@@ -248,8 +254,9 @@ class TestHuntArchiving(gui_test_lib.GRRSeleniumHuntTest):
     self.Click("css=td:contains('%s')" % hunt_id)
     self.Click("css=li[heading=Results]")
 
-    self.WaitUntil(self.IsElementPresent,
-                   "css=grr-results-collection button:has(span.fa-download)")
+    self.WaitUntil(
+        self.IsElementPresent,
+        "css=grr-results-collection button:has(span.glyphicon-download)")
 
   def testHuntAuthorizationIsRequiredToDownloadSingleHuntFile(self):
     hunt_id = self._CreateHuntWithDownloadedFile()
@@ -258,7 +265,7 @@ class TestHuntArchiving(gui_test_lib.GRRSeleniumHuntTest):
     self.Click("css=a[grrtarget=hunts]")
     self.Click("css=td:contains('%s')" % hunt_id)
     self.Click("css=li[heading=Results]")
-    self.Click("css=grr-results-collection button:has(span.fa-download)")
+    self.Click("css=grr-results-collection button:has(span.glyphicon-download)")
 
     self.WaitUntil(self.IsTextPresent, "Create a new approval request")
 
@@ -276,7 +283,8 @@ class TestHuntArchiving(gui_test_lib.GRRSeleniumHuntTest):
     fd = file_store.OpenFile(flow_export.CollectionItemToClientPath(results[0]))
 
     with mock.patch.object(fd.__class__, "Read") as mock_obj:
-      self.Click("css=grr-results-collection button:has(span.fa-download)")
+      self.Click(
+          "css=grr-results-collection button:has(span.glyphicon-download)")
       self.WaitUntil(lambda: mock_obj.called)
 
   def testDisplaysErrorMessageIfSingleHuntFileCanNotBeRead(self):
@@ -296,7 +304,8 @@ class TestHuntArchiving(gui_test_lib.GRRSeleniumHuntTest):
     self.Click("css=a[grrtarget=hunts]")
     self.Click("css=td:contains('%s')" % hunt_id)
     self.Click("css=li[heading=Results]")
-    self.Click("css=grr-results-collection button:has(span.fa-download):last")
+    self.Click(
+        "css=grr-results-collection button:has(span.glyphicon-download):last")
     self.WaitUntil(self.IsTextPresent, "Couldn't download the file.")
 
 

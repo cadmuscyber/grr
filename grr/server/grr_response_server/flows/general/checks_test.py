@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Test the collector flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
 
@@ -27,7 +31,7 @@ class TestCheckFlows(flow_test_lib.FlowTestsBaseclass,
   checks_loaded = False
 
   def setUp(self):
-    super().setUp()
+    super(TestCheckFlows, self).setUp()
     self.client_id = self.SetupClient(0)
     # Only load the checks once.
     if self.checks_loaded is False:
@@ -49,7 +53,7 @@ class TestCheckFlows(flow_test_lib.FlowTestsBaseclass,
           flow_checks.CheckRunner.__name__,
           client_mock=self.client_mock,
           client_id=client_id,
-          creator=self.test_username)
+          token=self.token)
     results = flow_test_lib.GetFlowResults(client_id, session_id)
     return session_id, {r.check_id: r for r in results}
 

@@ -1,33 +1,34 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Simple parsers for configuration files."""
-from collections import abc
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
+import collections
 import logging
 import re
-from typing import IO
-from typing import Iterable
-from typing import Iterator
 from typing import Text
+
 
 from grr_response_core.lib import lexer
 from grr_response_core.lib import parser
 from grr_response_core.lib import parsers
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import anomaly as rdf_anomaly
-from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import config_file as rdf_config_file
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import standard as rdf_standard
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
-from grr_response_core.lib.util import text
 
 
 def AsIter(arg):
   """Encapsulates an argument in a tuple, if it's not already iterable."""
   if isinstance(arg, str):
     rslt = [arg]
-  elif isinstance(arg, abc.Iterable):
+  elif isinstance(arg, collections.Iterable):
     rslt = arg
   elif not arg:
     rslt = []
@@ -101,7 +102,7 @@ class FieldParser(lexer.Lexer):
     self._GenStates()
 
   def Reset(self):
-    super().Reset()
+    super(FieldParser, self).Reset()
     self.entries = []
     self.fields = []
     self.field = ""
@@ -311,13 +312,13 @@ class KeyValueParser(FieldParser):
     self.fields = []
 
   def ParseToOrderedDict(self, data):
-    result = dict()
+    result = collections.OrderedDict()
     for field in self.ParseEntries(data):
       result.update(field)
     return result
 
 
-class NfsExportsParser(parsers.SingleFileParser[rdf_config_file.NfsExport]):
+class NfsExportsParser(parsers.SingleFileParser):
   """Parser for NFS exports."""
 
   output_types = [rdf_config_file.NfsExport]
@@ -327,12 +328,7 @@ class NfsExportsParser(parsers.SingleFileParser[rdf_config_file.NfsExport]):
     super().__init__(*args, **kwargs)
     self._field_parser = FieldParser()
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_config_file.NfsExport]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
     del pathspec  # Unused.
 
@@ -536,7 +532,7 @@ class SshdFieldParser(object):
     yield rdf_config_file.SshdConfig(config=self.config, matches=matches)
 
 
-class SshdConfigParser(parsers.SingleFileParser[rdf_config_file.SshdConfig]):
+class SshdConfigParser(parsers.SingleFileParser):
   """A parser for sshd_config files."""
 
   supported_artifacts = ["SshdConfigFile"]
@@ -546,12 +542,7 @@ class SshdConfigParser(parsers.SingleFileParser[rdf_config_file.SshdConfig]):
     super().__init__(*args, **kwargs)
     self._field_parser = SshdFieldParser()
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_config_file.SshdConfig]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
     del pathspec  # Unused.
 
@@ -590,7 +581,7 @@ class SshdConfigCmdParser(parser.CommandParser):
       yield result
 
 
-class MtabParser(parsers.SingleFileParser[rdf_client_fs.Filesystem]):
+class MtabParser(parsers.SingleFileParser):
   """Parser for mounted filesystem data acquired from /proc/mounts."""
   output_types = [rdf_client_fs.Filesystem]
   supported_artifacts = ["LinuxProcMounts", "LinuxFstab"]
@@ -599,12 +590,7 @@ class MtabParser(parsers.SingleFileParser[rdf_client_fs.Filesystem]):
     super().__init__(*args, **kwargs)
     self._field_parser = FieldParser()
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_client_fs.Filesystem]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
     del pathspec  # Unused.
 
@@ -613,9 +599,9 @@ class MtabParser(parsers.SingleFileParser[rdf_client_fs.Filesystem]):
       if not entry:
         continue
       result = rdf_client_fs.Filesystem()
-      result.device = text.Unescape(entry[0])
-      result.mount_point = text.Unescape(entry[1])
-      result.type = text.Unescape(entry[2])
+      result.device = compatibility.UnescapeString(entry[0])
+      result.mount_point = compatibility.UnescapeString(entry[1])
+      result.type = compatibility.UnescapeString(entry[2])
       options = KeyValueParser(term=",").ParseToOrderedDict(entry[3])
       # Keys without values get assigned [] by default. Because these keys are
       # actually true, if declared, change any [] values to True.
@@ -664,7 +650,7 @@ class RsyslogFieldParser(FieldParser):
   """Field parser for syslog configurations."""
 
   log_rule_re = re.compile(r"([\w,\*]+)\.([\w,!=\*]+)")
-  destinations = dict([
+  destinations = collections.OrderedDict([
       ("TCP", re.compile(r"(?:@@)([^;]*)")),
       ("UDP", re.compile(r"(?:@)([^;]*)")),
       ("PIPE", re.compile(r"(?:\|)([^;]*)")),
@@ -706,7 +692,7 @@ class RsyslogFieldParser(FieldParser):
     return rslt
 
 
-class RsyslogParser(parsers.MultiFileParser[rdf_protodict.AttributedDict]):
+class RsyslogParser(parsers.MultiFileParser):
   """Artifact parser for syslog configurations."""
 
   output_types = [rdf_protodict.AttributedDict]
@@ -716,12 +702,7 @@ class RsyslogParser(parsers.MultiFileParser[rdf_protodict.AttributedDict]):
     super().__init__(*args, **kwargs)
     self._field_parser = RsyslogFieldParser()
 
-  def ParseFiles(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspecs: Iterable[rdf_paths.PathSpec],
-      filedescs: Iterable[IO[bytes]],
-  ) -> Iterator[rdf_protodict.AttributedDict]:
+  def ParseFiles(self, knowledge_base, pathspecs, filedescs):
     del knowledge_base  # Unused.
     del pathspecs  # Unused.
 
@@ -736,23 +717,17 @@ class RsyslogParser(parsers.MultiFileParser[rdf_protodict.AttributedDict]):
           target = self._field_parser.ParseAction(entry[1])
           target.facility, target.priority = log_rule.groups()
           result.targets.append(target)
-    yield result
+    return [result]
 
 
-class PackageSourceParser(parsers.SingleFileParser[rdf_protodict.AttributedDict]
-                         ):
+class PackageSourceParser(parsers.SingleFileParser):
   """Common code for APT and YUM source list parsing."""
   output_types = [rdf_protodict.AttributedDict]
 
   # Prevents this from automatically registering.
   __abstract = True  # pylint: disable=g-bad-name
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_protodict.AttributedDict]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
 
     uris_to_parse = self.FindPotentialURIs(filedesc)
@@ -771,7 +746,7 @@ class PackageSourceParser(parsers.SingleFileParser[rdf_protodict.AttributedDict]
     yield rdf_protodict.AttributedDict(**cfg)
 
   def FindPotentialURIs(self, file_obj):
-    """Stub Method to be overridden by APT and Yum source parsers."""
+    """Stub Method to be overriden by APT and Yum source parsers."""
     raise NotImplementedError("Please implement FindPotentialURIs.")
 
   # TODO: Make sure all special cases are caught by this function.
@@ -793,7 +768,7 @@ class PackageSourceParser(parsers.SingleFileParser[rdf_protodict.AttributedDict]
 
     Args:
       data: unprocessed lines from a file
-      separator: how the key/value pairs are separated
+      separator: how the key/value pairs are seperated
       uri_key: starting name of the key containing URI.
 
     Returns:
@@ -828,7 +803,7 @@ class APTPackageSourceParser(PackageSourceParser):
   supported_artifacts = ["APTSources"]
 
   def FindPotentialURIs(self, file_obj):
-    """Given a file, this will return all potential APT source URIs."""
+    """Given a file, this will return all potenial APT source URIs."""
     rfc822_format = ""  # will contain all lines not in legacy format
     uris_to_parse = []
 
@@ -849,23 +824,17 @@ class YumPackageSourceParser(PackageSourceParser):
   supported_artifacts = ["YumSources"]
 
   def FindPotentialURIs(self, file_obj):
-    """Given a file, this will return all potential Yum source URIs."""
+    """Given a file, this will return all potenial Yum source URIs."""
     return self.ParseURIFromKeyValues(
         utils.ReadFileBytesAsUnicode(file_obj), "=", "baseurl")
 
 
-class CronAtAllowDenyParser(
-    parsers.SingleFileParser[rdf_protodict.AttributedDict]):
+class CronAtAllowDenyParser(parsers.SingleFileParser):
   """Parser for /etc/cron.allow /etc/cron.deny /etc/at.allow & /etc/at.deny."""
   output_types = [rdf_protodict.AttributedDict]
   supported_artifacts = ["CronAtAllowDenyFiles"]
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_protodict.AttributedDict]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
 
     lines = set([
@@ -1016,15 +985,10 @@ class NtpdFieldParser(FieldParser):
         prev_settings.append(" ".join(values))
 
 
-class NtpdParser(parsers.SingleFileParser[rdf_config_file.NtpConfig]):
+class NtpdParser(parsers.SingleFileParser):
   """Artifact parser for ntpd.conf file."""
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_config_file.NtpConfig]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
     del pathspec  # Unused.
 
@@ -1174,7 +1138,7 @@ class SudoersFieldParser(FieldParser):
     return data
 
 
-class SudoersParser(parsers.SingleFileParser[rdf_config_file.SudoersConfig]):
+class SudoersParser(parsers.SingleFileParser):
   """Artifact parser for privileged configuration files."""
 
   output_types = [rdf_config_file.SudoersConfig]
@@ -1184,12 +1148,7 @@ class SudoersParser(parsers.SingleFileParser[rdf_config_file.SudoersConfig]):
     super().__init__(*args, **kwargs)
     self._field_parser = SudoersFieldParser()
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_config_file.SudoersConfig]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
     del pathspec  # Unused.
 

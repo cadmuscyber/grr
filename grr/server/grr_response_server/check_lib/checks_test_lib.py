@@ -1,6 +1,11 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A library for check-specific tests."""
-from collections import abc
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
+import collections
 import io
 import os
 
@@ -339,7 +344,7 @@ class HostCheckTest(test_lib.GRRBaseTest):
     except yaml.error.YAMLError as e:
       self.fail("File %s could not be parsed: %s\n" % (relpath, e))
     # Otherwise, check all the configs and pass/fail at the end.
-    errors = dict()
+    errors = collections.OrderedDict()
     for check_id, check_spec in configs.items():
       check_errors = self.GetCheckErrors(check_spec)
       if check_errors:
@@ -441,7 +446,7 @@ class HostCheckTest(test_lib.GRRBaseTest):
 
   def assertCheckUndetected(self, check_id, results):
     """Assert a check_id was performed, and resulted in no anomalies."""
-    if not isinstance(results, abc.Mapping):
+    if not isinstance(results, collections.Mapping):
       self.fail("Invalid arg, %s should be dict-like.\n" % type(results))
     if check_id not in results:
       self.fail("Check %s was not performed.\n" % check_id)

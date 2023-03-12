@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 """Client repacking library."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import getpass
+import io
 import logging
 import os
 import platform
@@ -16,7 +21,7 @@ from grr_response_client_builder.repackers import linux as linux_repackers
 from grr_response_client_builder.repackers import osx as osx_repackers
 from grr_response_client_builder.repackers import windows as windows_repackers
 from grr_response_core import config
-from grr_response_core.lib import config_parser
+from grr_response_core.lib import config_lib
 from grr_response_core.lib import rdfvalue
 
 
@@ -41,8 +46,9 @@ class RepackConfig(object):
         raise RuntimeError("Couldn't find build.yaml in %s" % template_path)
       with template_zip.open(build_yaml) as buildfile:
         repack_config = config.CONFIG.CopyConfig()
-        parser = config_parser.YamlConfigFileParser("")
-        config_data = parser.ReadDataFromFD(buildfile)
+        utf8_buildfile = io.TextIOWrapper(buildfile, encoding="utf-8")
+        parser = config_lib.YamlParser(fd=utf8_buildfile)
+        config_data = parser.RawData()
         self.Validate(config_data, template_path)
         repack_config.MergeData(config_data)
     return repack_config
@@ -113,8 +119,7 @@ class TemplateRepacker(object):
   def SignTemplate(self, template_path, output_path, context=None):
     """Signs a given template and writes it to a given path."""
 
-    if not (template_path.endswith(".exe.zip") or
-            template_path.endswith(".msi.zip")):
+    if not template_path.endswith(".exe.zip"):
       raise RuntimeError(
           "Signing templates is only worthwhile for windows, rpms are signed "
           "at the package level and signing isn't supported for others.")
@@ -235,8 +240,7 @@ class TemplateRepacker(object):
                        "installers"),
           upload=upload)
       # If it's windows also repack a debug version.
-      if template_path.endswith(".exe.zip") or template_path.endswith(
-          ".msi.zip"):
+      if template_path.endswith(".exe.zip"):
         print("Repacking as debug installer: %s." % template_path)
         self.RepackTemplate(
             template_path,

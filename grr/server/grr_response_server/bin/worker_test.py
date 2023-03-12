@@ -1,10 +1,14 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for the worker."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import threading
-from unittest import mock
 
 from absl import app
+import mock
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
@@ -67,7 +71,7 @@ class GrrWorkerTest(flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         flow_test_lib.CPULimitFlow.__name__,
         client_mock,
-        creator=self.test_username,
+        token=self.token,
         client_id=client_id,
         cpu_limit=1000,
         network_bytes_limit=10000)

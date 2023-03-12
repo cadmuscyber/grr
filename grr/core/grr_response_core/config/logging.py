@@ -1,6 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Configuration parameters for logging and error reporting subsystems."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import config_lib
 from grr_response_core.lib import type_info
@@ -47,9 +51,6 @@ config_lib.DEFINE_option(
         name="Monitoring.emergency_access_email",
         description="The email address to notify in an emergency.",
         default="grr-emergency@localhost"))
-
-config_lib.DEFINE_string("Monitoring.http_address", "::1",
-                         "IP address for stats monitoring server.")
 
 config_lib.DEFINE_integer("Monitoring.http_port", 0,
                           "Port for stats monitoring server.")

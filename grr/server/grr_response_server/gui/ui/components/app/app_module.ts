@@ -1,60 +1,29 @@
-import {CommonModule} from '@angular/common';
-import {ErrorHandler, NgModule} from '@angular/core';
+import {NgModule} from '@angular/core';
 import {MatButtonModule} from '@angular/material/button';
-import {MatIconModule, MatIconRegistry} from '@angular/material/icon';
-import {MatSidenavModule} from '@angular/material/sidenav';
-import {MatSnackBarModule} from '@angular/material/snack-bar';
-import {MatTabsModule} from '@angular/material/tabs';
+import {MatIconModule} from '@angular/material/icon';
 import {MatToolbarModule} from '@angular/material/toolbar';
-import {MatTooltipModule} from '@angular/material/tooltip';
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
-import {RouteReuseStrategy} from '@angular/router';
-
-import {ClientPageModule} from '../../components/client_page/client_page_module';
-import {ClientSearchModule} from '../../components/client_search/module';
-import {HomeModule} from '../../components/home/module';
-import {HuntApprovalPageModule} from '../../components/hunt/hunt_approval_page/hunt_approval_page_module';
-import {HuntPageModule} from '../../components/hunt/hunt_page/module';
-import {NewHuntModule} from '../../components/hunt/new_hunt/module';
-import {UserMenuModule} from '../../components/user_menu/module';
-import {ApiModule} from '../../lib/api/module';
-import {SameComponentRouteReuseStrategy} from '../../lib/routing';
-import {ApprovalPageModule} from '../approval_page/approval_page_module';
-import {FileDetailsModule} from '../file_details/file_details_module';
-import {SnackBarErrorHandler} from '../helpers/error_snackbar/error_handler';
-import {ErrorSnackBarModule} from '../helpers/error_snackbar/error_snackbar_module';
-import {HuntArguments} from '../hunt/hunt_arguments/hunt_arguments';
-import {HuntFlowArguments} from '../hunt/hunt_flow_arguments/hunt_flow_arguments';
+import {StoreDevtoolsModule} from '@ngrx/store-devtools';
+import {ClientModule} from '@app/components/client/module';
+import {ClientSearchModule} from '@app/components/client_search/module';
+import {HomeModule} from '@app/components/home/module';
+import {UserMenuModule} from '@app/components/user_menu/module';
 
 import {App} from './app';
-import {NotFoundPage} from './not_found_page';
 import {AppRoutingModule} from './routing';
 
 
 const ANGULAR_MATERIAL_MODULES = [
   MatButtonModule,
   MatIconModule,
-  MatSidenavModule,
-  MatSnackBarModule,
-  MatTabsModule,
   MatToolbarModule,
-  MatTooltipModule,
 ];
 
 const GRR_MODULES = [
-  ApiModule,
-  ApprovalPageModule,
   ClientSearchModule,
-  ClientPageModule,
-  ErrorSnackBarModule,
-  FileDetailsModule,
+  ClientModule,
   HomeModule,
-  NewHuntModule,
   UserMenuModule,
-  HuntArguments,
-  HuntFlowArguments,
-  HuntPageModule,
-  HuntApprovalPageModule,
 ];
 
 /**
@@ -63,10 +32,8 @@ const GRR_MODULES = [
 @NgModule({
   declarations: [
     App,
-    NotFoundPage,
   ],
   imports: [
-    CommonModule,
     BrowserAnimationsModule,
     ...ANGULAR_MATERIAL_MODULES,
     ...GRR_MODULES,
@@ -74,18 +41,10 @@ const GRR_MODULES = [
     // already registered by the time it's imported.
     AppRoutingModule,
   ],
-  providers: [
-    {provide: RouteReuseStrategy, useClass: SameComponentRouteReuseStrategy},
-    // Register SnackBarErrorHandler as default error handler for whole app.
-    {provide: ErrorHandler, useClass: SnackBarErrorHandler},
-  ],
-  bootstrap: [App],
-  exports: [NotFoundPage]
+  providers: [],
+  bootstrap: [App]
 })
 export class AppModule {
-  constructor(iconRegistry: MatIconRegistry) {
-    iconRegistry.setDefaultFontSetClass('material-icons-outlined');
-  }
 }
 
 /**
@@ -95,6 +54,7 @@ export class AppModule {
 @NgModule({
   imports: [
     AppModule,
+    StoreDevtoolsModule.instrument({maxAge: 50}),
   ],
   providers: [],
   bootstrap: [App]

@@ -1,6 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for grr.parsers.windows_persistence."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -53,7 +57,7 @@ class WindowsPersistenceMechanismsParserTest(flow_test_lib.FlowTestsBaseclass):
     ]
 
     for index, item in enumerate(persistence):
-      results = list(parser.ParseResponse(knowledge_base, item))
+      results = list(parser.Parse(item, knowledge_base))
       self.assertEqual(results[0].pathspec.path, expected[index])
       self.assertLen(results, 1)
 

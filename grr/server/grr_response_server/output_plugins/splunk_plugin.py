@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """OutputPlugin that sends Flow results to Splunk Http Event Collector.
 
 Configuration values for this plugin can be found in
@@ -7,7 +8,10 @@ core/grr_response_core/config/output_plugins.py
 The spec for HTTP Event Collector is taken from https://docs.splunk.com
 /Documentation/Splunk/8.0.1/Data/FormateventsforHTTPEventCollector
 """
-import json
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 from typing import Any
 from typing import Dict
 from typing import List
@@ -22,11 +26,11 @@ from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util.compat import json
 from grr_response_proto import output_plugin_pb2
 from grr_response_server import data_store
 from grr_response_server import export
 from grr_response_server import output_plugin
-from grr_response_server.export_converters import base
 from grr_response_server.gui.api_plugins import flow as api_flow
 
 HTTP_EVENT_COLLECTOR_PATH = "services/collector/event"
@@ -111,7 +115,7 @@ class SplunkOutputPlugin(output_plugin.OutputPlugin):
            "violates OutputPlugin constraints.").format(flow_ids))
     return flow_ids.pop()
 
-  def _GetClientMetadata(self, client_id: Text) -> base.ExportedMetadata:
+  def _GetClientMetadata(self, client_id: Text) -> export.ExportedMetadata:
     info = data_store.REL_DB.ReadClientFullInfo(client_id)
     metadata = export.GetMetadata(client_id, info)
     metadata.timestamp = None  # timestamp is sent outside of metadata.
@@ -123,7 +127,7 @@ class SplunkOutputPlugin(output_plugin.OutputPlugin):
     return api_flow.ApiFlow().InitFromFlowObject(flow_obj)
 
   def _MakeEvent(self, message: rdf_flows.GrrMessage,
-                 client: base.ExportedMetadata,
+                 client: export.ExportedMetadata,
                  flow: api_flow.ApiFlow) -> JsonDict:
 
     if message.timestamp:
@@ -156,7 +160,7 @@ class SplunkOutputPlugin(output_plugin.OutputPlugin):
     headers = {"Authorization": "Splunk {}".format(self._token)}
 
     # Batch multiple events in one request, separated by two newlines.
-    data = "\n\n".join(json.dumps(event) for event in events)
+    data = "\n\n".join(json.Dump(event) for event in events)
 
     response = requests.post(
         url=self._url, verify=self._verify_https, data=data, headers=headers)

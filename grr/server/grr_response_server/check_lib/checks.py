@@ -1,13 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Registry for filters and abstract classes for basic filter functionality."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-from collections import abc
+import collections
 import glob
 import itertools
 import logging
 import os
 
-import yaml
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
@@ -16,6 +19,7 @@ from grr_response_core.lib.rdfvalues import anomaly as rdf_anomaly
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util.compat import yaml
 from grr_response_proto import anomaly_pb2
 from grr_response_proto import checks_pb2
 from grr_response_server.check_lib import filters
@@ -301,6 +305,9 @@ class CheckResult(rdf_structs.RDFProtoStruct):
   def __bool__(self):
     return bool(self.anomaly)
 
+  # TODO: Remove after support for Python 2 is dropped.
+  __nonzero__ = __bool__
+
   def ExtendAnomalies(self, other):
     """Merge anomalies from another CheckResult."""
     for o in other:
@@ -319,6 +326,9 @@ class CheckResults(rdf_structs.RDFProtoStruct):
 
   def __bool__(self):
     return bool(self.result)
+
+  # TODO: Remove after support for Python 2 is dropped.
+  __nonzero__ = __bool__
 
 
 class Check(rdf_structs.RDFProtoStruct):
@@ -575,7 +585,7 @@ class CheckRegistry(object):
   @staticmethod
   def _AsList(arg):
     """Encapsulates an argument in a list, if it's not already iterable."""
-    if (isinstance(arg, str) or not isinstance(arg, abc.Iterable)):
+    if (isinstance(arg, str) or not isinstance(arg, collections.Iterable)):
       return [arg]
     else:
       return list(arg)
@@ -762,8 +772,7 @@ def CheckHost(host_data,
 
 def LoadConfigsFromFile(file_path):
   """Loads check definitions from a file."""
-  with open(file_path, mode="rt", encoding="utf-8") as file_desc:
-    return {d["check_id"]: d for d in yaml.safe_load_all(file_desc)}
+  return {d["check_id"]: d for d in yaml.ReadManyFromPath(file_path)}
 
 
 def LoadCheckFromFile(file_path, check_id, overwrite_if_exists=True):

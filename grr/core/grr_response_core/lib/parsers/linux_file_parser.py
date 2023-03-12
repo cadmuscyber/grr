@@ -1,42 +1,35 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Simple parsers for Linux files."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import collections
 import logging
 import os
 import re
-from typing import Any
-from typing import IO
-from typing import Iterable
-from typing import Iterator
 from typing import Optional
 from typing import Text
 
 from grr_response_core import config
+from grr_response_core.lib import parser
 from grr_response_core.lib import parsers
-from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.parsers import config_file
 from grr_response_core.lib.rdfvalues import anomaly as rdf_anomaly
 from grr_response_core.lib.rdfvalues import client as rdf_client
-from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.util import precondition
 
 
-class PCIDevicesInfoParser(parsers.MultiFileParser[rdf_client.PCIDevice]):
+class PCIDevicesInfoParser(parsers.MultiFileParser):
   """Parser for PCI devices' info files located in /sys/bus/pci/devices/*/*."""
 
   output_types = [rdf_client.PCIDevice]
   supported_artifacts = ["PCIDevicesInfoFiles"]
 
-  def ParseFiles(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspecs: Iterable[rdf_paths.PathSpec],
-      filedescs: Iterable[IO[bytes]],
-  ) -> Iterator[rdf_client.PCIDevice]:
+  def ParseFiles(self, knowledge_base, pathspecs, filedescs):
     del knowledge_base  # Unused.
 
     # Each file gives us only partial information for a particular PCI device.
@@ -95,11 +88,11 @@ class PCIDevicesInfoParser(parsers.MultiFileParser[rdf_client.PCIDevice]):
       yield pci_device
 
 
-class PasswdParser(parsers.SingleFileParser[rdf_client.User]):
+class PasswdParser(parsers.SingleFileParser):
   """Parser for passwd files. Yields User semantic values."""
 
   output_types = [rdf_client.User]
-  supported_artifacts = ["UnixPasswdFile"]
+  supported_artifacts = ["UnixPasswd"]
 
   @classmethod
   def ParseLine(cls, index, line) -> Optional[rdf_client.User]:
@@ -123,12 +116,7 @@ class PasswdParser(parsers.SingleFileParser[rdf_client.User]):
       raise parsers.ParseError("Invalid passwd file at line %d. %s" %
                                ((index + 1), line))
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_client.User]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
     del pathspec  # Unused.
 
@@ -141,21 +129,15 @@ class PasswdParser(parsers.SingleFileParser[rdf_client.User]):
         yield user
 
 
-class PasswdBufferParser(parsers.SingleResponseParser[rdf_client.User]):
+class PasswdBufferParser(parser.GrepParser):
   """Parser for lines grepped from passwd files."""
 
   output_types = [rdf_client.User]
   supported_artifacts = ["LinuxPasswdHomedirs", "NssCacheLinuxPasswdHomedirs"]
 
-  def ParseResponse(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      response: rdfvalue.RDFValue,
-  ) -> Iterator[rdf_client.User]:
-    if not isinstance(response, rdf_file_finder.FileFinderResult):
-      raise TypeError(f"Unexpected response type: `{type(response)}`")
-
-    lines = [x.data.decode("utf-8") for x in response.matches]
+  def Parse(self, filefinderresult, knowledge_base):
+    _ = knowledge_base
+    lines = [x.data.decode("utf-8") for x in filefinderresult.matches]
     for index, line in enumerate(lines):
       user = PasswdParser.ParseLine(index, line.strip())
       if user is not None:
@@ -183,7 +165,7 @@ class UtmpStruct(utils.Struct):
   ]
 
 
-class LinuxWtmpParser(parsers.SingleFileParser[rdf_client.User]):
+class LinuxWtmpParser(parsers.SingleFileParser):
   """Simplified parser for linux wtmp files.
 
   Yields User semantic values for USER_PROCESS events.
@@ -192,12 +174,7 @@ class LinuxWtmpParser(parsers.SingleFileParser[rdf_client.User]):
   output_types = [rdf_client.User]
   supported_artifacts = ["LinuxWtmp"]
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_client.User]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
     del pathspec  # Unused.
 
@@ -230,7 +207,7 @@ class LinuxWtmpParser(parsers.SingleFileParser[rdf_client.User]):
           username=utils.SmartUnicode(user), last_logon=last_login * 1000000)
 
 
-class NetgroupParser(parsers.SingleFileParser[rdf_client.User]):
+class NetgroupParser(parsers.SingleFileParser):
   """Parser that extracts users from a netgroup file."""
 
   output_types = [rdf_client.User]
@@ -246,7 +223,7 @@ class NetgroupParser(parsers.SingleFileParser[rdf_client.User]):
         for x in config.CONFIG["Artifacts.netgroup_filter_regexes"]
     ]
     username_regex = re.compile(cls.USERNAME_REGEX)
-    ignorelist = config.CONFIG["Artifacts.netgroup_ignore_users"]
+    blacklist = config.CONFIG["Artifacts.netgroup_user_blacklist"]
     for index, line in enumerate(lines):
       if line.startswith("#"):
         continue
@@ -267,7 +244,7 @@ class NetgroupParser(parsers.SingleFileParser[rdf_client.User]):
         if member.startswith("("):
           try:
             _, user, _ = member.split(",")
-            if user not in users and user not in ignorelist:
+            if user not in users and user not in blacklist:
               if not username_regex.match(user):
                 yield rdf_anomaly.Anomaly(
                     type="PARSER_ANOMALY",
@@ -279,12 +256,7 @@ class NetgroupParser(parsers.SingleFileParser[rdf_client.User]):
             raise parsers.ParseError("Invalid netgroup file at line %d: %s" %
                                      (index + 1, line))
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_client.User]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     """Parse the netgroup file and return User objects.
 
     Lines are of the form:
@@ -313,26 +285,18 @@ class NetgroupParser(parsers.SingleFileParser[rdf_client.User]):
     return self.ParseLines(lines)
 
 
-class NetgroupBufferParser(parsers.SingleResponseParser[rdf_client.User]):
+class NetgroupBufferParser(parser.GrepParser):
   """Parser for lines grepped from /etc/netgroup files."""
 
   output_types = [rdf_client.User]
 
-  def ParseResponse(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      response: rdfvalue.RDFValue,
-  ) -> Iterator[rdf_client.User]:
-    if not isinstance(response, rdf_file_finder.FileFinderResult):
-      raise TypeError(f"Unexpected response type: `{type(response)}`")
-
+  def Parse(self, filefinderresult, knowledge_base):
+    _ = knowledge_base
     return NetgroupParser.ParseLines(
-        [x.data.decode("utf-8").strip() for x in response.matches])
+        [x.data.decode("utf-8").strip() for x in filefinderresult.matches])
 
 
-# TODO(hanuszczak): Subclasses of this class do not respect any types at all,
-# this should be fixed.
-class LinuxBaseShadowParser(parsers.MultiFileParser[Any]):
+class LinuxBaseShadowParser(parsers.MultiFileParser):
   """Base parser to process user/groups with shadow files."""
 
   # A list of hash types and hash matching expressions.
@@ -572,7 +536,7 @@ class LinuxSystemGroupParser(LinuxBaseShadowParser):
     self.ReconcileShadow(self.shadow_store)
     # Identify any anomalous group/shadow entries.
     # This needs to be done before memberships are merged: merged memberships
-    # are the *effective* membership regardless of weird configurations.
+    # are the *effective* membership regardless of wierd configurations.
     for anom in self.FindAnomalies():
       yield anom
     # Then add shadow group members to the group membership.
@@ -613,7 +577,7 @@ class LinuxSystemPasswdParser(LinuxBaseShadowParser):
       pw_entry = self.shadow.setdefault(rslt["login"], rdf_client.PwEntry())
       pw_entry.store = self.shadow_store
       pw_entry.hash_type = self.GetHashType(rslt["passwd"])
-      # Treat carefully here in case these values aren't set.
+      # Tread carefully here in case these values aren't set.
       last_change = rslt.get("last_change")
       if last_change:
         pw_entry.age = int(last_change)
@@ -750,7 +714,7 @@ class LinuxSystemPasswdParser(LinuxBaseShadowParser):
       yield anom
 
 
-class PathParser(parsers.SingleFileParser[rdf_protodict.AttributedDict]):
+class PathParser(parsers.SingleFileParser):
   """Parser for dotfile entries.
 
   Extracts path attributes from dotfiles to infer effective paths for users.
@@ -761,7 +725,9 @@ class PathParser(parsers.SingleFileParser[rdf_protodict.AttributedDict]):
   output_types = [rdf_protodict.AttributedDict]
   # TODO(user): Modify once a decision is made on contextual selection of
   # parsed results for artifact data.
-  supported_artifacts = ["RootUserShellConfigs", "ShellConfigurationFile"]
+  supported_artifacts = [
+      "GlobalShellConfigs", "RootUserShellConfigs", "UsersShellConfigs"
+  ]
 
   # https://cwe.mitre.org/data/definitions/426.html
   _TARGETS = ("CLASSPATH", "LD_AOUT_LIBRARY_PATH", "LD_AOUT_PRELOAD",
@@ -878,12 +844,7 @@ class PathParser(parsers.SingleFileParser[rdf_protodict.AttributedDict]):
           self._ExpandPath(target, path_vals, paths)
     return paths
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_protodict.AttributedDict]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     """Identifies the paths set within a file.
 
     Expands paths within the context of the file, but does not infer fully

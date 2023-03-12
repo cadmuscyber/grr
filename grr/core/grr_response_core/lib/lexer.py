@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """An LL(1) lexer. This lexer is very tolerant of errors and can resync."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 import re
@@ -7,8 +11,8 @@ from typing import Text
 
 
 from grr_response_core.lib import utils
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
-from grr_response_core.lib.util import text
 
 
 class Token(object):
@@ -52,7 +56,7 @@ class Error(Exception):
 
 
 class ParseError(Error):
-  """A parse error occurred."""
+  """A parse error occured."""
 
 
 class Lexer(object):
@@ -378,7 +382,7 @@ class SearchParser(Lexer):
     """
     precondition.AssertType(string, Text)
     if match.group(1) in "'\"rnbt":
-      self.string += text.Unescape(string)
+      self.string += compatibility.UnescapeString(string)
     else:
       self.string += string
 
@@ -452,7 +456,7 @@ class SearchParser(Lexer):
 
     length = len(self.stack)
     while length > 1:
-      # Precedence order
+      # Precendence order
       self._CombineParenthesis()
       self._CombineBinaryExpressions("and")
       self._CombineBinaryExpressions("or")

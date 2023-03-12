@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """End to end tests for GRR discovery flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_test.end_to_end_tests import test_base
 
@@ -48,4 +51,5 @@ class TestClientInterrogate(test_base.EndToEndTest):
 
     self.assertTrue(
         any(self._CheckUser(u) for u in csummary.users),
-        "No users with complete user attributes: {!r}".format(csummary.users))
+        "No users with complete user attributes: %s" % ",".join(
+            u.username for u in csummary.users))

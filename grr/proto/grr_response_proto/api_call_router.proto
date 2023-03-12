@@ -4,7 +4,6 @@ import "grr_response_proto/api_utils.proto";
 import "grr_response_proto/jobs.proto";
 import "grr_response_proto/semantic.proto";
 
-package grr;
 
 message ApiAuthorization {
   optional string router = 1 [(sem_type) = {
@@ -24,27 +23,9 @@ message ApiAuthorization {
   }];
 }
 
-message ApiCallRouterWithApprovalCheckParams {
-  optional bool ignore_admin_user_attribute = 1 [(sem_type) = {
-    description: "If set to false (default), users marked as 'admin' in "
-                 "the DB will be able to launch restricted flows. In other words, each "
-                 "user marked as admin in the DB will be treated as if being listed in "
-                 "'restricted_flow_users' attribute below. If set to true, only "
-                 "'restricted_flow_users|groups' router configuration attribute will "
-                 "be used when making restricted flows ACL decisions."
-  }];
-
-  repeated string restricted_flow_users = 2 [
-    (sem_type) = { description: "Names of users who can run restricted flows." }
-  ];
-  repeated string restricted_flow_groups = 3 [(sem_type) = {
-    description: "Names of groups of users that can run restricted flows."
-  }];
-}
-
 message ApiLabelsRestrictedCallRouterParams {
-  repeated string allow_labels = 1;
-  repeated string allow_labels_owners = 2;
+  repeated string labels_whitelist = 1;
+  repeated string labels_owners_whitelist = 2;
 
   optional bool allow_flows_access = 3;
   optional bool allow_vfs_access = 4;
@@ -90,8 +71,8 @@ message RobotRouterFileFinderFlowParams {
 message RobotRouterArtifactCollectorFlowParams {
   optional bool enabled = 1;
 
-  repeated string allow_artifacts = 2 [(sem_type) = {
-    description: "Only artifacts from this list can be collected. "
+  repeated string artifacts_whitelist = 2 [(sem_type) = {
+    description: "Only artifacts from this whitelist can be collected. "
                  "Empty list means no artifacts can be collected."
   }];
 
@@ -128,17 +109,17 @@ message RobotRouterListFlowLogsParams {
 message RobotRouterGetFlowFilesArchiveParams {
   optional bool enabled = 1;
 
-  repeated string exclude_path_globs = 2 [(sem_type) = {
+  repeated string path_globs_blacklist = 2 [(sem_type) = {
     type: "GlobExpression",
     description: "Only files not matching these globs will be included "
-                 "into the archive. Exclusion is always applied first, then "
-                 "include_only_path_globs is applied."
+                 "into the archive. Blacklist is always applied first. Files not "
+                 "matching the blacklist should still match the whitelist."
   }];
 
-  repeated string include_only_path_globs = 3 [(sem_type) = {
+  repeated string path_globs_whitelist = 3 [(sem_type) = {
     type: "GlobExpression",
     description: "Only files matching these globs will be included into "
-                 "the archive. Inclusion is applied after exclude_path_globs."
+                 "the archive. Whitelist is applied after the blacklist."
   }];
 
   optional bool skip_glob_checks_for_artifact_collector = 4;

@@ -1,9 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Queries a Windows client for Volume Shadow Copy information."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-from grr_response_core import config
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
+from grr_response_core.lib.util import compatibility
 from grr_response_server import flow_base
 from grr_response_server import server_stubs
 from grr_response_server.flows.general import filesystem
@@ -20,7 +24,7 @@ class ListVolumeShadowCopies(flow_base.FlowBase):
     self.CallClient(
         server_stubs.WmiQuery,
         query="SELECT * FROM Win32_ShadowCopy",
-        next_state=self.ListDeviceDirectories.__name__)
+        next_state=compatibility.GetName(self.ListDeviceDirectories))
 
   def ListDeviceDirectories(self, responses):
     """Flow state that calls ListDirectory action for each shadow copy."""
@@ -43,15 +47,13 @@ class ListVolumeShadowCopies(flow_base.FlowBase):
         path_spec = rdf_paths.PathSpec(
             path=device_object, pathtype=rdf_paths.PathSpec.PathType.OS)
 
-        path_spec.Append(
-            path="/",
-            pathtype=config.CONFIG["Server.raw_filesystem_access_pathtype"])
+        path_spec.Append(path="/", pathtype=rdf_paths.PathSpec.PathType.TSK)
 
         self.Log("Listing Volume Shadow Copy device: %s.", device_object)
         self.CallClient(
             server_stubs.ListDirectory,
             pathspec=path_spec,
-            next_state=self.ProcessListDirectory.__name__)
+            next_state=compatibility.GetName(self.ProcessListDirectory))
 
         shadows_found = True
 

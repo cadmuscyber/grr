@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Functions for client logging."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 from logging import handlers
@@ -11,7 +15,7 @@ from absl import flags
 from grr_response_core import config
 
 
-_VERBOSE = flags.DEFINE_bool(
+flags.DEFINE_bool(
     "verbose",
     default=False,
     help="Turn on verbose logging.",
@@ -65,7 +69,7 @@ VERBOSE_LOG_LEVELS = {
 def SetLogLevels():
   logger = logging.getLogger()
 
-  if config.CONFIG["Logging.verbose"] or _VERBOSE.value:
+  if config.CONFIG["Logging.verbose"] or flags.FLAGS.verbose:
     logging.root.setLevel(logging.DEBUG)
     levels = VERBOSE_LOG_LEVELS
   else:

@@ -5,39 +5,38 @@ goog.module.declareLegacyNamespace();
 
 /**
  * Controller for FlowRequestsDirective.
- * @unrestricted
+ *
+ * @constructor
+ * @param {!angular.Scope} $scope
+ * @ngInject
  */
-const FlowRequestsController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const FlowRequestsController = function($scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @type {string} */
-    this.requestsUrl;
+  /** @type {string} */
+  this.requestsUrl;
 
-    this.scope_.$watchGroup(
-        ['flowId', 'apiBasePath'], this.onFlowIdOrBasePathChange_.bind(this));
-  }
-
-  /**
-   * Handles directive's arguments changes.
-   *
-   * @param {Array<string>} newValues
-   * @private
-   */
-  onFlowIdOrBasePathChange_(newValues) {
-    if (newValues.every(angular.isDefined)) {
-      this.requestsUrl = [
-        this.scope_['apiBasePath'], this.scope_['flowId'], 'requests'
-      ].join('/');
-    }
-  }
+  this.scope_.$watchGroup(['flowId', 'apiBasePath'],
+                          this.onFlowIdOrBasePathChange_.bind(this));
 };
 
+
+
+/**
+ * Handles directive's arguments changes.
+ *
+ * @param {Array<string>} newValues
+ * @private
+ */
+FlowRequestsController.prototype.onFlowIdOrBasePathChange_ = function(
+    newValues) {
+  if (newValues.every(angular.isDefined)) {
+    this.requestsUrl = [this.scope_['apiBasePath'],
+                        this.scope_['flowId'],
+                        'requests'].join('/');
+  }
+};
 
 
 /**
@@ -49,7 +48,10 @@ const FlowRequestsController = class {
  */
 exports.FlowRequestsDirective = function() {
   return {
-    scope: {flowId: '=', apiBasePath: '='},
+    scope: {
+      flowId: '=',
+      apiBasePath: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/flow/flow-requests.html',
     controller: FlowRequestsController,

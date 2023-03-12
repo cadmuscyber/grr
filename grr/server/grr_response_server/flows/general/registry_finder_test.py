@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for the RegistryFinder flow."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -14,7 +18,7 @@ class TestStubbedRegistryFinderFlow(flow_test_lib.FlowTestsBaseclass):
   """Test the RegistryFinder flow."""
 
   def setUp(self):
-    super().setUp()
+    super(TestStubbedRegistryFinderFlow, self).setUp()
     registry_stubber = vfs_test_lib.RegistryVFSStubber()
     registry_stubber.Start()
     self.addCleanup(registry_stubber.Stop)
@@ -30,7 +34,7 @@ class TestStubbedRegistryFinderFlow(flow_test_lib.FlowTestsBaseclass):
         client_id=client_id,
         keys_paths=paths,
         conditions=[],
-        creator=self.test_username)
+        token=self.token)
 
     return flow_test_lib.GetFlowResults(client_id, session_id)
 

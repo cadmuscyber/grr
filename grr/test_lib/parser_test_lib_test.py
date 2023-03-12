@@ -1,48 +1,31 @@
 #!/usr/bin/env python
-
-from typing import IO
-from typing import Iterator
-from unittest import mock
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl.testing import absltest
+import mock
 
 from grr_response_core.lib import parsers
-from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.parsers import all as all_parsers
-from grr_response_core.lib.rdfvalues import client as rdf_client
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr.test_lib import parser_test_lib
 
 
-class FooParser(parsers.SingleResponseParser[None]):
+class FooParser(parsers.SingleResponseParser):
 
-  def ParseResponse(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      response: rdfvalue.RDFValue,
-  ) -> Iterator[None]:
+  def ParseResponse(self, knowledge_base, response, path_type):
     raise NotImplementedError()
 
 
-class BarParser(parsers.SingleFileParser[None]):
+class BarParser(parsers.SingleFileParser):
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[None]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     raise NotImplementedError()
 
 
-class BazParser(parsers.SingleFileParser[None]):
+class BazParser(parsers.SingleFileParser):
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[None]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     raise NotImplementedError()
 
 

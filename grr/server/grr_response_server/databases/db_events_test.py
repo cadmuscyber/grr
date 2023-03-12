@@ -1,41 +1,35 @@
 #!/usr/bin/env python
-from typing import Optional
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 from grr_response_server.rdfvalues import objects as rdf_objects
+from grr.test_lib import test_lib
 
 
-APIAuditEntry = rdf_objects.APIAuditEntry
-
-
-def _Date(date: str) -> rdfvalue.RDFDatetime:
-  return rdfvalue.RDFDatetime.FromHumanReadable(date)
+def _Date(date, time="00:00:00"):
+  return rdfvalue.RDFDatetime.FromHumanReadable("{} {}".format(date, time))
 
 
 class DatabaseTestEventsMixin(object):
 
-  def _MakeEntry(
-      self,
-      http_request_path: str = "/test",
-      router_method_name: str = "TestHandler",
-      username: str = "user",
-      response_code: APIAuditEntry.Code = APIAuditEntry.Code.OK,
-      timestamp: Optional[rdfvalue.RDFDatetime] = None,
-  ) -> APIAuditEntry:
+  def _MakeEntry(self,
+                 http_request_path="/test",
+                 router_method_name="TestHandler",
+                 username="user",
+                 response_code="OK"):
+
     self.db.WriteGRRUser(username)
 
-    return APIAuditEntry(
+    return rdf_objects.APIAuditEntry(
         http_request_path=http_request_path,
         router_method_name=router_method_name,
         username=username,
         response_code=response_code,
-        timestamp=timestamp,
+        timestamp=rdfvalue.RDFDatetime.Now(),
     )
-
-  def _WriteEntry(self, **kwargs) -> rdf_objects.APIAuditEntry:
-    entry = self._MakeEntry(**kwargs)
-    self.db.WriteAPIAuditEntry(entry)
-    return entry
 
   def testWriteDoesNotMutate(self):
     entry = self._MakeEntry()
@@ -44,51 +38,45 @@ class DatabaseTestEventsMixin(object):
     self.assertEqual(entry, copy)
 
   def testWriteAuditEntry(self):
-    entry = self._WriteEntry()
+    entry = self._MakeEntry()
+    self.db.WriteAPIAuditEntry(entry)
 
     entries = self.db.ReadAPIAuditEntries()
-    self.assertLen(entries, 1)
-
-    # We should not compare timestamps.
-    entries[0].timestamp = None
     self.assertCountEqual(entries, [entry])
 
   def testWriteEntriesWithMicrosecondDifference(self):
     # MySQL TIMESTAMP's valid range starts from 1970-01-01 00:00:01,
     # hence we have to set the time to at least 1 second from epoch.
-    timestamp = rdfvalue.RDFDatetime.FromMicrosecondsSinceEpoch(1000000 + 1)
-    entry1 = self._WriteEntry(username="user1", timestamp=timestamp)
-    entry2 = self._WriteEntry(username="user2", timestamp=timestamp)
+    with test_lib.FakeTime(
+        rdfvalue.RDFDatetime.FromMicrosecondsSinceEpoch(1000000 + 1)):
+      entry1 = self._MakeEntry(username="user1")
+      entry2 = self._MakeEntry(username="user2")
+      self.db.WriteAPIAuditEntry(entry1)
+      self.db.WriteAPIAuditEntry(entry2)
 
-    timestamp = rdfvalue.RDFDatetime.FromMicrosecondsSinceEpoch(1000000 + 2)
-    entry3 = self._WriteEntry(username="user1", timestamp=timestamp)
+    with test_lib.FakeTime(
+        rdfvalue.RDFDatetime.FromMicrosecondsSinceEpoch(1000000 + 2)):
+      entry3 = self._MakeEntry(username="user1")
+      self.db.WriteAPIAuditEntry(entry3)
 
     entries = self.db.ReadAPIAuditEntries()
     self.assertCountEqual(entries, [entry1, entry2, entry3])
 
   def testReadEntries(self):
-    entry1 = self._WriteEntry()
-    entry2 = self._WriteEntry(response_code=APIAuditEntry.Code.ERROR)
+    entry1 = self._MakeEntry()
+    self.db.WriteAPIAuditEntry(entry1)
+
+    entry2 = self._MakeEntry(response_code="ERROR")
+    self.db.WriteAPIAuditEntry(entry2)
 
     entries = self.db.ReadAPIAuditEntries()
-    self.assertLen(entries, 2)
-
-    # We should not compare timestamps.
-    entries[0].timestamp = None
-    entries[1].timestamp = None
     self.assertCountEqual(entries, [entry1, entry2])
 
   def testReadEntriesOrder(self):
-    status_codes = [
-        APIAuditEntry.Code.OK,
-        APIAuditEntry.Code.ERROR,
-        APIAuditEntry.Code.FORBIDDEN,
-        APIAuditEntry.Code.NOT_FOUND,
-        APIAuditEntry.Code.NOT_IMPLEMENTED,
-    ]
+    status_codes = list(range(200, 210))
 
     for status_code in status_codes:
-      self._WriteEntry(response_code=status_code)
+      self.db.WriteAPIAuditEntry(self._MakeEntry(response_code=status_code))
 
     entries = self.db.ReadAPIAuditEntries()
 
@@ -96,35 +84,33 @@ class DatabaseTestEventsMixin(object):
       self.assertEqual(entry.response_code, status_code)
 
   def testReadEntriesFilterUsername(self):
-    entry = self._WriteEntry(username="foo")
-    self._WriteEntry(username="bar")
-    self._WriteEntry(username="foobar")
+    entry = self._MakeEntry(username="foo")
+    self.db.WriteAPIAuditEntry(entry)
+    self.db.WriteAPIAuditEntry(self._MakeEntry(username="bar"))
+    self.db.WriteAPIAuditEntry(self._MakeEntry(username="foobar"))
 
     entries = self.db.ReadAPIAuditEntries(username="foo")
-    self.assertLen(entries, 1)
-
-    # We should not compare timestamps.
-    entries[0].timestamp = None
     self.assertCountEqual(entries, [entry])
 
   def testReadEntriesFilterRouterMethodName(self):
-    self._WriteEntry(router_method_name="foo")
-    self._WriteEntry(router_method_name="bar")
-    self._WriteEntry(router_method_name="foobar")
+    entry = self._MakeEntry(router_method_name="foo")
+    self.db.WriteAPIAuditEntry(entry)
+    entry2 = self._MakeEntry(router_method_name="bar")
+    self.db.WriteAPIAuditEntry(entry2)
+    self.db.WriteAPIAuditEntry(self._MakeEntry(router_method_name="foobar"))
 
     entries = self.db.ReadAPIAuditEntries(router_method_names=["foo", "bar"])
-    router_method_names = [_.router_method_name for _ in entries]
-    self.assertCountEqual(router_method_names, ["foo", "bar"])
+    self.assertCountEqual(entries, [entry, entry2])
 
   def testReadEntriesFilterTimestamp(self):
-    self._WriteEntry(response_code=APIAuditEntry.Code.OK)
-    ok_timestamp = self.db.Now()
+    self.db.WriteAPIAuditEntry(self._MakeEntry(response_code="OK"))
+    ok_timestamp = rdfvalue.RDFDatetime.Now()
 
-    self._WriteEntry(response_code=APIAuditEntry.Code.ERROR)
-    error_timestamp = self.db.Now()
+    self.db.WriteAPIAuditEntry(self._MakeEntry(response_code="ERROR"))
+    error_timestamp = rdfvalue.RDFDatetime.Now()
 
-    self._WriteEntry(response_code=APIAuditEntry.Code.NOT_FOUND)
-    not_found_timestamp = self.db.Now()
+    self.db.WriteAPIAuditEntry(self._MakeEntry(response_code="NOT_FOUND"))
+    not_found_timestamp = rdfvalue.RDFDatetime.Now()
 
     entries = self.db.ReadAPIAuditEntries(min_timestamp=not_found_timestamp)
     self.assertEmpty(entries)
@@ -133,30 +119,29 @@ class DatabaseTestEventsMixin(object):
     self.assertLen(entries, 3)
 
     entries = self.db.ReadAPIAuditEntries(min_timestamp=ok_timestamp)
-    self.assertEqual([e.response_code for e in entries],
-                     [APIAuditEntry.Code.ERROR, APIAuditEntry.Code.NOT_FOUND])
+    self.assertEqual([e.response_code for e in entries], ["ERROR", "NOT_FOUND"])
 
     entries = self.db.ReadAPIAuditEntries(max_timestamp=error_timestamp)
-    self.assertEqual([e.response_code for e in entries],
-                     [APIAuditEntry.Code.OK, APIAuditEntry.Code.ERROR])
+    self.assertEqual([e.response_code for e in entries], ["OK", "ERROR"])
 
     entries = self.db.ReadAPIAuditEntries(
         min_timestamp=ok_timestamp, max_timestamp=error_timestamp)
-    self.assertEqual([e.response_code for e in entries],
-                     [APIAuditEntry.Code.ERROR])
+    self.assertEqual([e.response_code for e in entries], ["ERROR"])
 
   def testCountEntries(self):
     day = _Date("2019-02-02")
 
-    self._WriteEntry(username="user1", timestamp=_Date("2019-02-02 00:00"))
-    self._WriteEntry(username="user2", timestamp=_Date("2019-02-02 00:00"))
+    with test_lib.FakeTime(_Date("2019-02-02", "00:00:00")):
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user1"))
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user2"))
 
     self.assertEqual({
         ("user1", day): 1,
         ("user2", day): 1
     }, self.db.CountAPIAuditEntriesByUserAndDay())
 
-    self._WriteEntry(username="user1", timestamp=_Date("2019-02-02 23:59:59"))
+    with test_lib.FakeTime(_Date("2019-02-02", "23:59:59")):
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user1"))
 
     self.assertEqual({
         ("user1", day): 2,
@@ -164,16 +149,25 @@ class DatabaseTestEventsMixin(object):
     }, self.db.CountAPIAuditEntriesByUserAndDay())
 
   def testCountEntriesFilteredByTimestamp(self):
-    self._WriteEntry(username="user", timestamp=_Date("2019-02-01"))
-    self._WriteEntry(username="user1", timestamp=_Date("2019-02-02 00:12:00"))
-    self._WriteEntry(username="user2", timestamp=_Date("2019-02-02 00:12:00"))
-    self._WriteEntry(username="user1", timestamp=_Date("2019-02-02 00:12:01"))
-    self._WriteEntry(username="user1", timestamp=_Date("2019-02-03"))
-    self._WriteEntry(username="user1", timestamp=_Date("2019-02-04"))
+    with test_lib.FakeTime(_Date("2019-02-01")):
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user"))
+
+    with test_lib.FakeTime(_Date("2019-02-02", "00:12:00")):
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user1"))
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user2"))
+
+    with test_lib.FakeTime(_Date("2019-02-02", "00:12:01")):
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user1"))
+
+    with test_lib.FakeTime(_Date("2019-02-03")):
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user1"))
+
+    with test_lib.FakeTime(_Date("2019-02-04")):
+      self.db.WriteAPIAuditEntry(self._MakeEntry(username="user1"))
 
     counts = self.db.CountAPIAuditEntriesByUserAndDay(
         min_timestamp=_Date("2019-02-02"),
-        max_timestamp=_Date("2019-02-03 23:59:59"))
+        max_timestamp=_Date("2019-02-03", "23:59:59"))
     self.assertEqual(
         {
             ("user1", _Date("2019-02-02")): 2,
@@ -182,23 +176,24 @@ class DatabaseTestEventsMixin(object):
         }, counts)
 
   def testDeleteUsersRetainsApiAuditEntries(self):
-    self._WriteEntry(username="foo")
+    entry = self._MakeEntry(username="foo")
+    self.db.WriteAPIAuditEntry(entry)
     self.db.DeleteGRRUser("foo")
-
     entries = self.db.ReadAPIAuditEntries(username="foo")
     self.assertLen(entries, 1)
     self.assertEqual(entries[0].username, "foo")
 
   def testWriteAndReadWithCommitTimestamp(self):
     entry = self._MakeEntry(username="foo")
-
-    before = self.db.Now()
+    entry.timestamp = None
+    now = rdfvalue.RDFDatetime.Now()
     self.db.WriteAPIAuditEntry(entry)
-    after = self.db.Now()
-
     entries = self.db.ReadAPIAuditEntries(username="foo")
     self.assertLen(entries, 1)
-    self.assertBetween(entries[0].timestamp, before, after)
+    self.assertAlmostEqual(
+        entries[0].timestamp,
+        now,
+        delta=rdfvalue.Duration.From(1, rdfvalue.MINUTES))
 
 
 # This file is a test library and thus does not require a __main__ block.

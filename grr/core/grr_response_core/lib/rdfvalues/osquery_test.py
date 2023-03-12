@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl.testing import absltest
 
@@ -38,49 +42,6 @@ class OsqueryTableTest(absltest.TestCase):
 
     with self.assertRaises(KeyError):
       list(table.Column("D"))
-
-  def testTruncation(self):
-    table = rdf_osquery.OsqueryTable()
-    table.header.columns.append(rdf_osquery.OsqueryColumn(name="A"))
-
-    table.rows.append(rdf_osquery.OsqueryRow(values=["cell1"]))
-    table.rows.append(rdf_osquery.OsqueryRow(values=["cell2"]))
-    table.rows.append(rdf_osquery.OsqueryRow(values=["cell3"]))
-
-    truncated = table.Truncated(1)
-    column_values = list(truncated.Column("A"))
-
-    self.assertLen(truncated.rows, 1)
-    self.assertEqual(column_values, ["cell1"])
-
-
-class OsqueryResultTest(absltest.TestCase):
-
-  def testGetTableColumns(self):
-    table = rdf_osquery.OsqueryTable()
-    table.header.columns.append(rdf_osquery.OsqueryColumn(name="A"))
-    table.header.columns.append(rdf_osquery.OsqueryColumn(name="B"))
-    table.header.columns.append(rdf_osquery.OsqueryColumn(name="C"))
-
-    result = rdf_osquery.OsqueryResult()
-    result.table = table
-
-    cols = list(result.GetTableColumns())
-    self.assertEqual(["A", "B", "C"], cols)
-
-  def testGetTableRows(self):
-    table = rdf_osquery.OsqueryTable()
-    table.header.columns.append(rdf_osquery.OsqueryColumn(name="A"))
-
-    table.rows.append(rdf_osquery.OsqueryRow(values=["cell1"]))
-    table.rows.append(rdf_osquery.OsqueryRow(values=["cell2"]))
-    table.rows.append(rdf_osquery.OsqueryRow(values=["cell3"]))
-
-    result = rdf_osquery.OsqueryResult()
-    result.table = table
-
-    rows = list(result.GetTableRows())
-    self.assertEqual([["cell1"], ["cell2"], ["cell3"]], rows)
 
 
 if __name__ == "__main__":

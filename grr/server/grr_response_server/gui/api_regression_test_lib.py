@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Base test classes for API handlers tests."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import abc
-import json
 import logging
 import os
 import re
@@ -14,21 +18,20 @@ import psutil
 
 from grr_response_core.lib import registry
 from grr_response_core.lib import utils
-from grr_response_server import data_store
+from grr_response_core.lib.util import compatibility
+from grr_response_core.lib.util.compat import json
 from grr_response_server.gui import api_auth_manager
-# pylint: disable=unused-import
 # This import guarantees that all API-related RDF types will get imported
 # (as they're all references by api_call_router).
+# pylint: disable=unused-import
 from grr_response_server.gui import api_call_router
-# This import guarantees that the no-checks router used by tests is present.
-from grr_response_server.gui import api_call_router_without_checks
 # pylint: enable=unused-import
 from grr_response_server.gui import api_regression_http
 from grr_response_server.gui import webauth
 from grr.test_lib import test_lib
 from grr.test_lib import testing_startup
 
-_GENERATE = flags.DEFINE_string(
+flags.DEFINE_string(
     "generate", "",
     "Generate golden regression data for tests using a given connection type.")
 
@@ -64,7 +67,7 @@ class ApiRegressionTestMetaclass(registry.MetaclassRegistry):
         continue
 
       cls_name = "%s_%s" % (name, mixin.connection_type)
-      test_cls = type(
+      test_cls = compatibility.MakeType(
           cls_name,
           (mixin, cls, test_lib.GRRBaseTest),
           # pylint: disable=protected-access
@@ -106,9 +109,12 @@ class ApiRegressionTest(  # pylint: disable=invalid-metaclass
   # The api_regression label can be used to exclude/include API regression
   # tests from/into test runs.
 
+  # TODO(user): gpylint claims "Use of super on an old style class", but
+  # this class is obviously not an old-style class.
+  # pylint: disable=super-on-old-class
   def setUp(self):  # pylint: disable=invalid-name
     """Set up test method."""
-    super().setUp()
+    super(ApiRegressionTest, self).setUp()
 
     if not self.__class__.api_method:
       raise ValueError("%s.api_method has to be set." % self.__class__.__name__)
@@ -125,9 +131,8 @@ class ApiRegressionTest(  # pylint: disable=invalid-metaclass
     syscalls_stubber.Start()
     self.addCleanup(syscalls_stubber.Stop)
 
-    self.test_username = "api_test_user"
-    data_store.REL_DB.WriteGRRUser(self.test_username)
-    webauth.WEBAUTH_MANAGER.SetUserName(self.test_username)
+    self.token.username = "api_test_user"
+    webauth.WEBAUTH_MANAGER.SetUserName(self.token.username)
 
     # Force creation of new APIAuthorizationManager.
     api_auth_manager.InitializeApiAuthManager()
@@ -194,7 +199,7 @@ class ApiRegressionTest(  # pylint: disable=invalid-metaclass
         the results of parsing the API response, allowing modification of the
         results before they are compared with golden datasets.
     """
-    router = api_auth_manager.API_AUTH_MGR.GetRouterForUser(self.test_username)
+    router = api_auth_manager.API_AUTH_MGR.GetRouterForUser(self.token.username)
     mdata = router.GetAnnotatedMethods()[method]
 
     check = self.HandleCheck(
@@ -210,7 +215,7 @@ class ApiRegressionTest(  # pylint: disable=invalid-metaclass
 
   @abc.abstractmethod
   def Run(self):
-    """Sets up test environment and does Check() calls."""
+    """Sets up test envionment and does Check() calls."""
     pass
 
   def _testForRegression(self):  # pylint: disable=invalid-name
@@ -221,13 +226,9 @@ class ApiRegressionTest(  # pylint: disable=invalid-metaclass
     creates a public testForRegression method for generated regression
     classes.
     """
-    with open(self.output_file_name, mode="rt", encoding="utf-8") as file:
-      prev_data = json.load(file)
+    prev_data = json.ReadFromPath(self.output_file_name)
 
-    # Using an empty list if the handler class name is not present in the
-    # golden file. This way it's easy to debug new tests: we get a proper
-    # regression test failure instead of a KeyError.
-    checks = prev_data.get(self.__class__.handler.__name__, [])
+    checks = prev_data[self.__class__.handler.__name__]
     relevant_checks = []
     for check in checks:
       if check["test_class"] == self.golden_file_class_name:
@@ -295,8 +296,11 @@ class ApiRegressionGoldenOutputGenerator(object):
           except Exception as e:  # pylint: disable=broad-except
             logging.exception(e)
 
-    json_sample_data = json.dumps(sample_data, sort_keys=True)
-    sys.stdout.buffer.write(json_sample_data.encode("utf-8"))
+    json_sample_data = json.Dump(sample_data, sort_keys=True)
+    if compatibility.PY2:
+      print(json_sample_data.encode("utf-8"))
+    else:
+      print(json_sample_data)
 
 
 def GetFlowTestReplaceDict(client_id=None,
@@ -318,8 +322,8 @@ def GetFlowTestReplaceDict(client_id=None,
 
 def main(argv=None):
   testing_startup.TestInit()
-  if _GENERATE.value:
+  if flags.FLAGS.generate:
     testing_startup.TestInit()
-    ApiRegressionGoldenOutputGenerator(_GENERATE.value).Generate()
+    ApiRegressionGoldenOutputGenerator(flags.FLAGS.generate).Generate()
   else:
     test_lib.main(argv)

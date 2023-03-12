@@ -19,41 +19,40 @@ exports.setAutoRefreshInterval = function(millis) {
 
 /**
  * Controller for FlowLogDirective.
- * @unrestricted
+ *
+ * @constructor
+ * @param {!angular.Scope} $scope
+ * @ngInject
  */
-const FlowLogController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const FlowLogController = function($scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @type {?string} */
-    this.logsUrl;
+  /** @type {?string} */
+  this.logsUrl;
 
-    /** @type {number} */
-    this.autoRefreshInterval = AUTO_REFRESH_INTERVAL_MS;
+  /** @type {number} */
+  this.autoRefreshInterval = AUTO_REFRESH_INTERVAL_MS;
 
-    this.scope_.$watchGroup(
-        ['flowId', 'apiBasePath'], this.onFlowIdOrBasePathChange_.bind(this));
-  }
-
-  /**
-   * Handles flowId attribute changes.
-   *
-   * @private
-   */
-  onFlowIdOrBasePathChange_(newValue) {
-    if (angular.isDefined(this.scope_['flowId']) &&
-        angular.isDefined(this.scope_['apiBasePath'])) {
-      this.logsUrl =
-          [this.scope_['apiBasePath'], this.scope_['flowId'], 'log'].join('/');
-    }
-  }
+  this.scope_.$watchGroup(['flowId', 'apiBasePath'],
+                          this.onFlowIdOrBasePathChange_.bind(this));
 };
 
+
+
+/**
+ * Handles flowId attribute changes.
+ *
+ * @private
+ */
+FlowLogController.prototype.onFlowIdOrBasePathChange_ = function(newValue) {
+  if (angular.isDefined(this.scope_['flowId']) &&
+      angular.isDefined(this.scope_['apiBasePath'])) {
+    this.logsUrl = [this.scope_['apiBasePath'],
+                    this.scope_['flowId'],
+                    'log'].join('/');
+  }
+};
 
 
 /**
@@ -65,7 +64,10 @@ const FlowLogController = class {
  */
 exports.FlowLogDirective = function() {
   return {
-    scope: {flowId: '=', apiBasePath: '='},
+    scope: {
+      flowId: '=',
+      apiBasePath: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/flow/flow-log.html',
     controller: FlowLogController,

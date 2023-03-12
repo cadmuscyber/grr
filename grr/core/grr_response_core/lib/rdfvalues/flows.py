@@ -1,6 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """RDFValue implementations related to flow scheduling."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import threading
 import time
@@ -260,8 +264,6 @@ class ClientActionRequest(rdf_structs.RDFProtoStruct):
 
     if not self.HasField("cpu_limit_ms"):
       self.cpu_limit_ms = 3600000
-    if not self.HasField("runtime_limit_us"):
-      self.runtime_limit_us = 1000 * self.cpu_limit_ms
 
     if not self.HasField("network_bytes_limit"):
       self.network_bytes_limit = 10737418240

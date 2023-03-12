@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A module with utilities for a very simple serialization format."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import gzip
 import io
-import os
 import struct
 
 from typing import Iterator
@@ -37,7 +40,7 @@ def Serialize(
         chunked.Write(filedesc, data)  # pytype: disable=wrong-arg-types
         buf_entry_count += 1
 
-        if buf.tell() >= chunk_size:
+        if len(buf.getvalue()) >= chunk_size:
           break
 
     if buf_entry_count == 0:
@@ -59,16 +62,11 @@ def Deserialize(stream: Iterator[bytes]) -> Iterator[bytes]:
     buf = io.BytesIO(chunk)
 
     with gzip.GzipFile(fileobj=buf, mode="rb") as filedesc:
-      filedesc.seek(0, os.SEEK_END)
-      fd_size = filedesc.tell()
-      filedesc.seek(0, os.SEEK_SET)
-
       while True:
-        data = chunked.Read(filedesc, max_chunk_size=fd_size)  # pytype: disable=wrong-arg-types
+        data = chunked.Read(filedesc)  # pytype: disable=wrong-arg-types
         if data is None:
           break
 
-        fd_size -= len(data)
         yield data
 
 

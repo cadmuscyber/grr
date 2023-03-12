@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Abstract base class for serving statistics."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 
@@ -25,18 +29,15 @@ class BaseStatsServer(metaclass=abc.ABCMeta):
   """Abstract base class for statistics server.
 
   Attributes:
-    address: The IP address of the server to bind.
     port: The TCP port that the server should listen to.
   """
 
-  def __init__(self, address, port):
+  def __init__(self, port):
     """Instantiates a new BaseStatsServer.
 
     Args:
-      address: The IP address of the server to bind.
       port: The TCP port that the server should listen to.
     """
-    self.address = address
     self.port = port
 
   @abc.abstractmethod

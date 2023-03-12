@@ -1,4 +1,5 @@
 grr-host-info {
+
   h1 {
     font-size: 30px;
     margin: 20px;
@@ -25,13 +26,11 @@ grr-host-info {
     }
   }
 
-  div.no-approval,
-  div.new-ui-info {
+  div.no-approval {
     margin: 20px;
     height: auto !important;
 
-    button,
-    .btn {
+    button {
       float: right;
       margin-top: -23px;
     }

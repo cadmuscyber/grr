@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Incremental MySQL migrations implementation."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import contextlib
 import logging

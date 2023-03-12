@@ -1,8 +1,11 @@
 #!/usr/bin/env python
-
-from unittest import mock
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl.testing import absltest
+import mock
 
 from grr_response_client.client_actions.windows import windows
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict

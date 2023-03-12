@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The in memory database methods for GRR users and approval handling."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 import os
 
-from typing import Sequence
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
@@ -76,10 +80,6 @@ class InMemoryDBUsersMixin(object):
     except KeyError:
       pass  # No notifications to delete for this user.
 
-    for sf in list(self.scheduled_flows.values()):
-      if sf.creator == username:
-        self.DeleteScheduledFlow(sf.client_id, username, sf.scheduled_flow_id)
-
     try:
       del self.users[username]
     except KeyError:
@@ -109,12 +109,11 @@ class InMemoryDBUsersMixin(object):
                                            approval_id)
 
   @utils.Synchronized
-  def ReadApprovalRequests(
-      self,
-      requestor_username,
-      approval_type,
-      subject_id=None,
-      include_expired=False) -> Sequence[rdf_objects.ApprovalRequest]:
+  def ReadApprovalRequests(self,
+                           requestor_username,
+                           approval_type,
+                           subject_id=None,
+                           include_expired=False):
     """Reads approval requests of a given type for a given user."""
     now = rdfvalue.RDFDatetime.Now()
 

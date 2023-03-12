@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Execute a Chipsec plugin on the client."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import logging
@@ -14,6 +18,7 @@ import platform
 from chipsec import file as chipsec_file
 
 chipsec_file.main_is_frozen = lambda: False
+
 
 # Initialize the Chipsec plugins
 from chipsec import chipset
@@ -55,7 +60,7 @@ class DumpFlashImage(actions.ActionPlugin):
       syslog = logging.getLogger("chipsec_grr")
       syslog.setLevel(logging.INFO)
       syslog.addHandler(handlers.SysLogHandler(address="/dev/log"))
-      syslog.info("%s: Running DumpFlashImage", config.CONFIG["Client.name"])
+      syslog.info("%s: Runnning DumpFlashImage", config.CONFIG["Client.name"])
 
     self.logs = []
     self.chipsec_log = io.StringIO()

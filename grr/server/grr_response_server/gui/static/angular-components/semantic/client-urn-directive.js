@@ -1,80 +1,76 @@
 goog.module('grrUi.semantic.clientUrnDirective');
 goog.module.declareLegacyNamespace();
 
-const apiService = goog.requireType('grrUi.core.apiService');
-
 
 
 /**
  * Controller for the ClientUrnDirective.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope Directive's scope.
+ * @param {!angularUi.$uibModal} $uibModal Bootstrap UI modal service.
+ * @param {!grrUi.core.apiService.ApiService} grrApiService GRR Aff4 service.
+ * @constructor
+ * @ngInject
  */
-var ClientUrnController = class {
-  /**
-   * @param {!angular.Scope} $scope Directive's scope.
-   * @param {!angularUi.$uibModal} $uibModal Bootstrap UI modal service.
-   * @param {!apiService.ApiService} grrApiService GRR Aff4 service.
-   * @ngInject
-   */
-  constructor($scope, $uibModal, grrApiService) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+var ClientUrnController = function($scope, $uibModal, grrApiService) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @type {?} */
-    this.scope_.value;
+  /** @type {?} */
+  this.scope_.value;
 
-    /** @private {!angularUi.$uibModal} */
-    this.uibModal_ = $uibModal;
+  /** @private {!angularUi.$uibModal} */
+  this.uibModal_ = $uibModal;
 
-    /** @private {!apiService.ApiService} */
-    this.grrApiService_ = grrApiService;
+  /** @private {!grrUi.core.apiService.ApiService} */
+  this.grrApiService_ = grrApiService;
 
-    /** @export {Object} */
-    this.clientDetails;
+  /** @export {Object} */
+  this.clientDetails;
 
-    /** @private {?string} */
-    this.clientId;
+  /** @private {?string} */
+  this.clientId;
 
-    this.scope_.$watch('::value', this.onValueChange.bind(this));
+  this.scope_.$watch('::value', this.onValueChange.bind(this));
+};
+
+
+/**
+ * Handles value changes.
+ *
+ * @export
+ */
+ClientUrnController.prototype.onValueChange = function() {
+  var clientUrn;
+  if (angular.isObject(this.scope_.value)) {
+    clientUrn = this.scope_.value.value;
+  } else {
+    clientUrn = this.scope_.value;
   }
 
-  /**
-   * Handles value changes.
-   *
-   * @export
-   */
-  onValueChange() {
-    var clientUrn;
-    if (angular.isObject(this.scope_.value)) {
-      clientUrn = this.scope_.value.value;
-    } else {
-      clientUrn = this.scope_.value;
-    }
-
-    if (angular.isString(clientUrn)) {
-      this.clientId = clientUrn.replace(/^aff4:\//, '');
-    }
-  }
-
-  /**
-   * Shows a modal with information about the client. Called when "info"
-   * button is clicked.
-   *
-   * @export
-   */
-  onInfoClick() {
-    this.uibModal_.open({
-      templateUrl: '/static/angular-components/semantic/client-urn-modal.html',
-      scope: this.scope_
-    });
-
-    this.grrApiService_.get('clients/' + this.clientId)
-        .then(function(response) {
-          this.clientDetails = response.data;
-        }.bind(this));
+  if (angular.isString(clientUrn)) {
+    this.clientId = clientUrn.replace(/^aff4:\//, '');
   }
 };
 
+
+/**
+ * Shows a modal with information about the client. Called when "info"
+ * button is clicked.
+ *
+ * @export
+ */
+ClientUrnController.prototype.onInfoClick = function() {
+  this.uibModal_.open({
+    templateUrl: '/static/angular-components/semantic/client-urn-modal.html',
+    scope: this.scope_
+  });
+
+  this.grrApiService_.get('clients/' + this.clientId).then(
+      function(response) {
+        this.clientDetails = response.data;
+      }.bind(this));
+};
 
 
 /**
@@ -86,7 +82,9 @@ var ClientUrnController = class {
  */
 exports.ClientUrnDirective = function() {
   return {
-    scope: {value: '='},
+    scope: {
+      value: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/semantic/client-urn.html',
     controller: ClientUrnController,

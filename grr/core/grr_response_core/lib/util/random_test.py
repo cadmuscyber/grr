@@ -1,10 +1,14 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import os
-from unittest import mock
 
 from absl.testing import absltest
+import mock
 
 from grr_response_core.lib.util import random
 
@@ -109,24 +113,6 @@ class UInt64Test(absltest.TestCase):
   @WithRandomBuffer([0xDEADC0DE, 0xDEADB33F])
   def testSpecific(self):
     self.assertEqual(random.UInt64(), 0xDEADC0DEDEADB33F)
-
-
-class Id64Test(absltest.TestCase):
-
-  def testRandom(self):
-    self.assertBetween(random.UInt64(), 2**32, 2**64 - 1)
-
-  @WithRandomBuffer([])
-  @WithUrandom(lambda count: b"\xff" * count)
-  def testMax(self, urandom):
-    del urandom  # Unused.
-
-    for _ in range(10000):
-      self.assertEqual(random.UInt64(), 2**64 - 1)
-
-  @WithRandomBuffer([0xDEADC0DE, 0xDEADB33F])
-  def testSpecific(self):
-    self.assertEqual(random.Id64(), 0xDEADC0DEDEADB33F)
 
 
 if __name__ == "__main__":

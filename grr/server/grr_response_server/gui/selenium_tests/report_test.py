@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 from absl import app
 from selenium.webdriver.common import keys
 
@@ -49,8 +54,7 @@ class TestReports(gui_test_lib.GRRSeleniumTest):
   def testReportsDontIncludeTimerangesInUrlsOfReportsThatDontUseThem(self):
     client_id = self.SetupClient(0)
 
-    data_store.REL_DB.WriteGRRUser("owner")
-    self.AddClientLabel(client_id, "owner", "bar")
+    self.AddClientLabel(client_id, u"owner", u"bar")
 
     self.Open("/#/stats/")
 

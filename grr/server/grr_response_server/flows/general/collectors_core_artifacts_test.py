@@ -1,9 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for grr.server.flows.general.collectors.
 
 These tests ensure some key artifacts are working, particularly those used for
 windows interrogate, which is the most complex platform for interrogate.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
 
@@ -34,7 +38,7 @@ class TestArtifactCollectorsRealArtifacts(flow_test_lib.FlowTestsBaseclass):
 
   def setUp(self):
     """Add test artifacts to existing registry."""
-    super().setUp()
+    super(TestArtifactCollectorsRealArtifacts, self).setUp()
 
     patcher = artifact_test_lib.PatchDefaultArtifactRegistry()
     patcher.start()
@@ -53,7 +57,7 @@ class TestArtifactCollectorsRealArtifacts(flow_test_lib.FlowTestsBaseclass):
         collectors.ArtifactCollectorFlow.__name__,
         client_mock,
         artifact_list=["WindowsEnvironmentVariableSystemDrive"],
-        creator=self.test_username,
+        token=self.token,
         client_id=client_id)
 
     results = flow_test_lib.GetFlowResults(client_id, session_id)
@@ -64,7 +68,7 @@ class TestArtifactCollectorsRealArtifacts(flow_test_lib.FlowTestsBaseclass):
         collectors.ArtifactCollectorFlow.__name__,
         client_mock,
         artifact_list=["WindowsEnvironmentVariableSystemRoot"],
-        creator=self.test_username,
+        token=self.token,
         client_id=client_id)
 
     results = flow_test_lib.GetFlowResults(client_id, session_id)
@@ -94,7 +98,7 @@ class TestArtifactCollectorsRealArtifacts(flow_test_lib.FlowTestsBaseclass):
             collectors.ArtifactCollectorFlow.__name__,
             BrokenClientMock(),
             artifact_list=["WindowsEnvironmentVariableSystemDrive"],
-            creator=self.test_username,
+            token=self.token,
             client_id=client_id)
 
     # No registry, so this should use the fallback flow
@@ -130,7 +134,7 @@ class TestArtifactCollectorsRealArtifacts(flow_test_lib.FlowTestsBaseclass):
         collectors.ArtifactCollectorFlow.__name__,
         client_mock,
         artifact_list=["WMIComputerSystemProduct"],
-        creator=self.test_username,
+        token=self.token,
         client_id=client_id,
         dependencies=(
             rdf_artifacts.ArtifactCollectorFlowArgs.Dependency.IGNORE_DEPS))
@@ -157,7 +161,7 @@ class TestArtifactCollectorsRealArtifacts(flow_test_lib.FlowTestsBaseclass):
         collectors.ArtifactCollectorFlow.__name__,
         client_mock,
         artifact_list=["WMILogicalDisks"],
-        creator=self.test_username,
+        token=self.token,
         client_id=client_id,
         dependencies=(
             rdf_artifacts.ArtifactCollectorFlowArgs.Dependency.IGNORE_DEPS))
@@ -192,7 +196,7 @@ class TestArtifactCollectorsRealArtifacts(flow_test_lib.FlowTestsBaseclass):
         collectors.ArtifactCollectorFlow.__name__,
         client_mock,
         artifact_list=["WMIActiveScriptEventConsumer"],
-        creator=self.test_username,
+        token=self.token,
         client_id=client_id,
         dependencies=(
             rdf_artifacts.ArtifactCollectorFlowArgs.Dependency.IGNORE_DEPS))

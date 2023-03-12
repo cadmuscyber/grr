@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The in memory database methods for hunt handling."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import sys
 
@@ -7,6 +11,7 @@ from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
 from grr_response_core.lib.rdfvalues import stats as rdf_stats
+from grr_response_core.lib.util import compatibility
 from grr_response_server.databases import db
 from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
 from grr_response_server.rdfvalues import flow_runner as rdf_flow_runner
@@ -116,24 +121,16 @@ class InMemoryDBHuntMixin(object):
       raise db.UnknownHuntError(hunt_id)
 
   @utils.Synchronized
-  def ReadHuntObjects(
-      self,
-      offset,
-      count,
-      with_creator=None,
-      created_after=None,
-      with_description_match=None,
-      created_by=None,
-      not_created_by=None,
-  ):
+  def ReadHuntObjects(self,
+                      offset,
+                      count,
+                      with_creator=None,
+                      created_after=None,
+                      with_description_match=None):
     """Reads metadata for hunt objects from the database."""
     filter_fns = []
     if with_creator is not None:
       filter_fns.append(lambda h: h.creator == with_creator)
-    if created_by is not None:
-      filter_fns.append(lambda h: h.creator in created_by)
-    if not_created_by is not None:
-      filter_fns.append(lambda h: h.creator not in not_created_by)
     if created_after is not None:
       filter_fns.append(lambda h: h.create_time > created_after)
     if with_description_match is not None:
@@ -146,24 +143,16 @@ class InMemoryDBHuntMixin(object):
         reverse=True)[offset:offset + (count or db.MAX_COUNT)]
 
   @utils.Synchronized
-  def ListHuntObjects(
-      self,
-      offset,
-      count,
-      with_creator=None,
-      created_after=None,
-      with_description_match=None,
-      created_by=None,
-      not_created_by=None,
-  ):
+  def ListHuntObjects(self,
+                      offset,
+                      count,
+                      with_creator=None,
+                      created_after=None,
+                      with_description_match=None):
     """Reads all hunt objects from the database."""
     filter_fns = []
     if with_creator is not None:
       filter_fns.append(lambda h: h.creator == with_creator)
-    if created_by is not None:
-      filter_fns.append(lambda h: h.creator in created_by)
-    if not_created_by is not None:
-      filter_fns.append(lambda h: h.creator not in not_created_by)
     if created_after is not None:
       filter_fns.append(lambda h: h.create_time > created_after)
     if with_description_match is not None:
@@ -252,7 +241,7 @@ class InMemoryDBHuntMixin(object):
   def CountHuntResultsByType(self, hunt_id):
     result = {}
     for hr in self.ReadHuntResults(hunt_id, 0, sys.maxsize):
-      key = hr.payload.__class__.__name__
+      key = compatibility.GetName(hr.payload.__class__)
       result[key] = result.setdefault(key, 0) + 1
 
     return result
@@ -311,8 +300,6 @@ class InMemoryDBHuntMixin(object):
             if r and r[0].hunt_id == hunt_id))
     num_crashed_clients = self.CountHuntFlows(
         hunt_id, filter_condition=db.HuntFlowsCondition.CRASHED_FLOWS_ONLY)
-    num_running_clients = self.CountHuntFlows(
-        hunt_id, filter_condition=db.HuntFlowsCondition.FLOWS_IN_PROGRESS_ONLY)
     num_results = self.CountHuntResults(hunt_id)
 
     total_cpu_seconds = 0
@@ -328,7 +315,6 @@ class InMemoryDBHuntMixin(object):
         num_failed_clients=num_failed_clients,
         num_clients_with_results=num_clients_with_results,
         num_crashed_clients=num_crashed_clients,
-        num_running_clients=num_running_clients,
         num_results=num_results,
         total_cpu_seconds=total_cpu_seconds,
         total_network_bytes_sent=total_network_bytes_sent)

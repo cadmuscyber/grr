@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Setup configuration for the python grr modules."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import configparser
 import itertools
@@ -14,6 +19,7 @@ from setuptools import setup
 from setuptools.command.develop import develop
 from setuptools.command.install import install
 from setuptools.command.sdist import sdist
+
 
 THIS_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 os.chdir(THIS_DIRECTORY)
@@ -46,7 +52,7 @@ def get_config():
     if not os.path.exists(ini_path):
       raise RuntimeError("Couldn't find version.ini")
 
-  config = configparser.ConfigParser()
+  config = configparser.SafeConfigParser()
   config.read(ini_path)
   return config
 
@@ -65,8 +71,10 @@ class Develop(develop):
 class Sdist(sdist):
   """Build sdist."""
 
+  # TODO: Option name must be a byte string in Python 2. Remove
+  # this call once support for Python 2 is dropped.
   user_options = sdist.user_options + [
-      ("no-sync-artifacts", None,
+      (str("no-sync-artifacts"), None,
        "Don't sync the artifact repo. This is unnecessary for "
        "clients and old client build OSes can't make the SSL connection."),
   ]
@@ -97,7 +105,11 @@ data_files = list(
         find_data_files("install_data"),
         find_data_files("scripts"),
         find_data_files("grr_response_core/artifacts"),
-        ["version.ini"],
+        # TODO: For some reason, this path cannot be unicode string
+        # or else installation fails for Python 2 (with "too many values to
+        # unpack" error). This call should be removed once support for Python 2
+        # is dropped.
+        [str("version.ini")],
     ))
 
 setup_args = dict(
@@ -114,8 +126,11 @@ setup_args = dict(
     include_package_data=True,
     ext_modules=[
         Extension(
-            name="grr_response_core._semantic",
-            sources=["accelerated/accelerated.c"])
+            # TODO: In Python 2, extension name and sources have to
+            # be of type `bytes`. These calls should be removed once support for
+            # Python 2 is dropped.
+            name=str("grr_response_core._semantic"),
+            sources=[str("accelerated/accelerated.c")])
     ],
     cmdclass={
         "develop": Develop,
@@ -123,20 +138,28 @@ setup_args = dict(
         "sdist": Sdist,
     },
     install_requires=[
-        "cryptography==3.3.2",
-        "distro==1.7.0",
-        "fleetspeak==0.1.11",
+        "biplist==1.0.3",
+        "configparser==4.0.2",
+        "cryptography==2.8",
+        "distro==1.4.0",
+        "fleetspeak==0.1.7",
         "grr-response-proto==%s" % VERSION.get("Version", "packagedepends"),
         "ipaddr==2.2.0",
-        "pexpect==4.8.0",
-        "pip>=21.0.1",
-        "psutil==5.8.0",
-        "python-crontab==2.5.1",
-        "python-dateutil==2.8.1",
-        "pytz==2020.1",
-        "PyYAML==5.4.1",
-        "requests==2.25.1",
-        "yara-python==4.0.1",
+        "ipaddress==1.0.22",
+        "ipython==7.2.0",
+        "pexpect==4.7.0",
+        "pip>=8.1.1",
+        "psutil==5.6.3",
+        "python-crontab==2.3.9",
+        "python-dateutil==2.8.0",
+        "pytsk3==20190507",
+        "pytz==2019.3",
+        "PyYAML==5.1.2",
+        "requests==2.22.0",
+        "typing==3.7.4.1",
+        "virtualenv==16.7.5",
+        "wheel==0.33.6",
+        "yara-python==3.10.0",
     ],
 
     # Data files used by GRR. Access these via the config_lib "resource" filter.

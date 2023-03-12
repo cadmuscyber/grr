@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Helper API-client-based functions for self-contained tests."""
 import time
 

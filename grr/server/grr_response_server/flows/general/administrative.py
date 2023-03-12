@@ -1,10 +1,15 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Administrative flows for managing the clients state."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 import logging
 import os
 import shlex
 import time
-from typing import Optional, Text, Tuple, Type
+from typing import Text
 
 import jinja2
 
@@ -14,11 +19,11 @@ from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_action as rdf_client_action
 from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
-from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import standard as rdf_standard
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 from grr_response_core.stats import metrics
 from grr_response_proto import flows_pb2
@@ -26,7 +31,6 @@ from grr_response_server import client_index
 from grr_response_server import data_store
 from grr_response_server import email_alerts
 from grr_response_server import events
-from grr_response_server import flow
 from grr_response_server import flow_base
 from grr_response_server import hunt
 from grr_response_server import message_handlers
@@ -79,7 +83,7 @@ Click <a href='{{ admin_ui }}#{{ url }}'>here</a> to access this machine.
 </body></html>""",
       autoescape=True)
 
-  def ProcessEvents(self, msgs=None, publisher_username=None):
+  def ProcessMessages(self, msgs=None, token=None):
     """Processes this event."""
     nanny_msg = ""
 
@@ -171,7 +175,8 @@ class GetClientStats(flow_base.FlowBase, GetClientStatsProcessResponseMixin):
 
   def Start(self):
     self.CallClient(
-        server_stubs.GetClientStats, next_state=self.StoreResults.__name__)
+        server_stubs.GetClientStats,
+        next_state=compatibility.GetName(self.StoreResults))
 
   def StoreResults(self, responses):
     """Stores the responses."""
@@ -193,75 +198,6 @@ class ClientStatsHandler(message_handlers.MessageHandler,
   def ProcessMessages(self, msgs):
     for msg in msgs:
       self.ProcessResponse(msg.client_id, msg.request.payload)
-
-
-class RecursiveBlobUploadMixin:
-  """Mixin for flows that upload blobs by executing same client action."""
-
-  def GenerateUploadRequest(
-      self, offset: int, file_size: int, blob: rdf_crypto.SignedBlob
-  ) -> Tuple[rdf_structs.RDFProtoStruct, Type[server_stubs.ClientActionStub]]:
-    raise NotImplementedError()
-
-  def StartBlobsUpload(self, binary_id: rdf_objects.SignedBinaryID,
-                       next_state: str):
-    """Starts recursive blobs upload for a given binary_id.
-
-    Args:
-      binary_id: Binary id of the binary that should be uploaded to the client.
-      next_state: Name of the state to be triggered when the upload is complete.
-    """
-
-    # Fail early if the file is not there or empty.
-    try:
-      file_size = signed_binary_utils.FetchSizeOfSignedBinary(binary_id)
-    except signed_binary_utils.UnknownSignedBinaryError as ex:
-      raise flow_base.FlowError(f"File {binary_id} not found.") from ex
-
-    if file_size == 0:
-      raise flow_base.FlowError(f"File {binary_id} is empty.")
-
-    self.CallStateInline(
-        next_state=self.NextBlob.__name__,
-        request_data={
-            "binary_id": binary_id,
-            "blob_index": 0,
-            "file_offset": 0,
-            "file_size": file_size,
-            "next_state": next_state,
-        })
-
-  def NextBlob(self, responses):
-    """Handles a successfully uploaded blob."""
-
-    if not responses.success:
-      raise flow_base.FlowError(
-          f"Error while sending blobs: {responses.status})")
-
-    binary_id = responses.request_data["binary_id"]
-    blob_index = responses.request_data["blob_index"]
-    file_offset = responses.request_data["file_offset"]
-    file_size = responses.request_data["file_size"]
-    next_state = responses.request_data["next_state"]
-
-    blob = signed_binary_utils.FetchBlobForSignedBinaryByID(
-        binary_id, blob_index)
-    more_data = (file_offset + len(blob.data) < file_size)
-
-    request, client_action = self.GenerateUploadRequest(file_offset, file_size,
-                                                        blob)
-    request_data = {
-        "binary_id": binary_id,
-        "blob_index": blob_index + 1,
-        "file_offset": file_offset + len(blob.data),
-        "file_size": file_size,
-        "next_state": next_state,
-    }
-    self.CallClient(
-        client_action,
-        request,
-        next_state=self.NextBlob.__name__ if more_data else next_state,
-        request_data=request_data if more_data else {})
 
 
 class DeleteGRRTempFilesArgs(rdf_structs.RDFProtoStruct):
@@ -288,7 +224,7 @@ class DeleteGRRTempFiles(flow_base.FlowBase):
     self.CallClient(
         server_stubs.DeleteGRRTempFiles,
         self.args.pathspec,
-        next_state=self.Done.__name__)
+        next_state=compatibility.GetName(self.Done))
 
   def Done(self, responses):
     if not responses.success:
@@ -317,7 +253,8 @@ class Uninstall(flow_base.FlowBase):
     system = self.client_os
 
     if system == "Darwin" or system == "Windows":
-      self.CallClient(server_stubs.Uninstall, next_state=self.Kill.__name__)
+      self.CallClient(
+          server_stubs.Uninstall, next_state=compatibility.GetName(self.Kill))
     else:
       self.Log("Unsupported platform for Uninstall")
 
@@ -326,7 +263,9 @@ class Uninstall(flow_base.FlowBase):
     if not responses.success:
       self.Log("Failed to uninstall client.")
     elif self.args.kill:
-      self.CallClient(server_stubs.Kill, next_state=self.Confirmation.__name__)
+      self.CallClient(
+          server_stubs.Kill,
+          next_state=compatibility.GetName(self.Confirmation))
 
   def Confirmation(self, responses):
     """Confirmation of kill."""
@@ -341,7 +280,8 @@ class Kill(flow_base.FlowBase):
 
   def Start(self):
     """Call the kill function on the client."""
-    self.CallClient(server_stubs.Kill, next_state=self.Confirmation.__name__)
+    self.CallClient(
+        server_stubs.Kill, next_state=compatibility.GetName(self.Confirmation))
 
   def Confirmation(self, responses):
     """Confirmation of kill."""
@@ -371,7 +311,7 @@ class UpdateConfiguration(flow_base.FlowBase):
     self.CallClient(
         server_stubs.UpdateConfiguration,
         request=self.args.config,
-        next_state=self.Confirmation.__name__)
+        next_state=compatibility.GetName(self.Confirmation))
 
   def Confirmation(self, responses):
     """Confirmation."""
@@ -387,18 +327,12 @@ class ExecutePythonHackArgs(rdf_structs.RDFProtoStruct):
   ]
 
 
-class ExecutePythonHackResult(rdf_structs.RDFProtoStruct):
-
-  protobuf = flows_pb2.ExecutePythonHackResult
-  rdf_deps = []
-
-
 class ExecutePythonHack(flow_base.FlowBase):
   """Execute a signed python hack on a client."""
 
   category = "/Administrative/"
   args_type = ExecutePythonHackArgs
-  result_types = (ExecutePythonHackResult,)
+  result_types = (rdfvalue.RDFString,)
 
   def Start(self):
     """The start method."""
@@ -408,9 +342,9 @@ class ExecutePythonHack(flow_base.FlowBase):
     try:
       blob_iterator, _ = signed_binary_utils.FetchBlobsForSignedBinaryByURN(
           python_hack_urn)
-    except signed_binary_utils.SignedBinaryNotFoundError as ex:
+    except signed_binary_utils.SignedBinaryNotFoundError:
       raise flow_base.FlowError("Python hack %s not found." %
-                                self.args.hack_name) from ex
+                                self.args.hack_name)
 
     # TODO(amoser): This will break if someone wants to execute lots of Python.
     for python_blob in blob_iterator:
@@ -418,7 +352,7 @@ class ExecutePythonHack(flow_base.FlowBase):
           server_stubs.ExecutePython,
           python_code=python_blob,
           py_args=self.args.py_args,
-          next_state=self.Done.__name__)
+          next_state=compatibility.GetName(self.Done))
 
   def Done(self, responses):
     """Retrieves the output for the hack."""
@@ -432,11 +366,8 @@ class ExecutePythonHack(flow_base.FlowBase):
       str_result = result[0:200]
       if len(result) >= 200:
         str_result += "...[truncated]"
-      self.Log("Result: %s", str_result)
-
-      result = ExecutePythonHackResult()
-      result.result_string = response.return_val
-      self.SendReply(result)
+      self.Log("Result: %s" % str_result)
+      self.SendReply(rdfvalue.RDFString(response.return_val))
 
 
 class ExecuteCommandArgs(rdf_structs.RDFProtoStruct):
@@ -455,7 +386,7 @@ class ExecuteCommand(flow_base.FlowBase):
         cmd=self.args.cmd,
         args=shlex.split(self.args.command_line),
         time_limit=self.args.time_limit,
-        next_state=self.Confirmation.__name__)
+        next_state=compatibility.GetName(self.Confirmation))
 
   def Confirmation(self, responses):
     """Confirmation."""
@@ -507,7 +438,7 @@ class OnlineNotification(flow_base.FlowBase):
 <p>
   Client {{ client_id }} ({{ hostname }}) just came online. Click
   <a href='{{ admin_ui }}/#{{ url }}'>here</a> to access this machine.
-  <br />This notification was created by {{ creator }}.
+  <br />This notification was created by %(creator)s.
 </p>
 
 <p>Thanks,</p>
@@ -533,9 +464,11 @@ class OnlineNotification(flow_base.FlowBase):
   def Start(self):
     """Starts processing."""
     if self.args.email is None:
-      self.args.email = self.creator
+      self.args.email = self.token.username
     self.CallClient(
-        server_stubs.Echo, data="Ping", next_state=self.SendMail.__name__)
+        server_stubs.Echo,
+        data="Ping",
+        next_state=compatibility.GetName(self.SendMail))
 
   def SendMail(self, responses):
     """Sends a mail when the client has responded."""
@@ -551,7 +484,7 @@ class OnlineNotification(flow_base.FlowBase):
         admin_ui=config.CONFIG["AdminUI.url"],
         hostname=hostname,
         url="/clients/%s" % self.client_id,
-        creator=self.creator,
+        creator=self.token.username,
         signature=utils.SmartUnicode(config.CONFIG["Email.signature"]))
 
     email_alerts.EMAIL_ALERTER.SendEmail(
@@ -563,7 +496,7 @@ class UpdateClientArgs(rdf_structs.RDFProtoStruct):
   rdf_deps = []
 
 
-class UpdateClient(RecursiveBlobUploadMixin, flow_base.FlowBase):
+class UpdateClient(flow_base.FlowBase):
   """Updates the GRR client to a new version replacing the current client.
 
   This will execute the specified installer on the client and then run
@@ -580,17 +513,14 @@ class UpdateClient(RecursiveBlobUploadMixin, flow_base.FlowBase):
 
   args_type = UpdateClientArgs
 
-  def GenerateUploadRequest(
-      self, offset: int, file_size: int, blob: rdf_crypto.SignedBlob
-  ) -> Tuple[rdf_structs.RDFProtoStruct, Type[server_stubs.ClientActionStub]]:
-    request = rdf_client_action.ExecuteBinaryRequest(
-        executable=blob,
-        offset=offset,
-        write_path=self.state.write_path,
-        more_data=(offset + len(blob.data) < file_size),
-        use_client_env=False)
-
-    return request, server_stubs.UpdateAgent
+  def _BlobIterator(self, binary_id):
+    try:
+      blob_iterator, _ = signed_binary_utils.FetchBlobsForSignedBinaryByID(
+          binary_id)
+    except signed_binary_utils.SignedBinaryNotFoundError:
+      raise flow_base.FlowError("%s is not a valid signed binary." %
+                                self.args.binary_path)
+    return blob_iterator
 
   @property
   def _binary_id(self):
@@ -606,7 +536,90 @@ class UpdateClient(RecursiveBlobUploadMixin, flow_base.FlowBase):
     self.state.write_path = "%d_%s" % (int(
         time.time()), os.path.basename(self.args.binary_path))
 
-    self.StartBlobsUpload(self._binary_id, self.Interrogate.__name__)
+    blob_iterator = self._BlobIterator(self._binary_id)
+    try:
+      first_blob = next(blob_iterator)
+    except StopIteration:
+      raise flow_base.FlowError("File %s is empty." % self.args.blob_path)
+
+    try:
+      next(blob_iterator)
+    except StopIteration:
+      # This is the simple case where the binary fits into a single blob. We can
+      # do all work in a single call to the client.
+      self.CallClient(
+          server_stubs.UpdateAgent,
+          executable=first_blob,
+          more_data=False,
+          offset=0,
+          write_path=self.state.write_path,
+          next_state=compatibility.GetName(self.Interrogate),
+          use_client_env=False)
+      return
+
+    self.CallClient(
+        server_stubs.UpdateAgent,
+        executable=first_blob,
+        more_data=True,
+        offset=0,
+        write_path=self.state.write_path,
+        next_state=compatibility.GetName(self.SendBlobs),
+        use_client_env=False)
+
+  def SendBlobs(self, responses):
+    """Sends all blobs that are not the first or the last."""
+    if not responses.success:
+      raise flow_base.FlowError("Error while calling UpdateAgent: %s" %
+                                responses.status)
+
+    blobs = list(self._BlobIterator(self._binary_id))
+    to_send = blobs[1:-1]
+
+    if not to_send:
+      self.CallStateInline(next_state=compatibility.GetName(self.SendLastBlob))
+      return
+    offset = len(blobs[0].data)
+
+    for i, blob in enumerate(to_send):
+      if i == len(to_send) - 1:
+        next_state = "SendLastBlob"
+      else:
+        next_state = "CheckUpdateAgent"
+
+      self.CallClient(
+          server_stubs.UpdateAgent,
+          executable=blob,
+          more_data=True,
+          offset=offset,
+          write_path=self.state.write_path,
+          next_state=next_state,
+          use_client_env=False)
+      offset += len(blob.data)
+
+  def SendLastBlob(self, responses):
+    """Sends the last blob."""
+    if not responses.success:
+      raise flow_base.FlowError("Error while calling UpdateAgent: %s" %
+                                responses.status)
+
+    blobs = list(self._BlobIterator(self._binary_id))
+    offset = 0
+    for b in blobs[:-1]:
+      offset += len(b.data)
+
+    self.CallClient(
+        server_stubs.UpdateAgent,
+        executable=blobs[-1],
+        more_data=False,
+        offset=offset,
+        write_path=self.state.write_path,
+        next_state=compatibility.GetName(self.Interrogate),
+        use_client_env=False)
+
+  def CheckUpdateAgent(self, responses):
+    if not responses.success:
+      raise flow_base.FlowError("Error while calling UpdateAgent: %s" %
+                                responses.status)
 
   def Interrogate(self, responses):
     if not responses.success:
@@ -614,9 +627,11 @@ class UpdateClient(RecursiveBlobUploadMixin, flow_base.FlowBase):
                                 responses.status)
 
     self.Log("Installer completed.")
-    self.CallFlow(discovery.Interrogate.__name__, next_state=self.End.__name__)
+    self.CallFlow(
+        discovery.Interrogate.__name__,
+        next_state=compatibility.GetName(self.Done))
 
-  def End(self, responses):
+  def Done(self, responses):
     if not responses.success:
       raise flow_base.FlowError(responses.status)
 
@@ -726,14 +741,8 @@ class ClientAlertHandler(ClientAlertHandlerMixin,
       self.SendEmail(message.client_id, message.request.payload.string)
 
 
-class ClientStartupHandler(message_handlers.MessageHandler):
-  """MessageHandler that is invoked when the GRR client process starts."""
-
-  handler_name = "ClientStartupHandler"
-
-  def ProcessMessages(self, msgs):
-    for message in msgs:
-      self.WriteClientStartupInfo(message.client_id, message.request.payload)
+class ClientStartupHandlerMixin(object):
+  """Handles client startup events."""
 
   def WriteClientStartupInfo(self, client_id, new_si):
     """Handle a startup event."""
@@ -745,7 +754,7 @@ class ClientStartupHandler(message_handlers.MessageHandler):
     # or the boot time is more than 5 minutes different.
     if (not current_si or current_si.client_info != new_si.client_info or
         not current_si.boot_time or
-        current_si.boot_time.AbsDiff(new_si.boot_time) > drift):
+        current_si.boot_time - new_si.boot_time > drift):
       try:
         data_store.REL_DB.WriteClientStartupInfo(client_id, new_si)
         labels = new_si.client_info.labels
@@ -758,49 +767,15 @@ class ClientStartupHandler(message_handlers.MessageHandler):
         # On first contact with a new client, this write will fail.
         logging.info("Can't write StartupInfo for unknown client %s", client_id)
 
-    # We do the interrogate-needed check even if the startup info hasn't
-    # changed. This is to accommodate for cases when an interrogation is
-    # requested from the client by creating a temporary file.
-    if self._IsInterrogateNeeded(client_id, current_si, new_si):
-      flow.StartFlow(
-          client_id=client_id,
-          flow_cls=discovery.Interrogate,
-          creator="GRRWorker")
 
-  def _IsInterrogateNeeded(self, client_id: str,
-                           current_si: Optional[rdf_client.StartupInfo],
-                           new_si: rdf_client.StartupInfo) -> bool:
-    # Interrogate the client immediately after its version has been
-    # updated or an interrogate was requested on the endpoint (by the user
-    # creating a file in a predefined location).
-    #
-    # Only start an Interrogate here if `current_si` is set, thus
-    # the client is not new. New clients are interrogated from a different
-    # handler.
-    if not current_si:
-      return False
+class ClientStartupHandler(ClientStartupHandlerMixin,
+                           message_handlers.MessageHandler):
 
-    if (current_si.client_info.client_version
-        == new_si.client_info.client_version and
-        (not new_si.interrogate_requested)):
-      return False
+  handler_name = "ClientStartupHandler"
 
-    min_create_time = rdfvalue.RDFDatetime.Now() - rdfvalue.Duration.From(
-        1, rdfvalue.HOURS)
-
-    flows = data_store.REL_DB.ReadAllFlowObjects(
-        client_id=client_id,
-        min_create_time=min_create_time,
-        include_child_flows=False)
-
-    # Do not start an Interrogate if another Interrogate has been started
-    # recently and is not yet finished.
-    for f in flows:
-      if (f.flow_class_name == discovery.Interrogate.__name__ and
-          f.flow_state in (f.FlowState.UNSET, f.FlowState.RUNNING)):
-        return False
-
-    return True
+  def ProcessMessages(self, msgs):
+    for message in msgs:
+      self.WriteClientStartupInfo(message.client_id, message.request.payload)
 
 
 class KeepAliveArgs(rdf_structs.RDFProtoStruct):
@@ -821,7 +796,7 @@ class KeepAlive(flow_base.FlowBase):
 
   def Start(self):
     self.state.end_time = self.args.duration.Expiry()
-    self.CallStateInline(next_state=self.SendMessage.__name__)
+    self.CallStateInline(next_state=compatibility.GetName(self.SendMessage))
 
   def SendMessage(self, responses):
     if not responses.success:
@@ -829,7 +804,9 @@ class KeepAlive(flow_base.FlowBase):
       raise flow_base.FlowError(responses.status.error_message)
 
     self.CallClient(
-        server_stubs.Echo, data="Wake up!", next_state=self.Sleep.__name__)
+        server_stubs.Echo,
+        data="Wake up!",
+        next_state=compatibility.GetName(self.Sleep))
 
   def Sleep(self, responses):
     if not responses.success:
@@ -839,7 +816,8 @@ class KeepAlive(flow_base.FlowBase):
     if rdfvalue.RDFDatetime.Now() < self.state.end_time - self.sleep_time:
       start_time = rdfvalue.RDFDatetime.Now() + self.sleep_time
       self.CallState(
-          next_state=self.SendMessage.__name__, start_time=start_time)
+          next_state=compatibility.GetName(self.SendMessage),
+          start_time=start_time)
 
 
 class LaunchBinaryArgs(rdf_structs.RDFProtoStruct):
@@ -849,7 +827,7 @@ class LaunchBinaryArgs(rdf_structs.RDFProtoStruct):
   ]
 
 
-class LaunchBinary(RecursiveBlobUploadMixin, flow_base.FlowBase):
+class LaunchBinary(flow_base.FlowBase):
   """Launch a signed binary on a client."""
 
   category = "/Administrative/"
@@ -857,18 +835,15 @@ class LaunchBinary(RecursiveBlobUploadMixin, flow_base.FlowBase):
   args_type = LaunchBinaryArgs
   result_types = (rdf_client_action.ExecuteBinaryResponse,)
 
-  def GenerateUploadRequest(self, offset: int, file_size: int,
-                            blob: rdf_crypto.SignedBlob):
-    # RecursiveBlobUploadMixin expected this function to be overridden.
-    request = rdf_client_action.ExecuteBinaryRequest(
-        executable=blob,
-        args=shlex.split(self.args.command_line),
-        offset=offset,
-        write_path=self.state.write_path,
-        use_client_env=False,
-        more_data=(offset + len(blob.data) < file_size))
+  def _BlobIterator(self, binary_urn):
+    try:
+      blob_iterator, _ = signed_binary_utils.FetchBlobsForSignedBinaryByURN(
+          binary_urn)
+    except signed_binary_utils.SignedBinaryNotFoundError:
+      raise flow_base.FlowError("Executable binary %s not found." %
+                                self.args.binary)
 
-    return request, server_stubs.ExecuteBinaryCommand
+    return blob_iterator
 
   def Start(self):
     """The start method."""
@@ -878,9 +853,91 @@ class LaunchBinary(RecursiveBlobUploadMixin, flow_base.FlowBase):
     binary_urn = rdfvalue.RDFURN(self.args.binary)
     self.state.write_path = "%d_%s" % (time.time(), binary_urn.Basename())
 
-    self.StartBlobsUpload(
-        signed_binary_utils.SignedBinaryIDFromURN(binary_urn),
-        self.End.__name__)
+    blob_iterator = self._BlobIterator(binary_urn)
+    try:
+      first_blob = next(blob_iterator)
+    except StopIteration:
+      raise flow_base.FlowError("File %s is empty." % self.args.binary)
+
+    try:
+      next(blob_iterator)
+    except StopIteration:
+      # This is the simple case where the binary fits into a single blob. We can
+      # do all work in a single call to the client.
+      self.CallClient(
+          server_stubs.ExecuteBinaryCommand,
+          executable=first_blob,
+          more_data=False,
+          args=shlex.split(self.args.command_line),
+          offset=0,
+          write_path=self.state.write_path,
+          next_state=compatibility.GetName(self.End))
+      return
+
+    self.CallClient(
+        server_stubs.ExecuteBinaryCommand,
+        executable=first_blob,
+        more_data=True,
+        offset=0,
+        write_path=self.state.write_path,
+        next_state=compatibility.GetName(self.SendBlobs))
+
+  def SendBlobs(self, responses):
+    """Sends all blobs that are not the first or the last."""
+    if not responses.success:
+      raise flow_base.FlowError("Error while calling UpdateAgent: %s" %
+                                responses.status)
+
+    binary_urn = rdfvalue.RDFURN(self.args.binary)
+    blobs = list(self._BlobIterator(binary_urn))
+    to_send = blobs[1:-1]
+
+    if not to_send:
+      self.CallStateInline(next_state=compatibility.GetName(self.SendLastBlob))
+      return
+    offset = len(blobs[0].data)
+
+    for i, blob in enumerate(to_send):
+      if i == len(to_send) - 1:
+        next_state = "SendLastBlob"
+      else:
+        next_state = "CheckResponse"
+
+      self.CallClient(
+          server_stubs.ExecuteBinaryCommand,
+          executable=blob,
+          more_data=True,
+          offset=offset,
+          write_path=self.state.write_path,
+          next_state=next_state)
+      offset += len(blob.data)
+
+  def SendLastBlob(self, responses):
+    """Sends the last blob."""
+    if not responses.success:
+      raise flow_base.FlowError("Error while calling UpdateAgent: %s" %
+                                responses.status)
+
+    binary_urn = rdfvalue.RDFURN(self.args.binary)
+    blobs = list(self._BlobIterator(binary_urn))
+    offset = 0
+    for b in blobs[:-1]:
+      offset += len(b.data)
+
+    self.CallClient(
+        server_stubs.ExecuteBinaryCommand,
+        executable=blobs[-1],
+        more_data=False,
+        args=shlex.split(self.args.command_line),
+        offset=offset,
+        write_path=self.state.write_path,
+        next_state=compatibility.GetName(self.End),
+        use_client_env=False)
+
+  def CheckResponse(self, responses):
+    if not responses.success:
+      raise flow_base.FlowError("Error while calling ExecuteBinaryCommand: %s" %
+                                responses.status)
 
   def _SanitizeOutput(self, data: bytes) -> Text:
     if len(data) > 2000:

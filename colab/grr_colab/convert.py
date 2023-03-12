@@ -1,14 +1,19 @@
 #!/usr/bin/env python
 """Module containing functions for converting messages to dataframe."""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import collections
 import datetime
-import stat
-from typing import Text, Sequence, List, Any, Dict, Optional
-
 import pandas as pd
+from typing import Text, Sequence, List, Any, Dict, Optional
 
 from google.protobuf import descriptor
 from google.protobuf import message
+from grr_colab._textify import stat
 from grr_response_proto import osquery_pb2
 from grr_response_proto import semantic_pb2
 
@@ -119,7 +124,7 @@ def _get_pretty_value(value: Any, desc: descriptor.FieldDescriptor,
 
   elif desc.GetOptions().Extensions[sem_type].type == 'StatMode':
     data[column_name] = [value]
-    data[column_name + '.pretty'] = [stat.filemode(value)]
+    data[column_name + '.pretty'] = [stat.mode_from_bitmask(value)]
 
   else:
     data[column_name] = [value]
@@ -127,10 +132,9 @@ def _get_pretty_value(value: Any, desc: descriptor.FieldDescriptor,
   return data
 
 
-def reindex_dataframe(
-    df: pd.DataFrame,
-    priority_columns: Optional[List[Text]] = None,
-    ignore_columns: Optional[List[Text]] = None) -> pd.DataFrame:
+def reindex_dataframe(df: pd.DataFrame,
+                      priority_columns: List[Text] = None,
+                      ignore_columns: List[Text] = None) -> pd.DataFrame:
   """Reorders and removes dataframe columns according to the given priorities.
 
   Args:

@@ -1,12 +1,17 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Test the fileview interface."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
-from unittest import mock
 
 from absl import app
 
 from grr_response_core.lib import rdfvalue
+from grr_response_core.lib import utils
 from grr_response_core.lib.util import text
 
 from grr_response_server.databases import db
@@ -23,7 +28,7 @@ class TestFileView(gui_test_lib.GRRSeleniumTest):
   """Test the fileview interface."""
 
   def setUp(self):
-    super().setUp()
+    super(TestFileView, self).setUp()
     # Prepare our fixture.
     self.client_id, self.unapproved_client_id = self.SetupClients(2)
 
@@ -153,16 +158,16 @@ class TestFileView(gui_test_lib.GRRSeleniumTest):
 
     downloaded_files = []
 
-    def FakeDownloadHandle(unused_self, args, context=None):
-      _ = context  # Avoid unused variable linter warnings.
+    def FakeDownloadHandle(unused_self, args, token=None):
+      _ = token  # Avoid unused variable linter warnings.
       downloaded_files.append((args.file_path, args.timestamp))
 
       return api_call_handler_base.ApiBinaryStream(
           filename=os.path.basename(args.file_path),
           content_generator=range(42))
 
-    with mock.patch.object(api_vfs.ApiGetFileBlobHandler, "Handle",
-                           FakeDownloadHandle):
+    with utils.Stubber(api_vfs.ApiGetFileBlobHandler, "Handle",
+                       FakeDownloadHandle):
       # Try to download the file.
       self.Click("css=li[heading=Download]")
 

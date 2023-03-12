@@ -1,18 +1,21 @@
 #!/usr/bin/env python
 """Tests for building and repacking clients."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import os
-from unittest import mock
 
 from absl import app
-import yaml
+import mock
 
 from grr_response_client_builder import build_helpers
 from grr_response_core import config
-from grr_response_core.lib import config_parser
+from grr_response_core.lib import config_lib
 from grr_response_core.lib.rdfvalues import client as rdf_client
+from grr_response_core.lib.util.compat import yaml
 from grr.test_lib import test_lib
 
 
@@ -52,15 +55,15 @@ class BuildTests(test_lib.GRRBaseTest):
       with test_lib.FakeTime(1464120265):
         build_helpers.WriteBuildYaml(fd, context=context)
 
-    self.assertEqual(yaml.safe_load(fd.getvalue()), expected)
+    self.assertEqual(yaml.Parse(fd.getvalue()), expected)
 
   def testGenClientConfig(self):
     with test_lib.ConfigOverrider({"Client.build_environment": "test_env"}):
 
       data = build_helpers.GetClientConfig(["Client Context"], validate=True)
 
-      parser = config_parser.YamlConfigFileParser("")
-      raw_data = parser.RawDataFromBytes(data.encode("utf-8"))
+      parser = config_lib.YamlParser(data=data)
+      raw_data = parser.RawData()
 
       self.assertIn("Client.deploy_time", raw_data)
 
@@ -74,8 +77,7 @@ class BuildTests(test_lib.GRRBaseTest):
           ClientBuilder Context:
             Client.labels: [build-label0, build-label1]
       """
-      parser = config_parser.YamlConfigFileParser("")
-      override = parser.RawDataFromBytes(str_override.encode("utf-8"))
+      override = config_lib.YamlParser(data=str_override).RawData()
       config.CONFIG.MergeData(override)
       # Sanity-check that the secondary config was merged into the global
       # config.
@@ -83,7 +85,7 @@ class BuildTests(test_lib.GRRBaseTest):
 
       context = ["Test Context", "ClientBuilder Context", "Client Context"]
       str_client_config = build_helpers.GetClientConfig(context)
-      client_config = parser.RawDataFromBytes(str_client_config.encode("utf-8"))
+      client_config = config_lib.YamlParser(data=str_client_config).RawData()
       # Settings particular to the ClientBuilder context should not carry over
       # into the generated client config.
       self.assertEqual(client_config["Client.labels"], ["label0", "label1"])

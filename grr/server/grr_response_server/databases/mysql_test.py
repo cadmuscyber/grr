@@ -1,16 +1,22 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import contextlib
 import logging
 import os
 import threading
 import unittest
-from unittest import mock
 import uuid
 import warnings
 
 from absl import app
 from absl import flags
 from absl.testing import absltest
+import mock
 import MySQLdb  # TODO(hanuszczak): This should be imported conditionally.
 from MySQLdb.constants import CR as mysql_conn_errors
 
@@ -20,6 +26,7 @@ from grr_response_server.databases import mysql
 from grr_response_server.databases import mysql_utils
 from grr.test_lib import stats_test_lib
 from grr.test_lib import test_lib
+
 
 flags.DEFINE_string(
     "slow_query_log", "",
@@ -237,7 +244,7 @@ class TestMysqlDB(stats_test_lib.StatsTestMixin,
 
     # MaxAllowedPacketSettingTooLowError will be raised since
     # _SetGlobalVariable call will fail (via the mock). This way
-    # we mimic the situation when _SetGlobalVariable fails due to
+    # we mimick the situation when _SetGlobalVariable fails due to
     # the lack of permissions.
     with mock.patch.object(
         mysql,
@@ -280,31 +287,6 @@ class TestMysqlDB(stats_test_lib.StatsTestMixin,
       for connection in connections:
         self.assertFalse(connection.rollback.called)
         self.assertTrue(connection.close.called)
-
-  @mock.patch.object(mysql, "_SleepWithBackoff", lambda _: None)
-  def testRetryOnRetryableError(self):
-    call_count = 0
-
-    def RaisesRetryableError(connection):
-      nonlocal call_count
-      call_count += 1
-      self.AddUser(connection, str(call_count), str(call_count))
-      if call_count == 1:
-        raise mysql_utils.RetryableError()
-
-    self.db.delegate._RunInTransaction(RaisesRetryableError)
-    self.assertEqual(call_count, 2)
-    users = self.db.delegate._RunInTransaction(self.ListUsers, readonly=True)
-    self.assertLen(users, 1)
-
-  @mock.patch.object(mysql, "_SleepWithBackoff", lambda _: None)
-  def testRetryOnRetryableError_maxRetries(self):
-
-    def RaisesRetryableError(cursor):
-      raise mysql_utils.RetryableError()
-
-    with self.assertRaises(mysql_utils.RetryableError):
-      self.db.delegate._RunInTransaction(RaisesRetryableError)
 
   @mock.patch.object(mysql, "_SleepWithBackoff")
   @mock.patch.object(mysql, "_MAX_RETRY_COUNT", 2)

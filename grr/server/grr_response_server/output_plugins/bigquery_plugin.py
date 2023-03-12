@@ -1,21 +1,25 @@
 #!/usr/bin/env python
+# Lint as: python3
 """BigQuery output plugin."""
-import base64
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 import gzip
-import json
 import logging
 import os
 import tempfile
+
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util.compat import json
 from grr_response_proto import output_plugin_pb2
 from grr_response_server import bigquery
 from grr_response_server import export
 from grr_response_server import output_plugin
-from grr_response_server.export_converters import base
 
 
 class TempOutputTracker(object):
@@ -50,7 +54,7 @@ class TempOutputTracker(object):
 class BigQueryOutputPluginArgs(rdf_structs.RDFProtoStruct):
   protobuf = output_plugin_pb2.BigQueryOutputPluginArgs
   rdf_deps = [
-      base.ExportOptions,
+      export.ExportOptions,
   ]
 
 
@@ -92,14 +96,17 @@ class BigQueryOutputPlugin(output_plugin.OutputPlugin):
     state.failure_count += self.failure_count
 
   def ProcessResponses(self, state, responses):
-    default_metadata = base.ExportedMetadata(
+    default_metadata = export.ExportedMetadata(
         annotations=u",".join(self.args.export_options.annotations),
         source_urn=self.source_urn)
 
     if self.args.convert_values:
       # This is thread-safe - we just convert the values.
       converted_responses = export.ConvertValues(
-          default_metadata, responses, options=self.args.export_options)
+          default_metadata,
+          responses,
+          token=self.token,
+          options=self.args.export_options)
     else:
       converted_responses = responses
 
@@ -110,29 +117,18 @@ class BigQueryOutputPlugin(output_plugin.OutputPlugin):
     """Turn Exported* protos with embedded metadata into a nested dict."""
     row = {}
     for type_info in value.__class__.type_infos:
+      # We are not interested in serializing binary data. JSON files have to be
+      # UTF-8 encoded and dumping arbitrary binary strings is not possible. One
+      # viable solution would be to use e.g. base64 but it is unclear whether
+      # such data would be useful for anyone.
       if isinstance(type_info, rdf_structs.ProtoBinary):
-        # JSON files have to be UTF-8 encoded and dumping arbitrary binary
-        # strings is not possible. We offer optional export of such fields
-        # through base64 encoding.
-        if self.args.base64_bytes_export:
-          field = base64.b64encode(value.Get(type_info.name)).decode("ascii")
-          row[type_info.name] = field
-        else:
-          continue
+        continue
+
       # We only expect the metadata proto to be included as ProtoEmbedded.
-      elif isinstance(type_info, rdf_structs.ProtoEmbedded):
+      if isinstance(type_info, rdf_structs.ProtoEmbedded):
         row[type_info.name] = self._GetNestedDict(value.Get(type_info.name))
       else:
-        field = value.Get(type_info.name)
-        # We want to stringify only not `None` values, since otherwise we end up
-        # we `"None"` strings which do not make much sense neither in JSON nor
-        # in BigQuery. See [1] for related issue report.
-        #
-        # [1]: https://groups.google.com/g/grr-users/c/3BOgnvF5I4s/
-        if field is None:
-          row[type_info.name] = None
-        else:
-          row[type_info.name] = str(field)
+        row[type_info.name] = str(value.Get(type_info.name))
 
     return row
 
@@ -146,7 +142,7 @@ class BigQueryOutputPlugin(output_plugin.OutputPlugin):
     try:
       # We write newline-separated dicts of JSON values, so each JSON value is
       # not allowed to contain any newline characters.
-      dumped_json = json.dumps(dct).replace("\n", "")
+      dumped_json = json.Dump(dct).replace("\n", "")
     except UnicodeDecodeError:
       logging.error("Incorrect primitive dict has been built: %r", dct)
       raise

@@ -1,10 +1,8 @@
 syntax = "proto2";
 
 import "google/protobuf/any.proto";
-import "grr_response_proto/flows.proto";
 import "grr_response_proto/semantic.proto";
 
-package grr;
 
 //
 // Entities.
@@ -82,13 +80,4 @@ message ApiGetGrrBinaryBlobArgs {
   optional ApiGrrBinary.Type type = 1
       [(sem_type) = { description: "Binary type." }];
   optional string path = 2 [(sem_type) = { description: "Binary path." }];
-}
-
-message ApiUiConfig {
-  optional string heading = 1;
-  optional string report_url = 2;
-  optional string help_url = 3;
-  optional string grr_version = 4;
-  optional string profile_image_url = 5;
-  optional HuntRunnerArgs default_hunt_runner_args = 6;
 }

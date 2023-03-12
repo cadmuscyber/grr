@@ -1,8 +1,6 @@
 goog.module('grrUi.core.timeSinceFilter');
 goog.module.declareLegacyNamespace();
 
-const timeService = goog.requireType('grrUi.core.timeService');
-
 
 
 /**
@@ -10,7 +8,7 @@ const timeService = goog.requireType('grrUi.core.timeService');
  * converting it into a string with a rough estimate of seconds/minutes/days
  * passed since the moment described by input.
  *
- * @param {timeService.TimeService} grrTimeService
+ * @param {grrUi.core.timeService.TimeService} grrTimeService
  * @param {number} input Time since epoch in microseconds.
  * @return {string} Human readable string with rough estimate of
  *     seconds/minutes/days passed since 'input' moment.
@@ -51,7 +49,7 @@ const filterImplementation = function(grrTimeService, input) {
 /**
  * Angular filter definition.
  *
- * @param {timeService.TimeService} grrTimeService
+ * @param {grrUi.core.timeService.TimeService} grrTimeService
  * @return {!Function}
  * @export
  * @ngInject

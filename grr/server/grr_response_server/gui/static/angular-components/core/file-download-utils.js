@@ -4,11 +4,10 @@ goog.module.declareLegacyNamespace();
 
 
 var AFF4_PREFIXES = {
-  'OS': 'fs/os',           // PathSpec.PathType.OS
-  'TSK': 'fs/tsk',         // PathSpec.PathType.TSK
-  'REGISTRY': 'registry',  // PathSpec.PathType.REGISTRY
-  'TMPFILE': 'temp',       // PathSpec.PathType.TMPFILE
-  'NTFS': 'fs/ntfs',       // PathSpec.PathType.NTFS
+  'OS': "fs/os",  // PathSpec.PathType.OS
+  'TSK': "fs/tsk",  // PathSpec.PathType.TSK
+  'REGISTRY': "registry",  // PathSpec.PathType.REGISTRY
+  'TMPFILE': "temp",  // PathSpec.PathType.TMPFILE
 };
 
 /**
@@ -48,8 +47,8 @@ exports.pathSpecToAff4Path = function(pathspec, clientId) {
 
   var result, start;
   if (components.length > 1 && firstComponent['pathtype']['value'] == 'OS' &&
-      (components[1]['pathtype']['value'] == 'TSK' ||
-       components[1]['pathtype']['value'] == 'NTFS')) {
+      components[1]['pathtype']['value'] == 'TSK') {
+
     var dev = firstComponent['path']['value'];
 
     if (angular.isDefined(firstComponent['offset'])) {
@@ -60,9 +59,7 @@ exports.pathSpecToAff4Path = function(pathspec, clientId) {
       dev = dev.substring(1);
     }
 
-    result = [
-      'aff4:', clientId, AFF4_PREFIXES[components[1]['pathtype']['value']], dev
-    ];
+    result = ['aff4:', clientId, AFF4_PREFIXES['TSK'], dev];
     start = 1;
   } else {
     result = ['aff4:', clientId, AFF4_PREFIXES[firstComponent['pathtype']['value']]];

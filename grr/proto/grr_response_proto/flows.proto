@@ -10,7 +10,6 @@ import "grr_response_proto/output_plugin.proto";
 import "grr_response_proto/semantic.proto";
 import "grr_response_proto/sysinfo.proto";
 
-package grr;
 
 message CloudMetadataRequest {
   optional string bios_version_regex = 1;
@@ -105,10 +104,38 @@ message HuntContext {
     type: "RDFDatetime",
   }];
   optional ClientResourcesStats usage_stats = 12;
-  reserved 13;
-  reserved 14;
-  reserved 15;
-  reserved 16;
+  optional uint64 clients_with_results_count = 13;
+  optional uint64 results_count = 14;
+  optional uint64 completed_clients_count = 15;
+  optional uint64 clients_queued_count = 16;
+}
+
+// This is the user's access token.
+// Next field: 9
+message ACLToken {
+  optional string username = 1;
+
+  // A reason for access (e.g. case name, investigation id).
+  optional string reason = 2;
+
+  // What kind of access is required? r - read, w - write, x - execute (for
+  // flows)
+  optional string requested_access = 3;
+
+
+  optional uint64 expiry = 5 [(sem_type) = {
+    type: "RDFDatetime",
+    description: "When does this token expire?",
+  }];
+
+  // The IP this request originated from as well as proxies on the way.
+  repeated string source_ips = 6;
+
+  // The issuing process.
+  optional string process = 7;
+
+  // Is this action an emergency action?
+  optional bool is_emergency = 8;
 }
 
 message FlowLikeObjectReference {
@@ -348,9 +375,8 @@ message HuntRunnerArgs {
       description: "The maximum number of clients to engage per minute. "
                    "A rate of 0 means to schedule clients as fast as possible."
     },
-    // NOTE: this value is kept here for backwards-compatibility. The actual
-    // default client_rate value is now configured by the
-    // Hunt.default_client_rate configuration option.
+    // The protobuf library has a small inconsistency and reports a 20.0 as long
+    // (instead of float). We force it to be float here by making it 20.5.
     default = 20.5
   ];
 
@@ -549,12 +575,6 @@ message ExecutePythonHackArgs {
       [(sem_type) = { description: "Python Hack Arguments." }];
 }
 
-/// A message representing a result of an execution of a Python script.
-message ExecutePythonHackResult {
-  /// A string value that the Python script returned.
-  optional string result_string = 1;
-}
-
 // Next field ID: 4
 message ExecuteCommandArgs {
   optional string cmd = 1 [(sem_type) = {
@@ -612,25 +632,58 @@ message LaunchBinaryArgs {
   }];
 }
 
-// Next field ID: 17
+// Next field ID: 8
+message WinUserActivityInvestigationArgs {
+  optional string username = 1 [(sem_type) = {
+    description: "The user to target the actions to.",
+  }];
+
+  optional bool get_browser_history = 2 [
+    (sem_type) = {
+      description: "Call each of the browser history flows.",
+    },
+    default = true
+  ];
+
+  optional uint64 recursive_list_homedir = 3 [
+    (sem_type) = {
+      description: "Recursively list the users homedir to this depth.",
+    },
+    default = 5
+  ];
+
+  optional uint64 recursive_list_user_registry = 4 [
+    (sem_type) = {
+      description: "Recursively list the users registry hive.",
+    },
+    default = 5
+  ];
+
+  repeated string artifact_list = 5 [(sem_type) = {
+    description: "A list of Artifact names.",
+    type: "ArtifactName",
+  }];
+
+  optional bool timeline_collected_data = 6 [
+    (sem_type) = {
+      description: "Once complete create a timeline for the host.",
+    },
+    default = true
+  ];
+
+  optional bool use_tsk = 7 [(sem_type) = {
+    description: "Use raw filesystem access where possible.",
+  }];
+}
+
+// Next field ID: 15
 message ArtifactCollectorFlowArgs {
   repeated string artifact_list = 1 [(sem_type) = {
     type: "ArtifactName",
     description: "A list of Artifact class names.",
   }];
 
-  // Deprecated.
-  // TODO: Remove after 2021-04-01.
   optional bool use_tsk = 2 [
-    (sem_type) = {
-      description: "(Deprecated) Whether raw filesystem access should be used. "
-                   "Use use_raw_filesystem_access insteaed."
-      label: HIDDEN,
-    },
-    default = false
-  ];
-
-  optional bool use_raw_filesystem_access = 15 [
     (sem_type) = {
       description: "Whether raw filesystem access should be used.",
     },
@@ -721,41 +774,16 @@ message ArtifactCollectorFlowArgs {
     description: "Whether the dependencies should be collected as well or the"
                  " interrogation flow is used.",
   }];
-
-  optional PathSpec.ImplementationType implementation_type = 16 [(sem_type) = {
-    label: ADVANCED,
-    description: "Force use of an implementation."
-  }];
 }
 
-message ArtifactProgress {
-  optional string name = 1;
-  optional uint32 num_results = 2;
-}
-
-message ArtifactCollectorFlowProgress {
-  repeated ArtifactProgress artifacts = 1;
-}
-
-// Next field ID: 12
+// Next field ID: 10
 message ArtifactFilesDownloaderFlowArgs {
   repeated string artifact_list = 1 [(sem_type) = {
     type: "ArtifactName",
     description: "A list of Artifact class names.",
   }];
 
-  // Deprecated.
-  // TODO: Remove after 2021-04-01.
   optional bool use_tsk = 2 [
-    (sem_type) = {
-      description: "(Deprecated) Whether raw filesystem access should be used. "
-                   "Use use_raw_filesystem_access instead."
-      label: HIDDEN,
-    },
-    default = false
-  ];
-
-  optional bool use_raw_filesystem_access = 10 [
     (sem_type) = {
       description: "Whether raw filesystem access should be used.",
     },
@@ -771,11 +799,6 @@ message ArtifactFilesDownloaderFlowArgs {
     },
     default = 500000000
   ];
-
-  optional PathSpec.ImplementationType implementation_type = 11 [(sem_type) = {
-    label: ADVANCED,
-    description: "Force use of an implementation."
-  }];
 }
 
 // Next field ID: 5
@@ -936,7 +959,7 @@ message GrepArgs {
   optional GrepSpec request = 1;
 }
 
-// Next field ID: 6
+// Next field ID: 5
 message GlobArgs {
   repeated string paths = 1 [(sem_type) = {
     type: "GlobExpression",
@@ -967,11 +990,6 @@ message GlobArgs {
     },
     default = false
   ];
-
-  optional PathSpec.ImplementationType implementation_type = 5 [(sem_type) = {
-    label: ADVANCED,
-    description: "Force use of an implementation."
-  }];
 }
 
 // Next field ID: 5
@@ -1041,54 +1059,12 @@ message ChromeHistoryArgs {
   }];
 }
 
-enum Browser {
-  UNDEFINED = 0;
-  CHROME = 1;
-  FIREFOX = 2;
-  INTERNET_EXPLORER = 3;
-  OPERA = 4;
-  SAFARI = 5;
-}
-
-// Next field ID: 7
-message CollectBrowserHistoryArgs {
-  repeated Browser browsers = 6;
-}
-
-message CollectBrowserHistoryResult {
-  optional Browser browser = 1;
-  optional StatEntry stat_entry = 2;
-}
-
-// Next id: 6
-message BrowserProgress {
-  optional Browser browser = 5;
-  enum Status {
-    UNDEFINED = 0;
-    IN_PROGRESS = 1;
-    SUCCESS = 2;
-    ERROR = 3;
-  }
-  optional Status status = 1;
-  optional string description = 2 [(sem_type) = {
-    description: "A description complementing the browser's status. "
-                 "Only expected to be set on error."
-  }];
-  optional uint32 num_collected_files = 3 [(sem_type) = {
-    description: "Number of files collected for this browser. "
-                 "Only expected to be set on success."
-  }];
-  optional string flow_id = 4 [(sem_type) = {
-    description: "Flow id of the flow responsible for collecting files for "
-                 "this particular browser. Each browser's history is "
-                 "collected by a separate flow, hence flow_id will be "
-                 "unique for every browser."
-  }];
-}
-
-// Next id: 7
-message CollectBrowserHistoryProgress {
-  repeated BrowserProgress browsers = 6;
+message BrowserHistoryFlowArgs {
+  optional bool collect_chrome = 1;
+  optional bool collect_firefox = 2;
+  optional bool collect_internet_explorer = 3;
+  optional bool collect_opera = 4;
+  optional bool collect_safari = 5;
 }
 
 // The following messages are for SUID flows which are designed to control
@@ -1417,7 +1393,7 @@ message VerifyHuntOutputPluginsCronFlowArgs {
   }];
 }
 
-// Next field ID: 5
+// Next field ID: 4
 message ListProcessesArgs {
   // TODO: Rename to filepath_regex.
   optional string filename_regex = 1 [
@@ -1442,12 +1418,6 @@ message ListProcessesArgs {
                  "network connections in any status listed here, it will be "
                  "considered a match",
   }];
-
-  // Identifiers of processes to fetch the information for.
-  //
-  // If present, only processes with identifiers corresponding to those that are
-  // specified here are going to be included in the results.
-  repeated uint32 pids = 4;
 }
 
 // Next field ID: 3
@@ -1559,7 +1529,7 @@ message FileFinderContentsRegexMatchCondition {
     FIRST_HIT = 1;  // Stop after one hit.
   }
 
-  // TODO: Remove redundant semantic type here.
+  // TODO: Remove reduntant semantic type here.
   optional bytes regex = 4 [(sem_type) = { type: "RDFBytes" }];
 
   optional Mode mode = 6 [
@@ -1609,7 +1579,7 @@ message FileFinderContentsLiteralMatchCondition {
     FIRST_HIT = 1;  // Stop after one hit.
   }
 
-  // TODO: Remove redundant semantic type here.
+  // TODO: Remove reduntant semantic type here.
   optional bytes literal = 5 [(sem_type) = { type: "RDFBytes" }];
 
   optional Mode mode = 6 [
@@ -1837,7 +1807,7 @@ message FileFinderAction {
   optional FileFinderStatActionOptions stat = 4;
 }
 
-// Next field ID: 12
+// Next field ID: 11
 message FileFinderArgs {
   repeated string paths = 1 [(sem_type) = {
     type: "GlobExpression",
@@ -1900,11 +1870,6 @@ message FileFinderArgs {
 
   // DEPRECATED: Token has been moved to `FileFinderDownloadActionOptions`.
   // optional UploadToken upload_token = 10;
-
-  optional PathSpec.ImplementationType implementation_type = 11 [(sem_type) = {
-    label: ADVANCED,
-    description: "Force use of an implementation."
-  }];
 }
 
 // TODO(amoser): This needs a bit more structure. There should be one
@@ -1939,120 +1904,6 @@ message CollectSingleFileArgs {
 message CollectSingleFileResult {
   optional StatEntry stat = 1;
   optional Hash hash = 2;
-}
-
-message CollectSingleFileProgress {
-  enum Status {
-    UNDEFINED = 0;
-    IN_PROGRESS = 1;
-    COLLECTED = 2;
-    NOT_FOUND = 3;
-    FAILED = 4;
-  }
-  optional Status status = 1;
-  optional CollectSingleFileResult result = 2;
-  optional string error_description = 3;
-}
-
-message CollectFilesByKnownPathArgs {
-  // Path files to be collected.
-  repeated string paths = 1;
-
-  enum CollectionLevel {
-    UNDEFINED = 0;
-
-    // Collect only Stat information about the file (metadata about the file).
-    STAT = 1;
-
-    // Collect both Stat information and the file hash, but not the file itself.
-    HASH = 2;
-
-    // Collect Stat, Hash and File contents. Collects the whole file.
-    CONTENT = 3;
-
-    // TODO: Add partial file collection options.
-  }
-  optional CollectionLevel collection_level = 2;
-
-  // TODO: Add file size/offset option arguments.
-}
-
-message CollectFilesByKnownPathResult {
-  enum Status {
-    UNDEFINED = 0;
-    IN_PROGRESS = 1;
-    COLLECTED = 2;
-    NOT_FOUND = 3;
-    FAILED = 4;
-  }
-
-  // File stat information. Will be present in case of successful collection.
-  optional StatEntry stat = 1;
-
-  // File hash information. Will be present in case of successful collection.
-  optional Hash hash = 2;
-
-  // Status of the file collection. Will always be present.
-  optional Status status = 3;
-
-  // Error description. Will be present in case of failed collection.
-  optional string error = 4;
-}
-
-message CollectFilesByKnownPathProgress {
-  // Number of files being collected (waiting for client to respond).
-  optional uint64 num_in_progress = 1;
-
-  // Number of files with retried collection.
-  //
-  // We first try to collect with the `OS` path type. If that fails, we retry
-  // with the `Server.raw_filesystem_access_pathtype` config option. When that
-  // happens, we increment this number.
-  optional uint64 num_raw_fs_access_retries = 2;
-
-  // Number of files successfully collected (client responded with file).
-  optional uint64 num_collected = 3;
-
-  // Number of files that failed collection (client responded with error).
-  optional uint64 num_failed = 4;
-}
-
-message CollectMultipleFilesArgs {
-  repeated string path_expressions = 1 [(sem_type) = {
-    type: "GlobExpression",
-    description: "Files matching any of these expressions will be collected",
-  }];
-
-  optional FileFinderModificationTimeCondition modification_time = 2;
-  optional FileFinderAccessTimeCondition access_time = 3;
-  optional FileFinderInodeChangeTimeCondition inode_change_time = 4;
-  optional FileFinderSizeCondition size = 5;
-  optional FileFinderExtFlagsCondition ext_flags = 6;
-  optional FileFinderContentsRegexMatchCondition contents_regex_match = 7;
-  optional FileFinderContentsLiteralMatchCondition contents_literal_match = 8;
-}
-
-message CollectMultipleFilesResult {
-  reserved 1;
-
-  enum Status {
-    UNDEFINED = 0;
-    COLLECTED = 1;
-    FAILED = 2;
-  }
-
-  optional StatEntry stat = 2;
-  optional Hash hash = 3;
-  optional Status status = 4;
-  optional string error = 5;
-}
-
-message CollectMultipleFilesProgress {
-  optional uint64 num_found = 1;
-  optional uint64 num_in_progress = 2;
-  optional uint64 num_raw_fs_access_retries = 3;
-  optional uint64 num_collected = 4;
-  optional uint64 num_failed = 5;
 }
 
 // Next field ID: 4
@@ -2153,7 +2004,7 @@ message KnowledgeBaseInitializationArgs {
 // Next field ID: 2
 message EndToEndTestFlowArgs {
   repeated string test_names = 1 [(sem_type) = {
-    description: "List of endtoend test classes to run. If none are specified,"
+    description: "List of endtoend test classes to run. If none are specifed,"
                  " run all automated endtoend tests.",
   }];
 }
@@ -2236,7 +2087,7 @@ message YaraSignatureShard {
   optional bytes payload = 2;
 }
 
-// Next field ID: 24
+// Next field ID: 23
 message YaraProcessScanRequest {
   optional string yara_signature = 1 [(sem_type) = {
     type: "YaraSignature",
@@ -2279,100 +2130,117 @@ message YaraProcessScanRequest {
         [(description) = "All errors, except privilege issues when reading "
                          "process memory."];
   }
-  optional ErrorPolicy include_errors_in_results = 14 [(sem_type) = {
-    description: "Include processes that we failed to scan into returned "
-                 "results."
-    label: ADVANCED,
-  }];
-  optional bool include_misses_in_results = 15 [(sem_type) = {
-    description: "Include processes that came back without matches into "
-                 "returned results."
-    label: ADVANCED,
-  }];
-  optional bool ignore_grr_process = 4 [(sem_type) = {
-    description: "By default, the GRR process is not scanned. Clear this "
-                 "flag to change this behavior.",
-    label: ADVANCED,
-  }];
+  optional ErrorPolicy include_errors_in_results = 14 [
+    (sem_type) = {
+      description: "Include processes that we failed to scan into returned "
+                   "results."
+      label: ADVANCED,
+    },
+    default = NO_ERRORS
+  ];
+  optional bool include_misses_in_results = 15 [
+    (sem_type) = {
+      description: "Include processes that came back without matches into "
+                   "returned results."
+      label: ADVANCED,
+    },
+    default = false
+  ];
+  optional bool ignore_grr_process = 4 [
+    default = true,
+    (sem_type) = {
+      description: "By default, the GRR process is not scanned. Clear this "
+                   "flag to change this behavior.",
+      label: ADVANCED,
+    }
+  ];
   optional uint32 per_process_timeout = 5 [(sem_type) = {
     description: "A timeout in seconds that is applied while scanning; "
                  "applies to each scan individually.",
   }];
-  optional uint64 chunk_size = 6 [(sem_type) = {
-    description: "The chunk size to use when scanning large memory regions.",
-    label: ADVANCED,
-  }];
-  optional uint64 overlap_size = 7 [(sem_type) = {
-    description: "The overlap size to use when scanning large memory "
-                 "regions.",
-    label: ADVANCED,
-  }];
-  optional bool skip_special_regions = 8 [(sem_type) = {
-    description: "Set this flag to avoid scanning device backed regions and "
-                 "guard pages. Applies to Windows only.",
-    label: ADVANCED,
-  }];
-  optional bool skip_mapped_files = 9 [(sem_type) = {
-    description: "Set this flag to avoid scanning mapped files. Applies to "
-                 "Linux only.",
-    label: ADVANCED,
-  }];
-  optional bool skip_shared_regions = 10 [(sem_type) = {
-    description: "Set this flag to avoid scanning shared regions. Applies to "
-                 "Linux and macOS.",
-    label: ADVANCED,
-  }];
-  optional bool skip_executable_regions = 11 [(sem_type) = {
-    description: "Set this flag to avoid scanning executable regions. "
-                 "Applies to Linux and macOS.",
-    label: ADVANCED,
-  }];
-  optional bool skip_readonly_regions = 12 [(sem_type) = {
-    description: "Set this flag to avoid scanning readonly regions. Applies "
-                 "to Linux and macOS.",
-    label: ADVANCED,
-  }];
-  optional bool dump_process_on_match = 13 [(sem_type) = {
-    description: "Set this flag to schedule a process memory dump on every "
-                 "signature match.",
-    label: ADVANCED,
-  }];
+  optional uint64 chunk_size = 6 [
+    (sem_type) = {
+      description: "The chunk size to use when scanning large memory regions.",
+      label: ADVANCED,
+    },
+    default = 104857600  // 100 MB
+  ];
+  optional uint64 overlap_size = 7 [
+    (sem_type) = {
+      description: "The overlap size to use when scanning large memory "
+                   "regions.",
+      label: ADVANCED,
+    },
+    default = 10485760  // 10 MB
+  ];
+  optional bool skip_special_regions = 8 [
+    (sem_type) = {
+      description: "Set this flag to avoid scanning device backed regions and "
+                   "guard pages. Applies to Windows only.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
+  optional bool skip_mapped_files = 9 [
+    (sem_type) = {
+      description: "Set this flag to avoid scanning mapped files. Applies to "
+                   "Linux only.",
+      label: ADVANCED,
+    },
+    default = true
+  ];
+  optional bool skip_shared_regions = 10 [
+    (sem_type) = {
+      description: "Set this flag to avoid scanning shared regions. Applies to "
+                   "Linux and macOS.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
+  optional bool skip_executable_regions = 11 [
+    (sem_type) = {
+      description: "Set this flag to avoid scanning executable regions. "
+                   "Applies to Linux and macOS.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
+  optional bool skip_readonly_regions = 12 [
+    (sem_type) = {
+      description: "Set this flag to avoid scanning readonly regions. Applies "
+                   "to Linux and macOS.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
+  optional bool dump_process_on_match = 13 [
+    (sem_type) = {
+      description: "Set this flag to schedule a process memory dump on every "
+                   "signature match.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
   optional uint32 max_results_per_process = 16 [(sem_type) = {
     description: "Set this to limit the number of matches returned for "
                  "each process scanned.",
     label: ADVANCED,
   }];
-  optional uint64 process_dump_size_limit = 19 [(sem_type) = {
-    description: "Maximum amount of raw process memory to dump. The first "
-                 "memory block going over the limit will not be written "
-                 "anymore. 0 indicates no limit.",
-    type: "ByteSize",
-    label: ADVANCED,
-  }];
+  optional uint64 process_dump_size_limit = 19 [
+    (sem_type) = {
+      description: "Maximum amount of raw process memory to dump. The first "
+                   "memory block going over the limit will not be written "
+                   "anymore. 0 indicates no limit.",
+      type: "ByteSize",
+      label: ADVANCED,
+    },
+    default = 0
+  ];
   optional uint64 scan_runtime_limit_us = 21 [(sem_type) = {
     description: "Runtime limit for the whole scan including all processes "
                  "in microseconds. This limit is for the scan only and is not "
                  "applied to the dumping."
     type: "Duration",
-  }];
-
-  // ImplementationType has been introduced for rolling-out sandboxing.
-  // The purpose is to make it possible to switch the implementation at
-  // run-time via the UI in case there are problems.
-  // TODO: Once sandboxing becomes the default implementation,
-  // this should be removed.
-
-  enum ImplementationType {
-    // When DEFAULT is set then the implementation set in the client
-    // configuration is used.
-    DEFAULT = 0;
-    DIRECT = 1;
-    SANDBOX = 2;
-  }
-
-  optional ImplementationType implementation_type = 23 [(sem_type) = {
-    description: "Force use of an implementation.",
-    label: ADVANCED,
   }];
 }
 
@@ -2449,53 +2317,80 @@ message YaraProcessDumpArgs {
     description: "A regex to match against the process name. Only matching "
                  "names will be dumped.",
   }];
-  optional bool ignore_grr_process = 3 [(sem_type) = {
-    description: "By default, the GRR process is not dumped. Clear this "
-                 "flag to change this behavior.",
-    label: ADVANCED,
-  }];
-  optional bool dump_all_processes = 4 [(sem_type) = {
-    description: "This dumps all processes. Might return lots of data, "
-                 "use with care.",
-    label: ADVANCED,
-  }];
-  optional uint64 size_limit = 5 [(sem_type) = {
-    description: "Maximum amount of raw process memory to dump. Applies to "
-                 "all requested processes together. The first memory region "
-                 "exceeding the limit will be dumped partially. No "
-                 "following regions will be dumped. 0 indicates no limit.",
-    type: "ByteSize",
-    label: ADVANCED,
-  }];
-  optional uint64 chunk_size = 6 [(sem_type) = {
-    description: "The chunk size to use when reading large memory regions.",
-    label: ADVANCED,
-  }];
-  optional bool skip_special_regions = 7 [(sem_type) = {
-    description: "Set this flag to avoid dumping device backed regions and "
-                 "guard pages. Applies to Windows only.",
-    label: ADVANCED,
-  }];
-  optional bool skip_mapped_files = 8 [(sem_type) = {
-    description: "Set this flag to avoid dumping mapped files. Applies to "
-                 "Linux only.",
-    label: ADVANCED,
-  }];
-  optional bool skip_shared_regions = 9 [(sem_type) = {
-    description: "Set this flag to avoid dumping shared regions. Applies to "
-                 "Linux and macOS.",
-    label: ADVANCED,
-  }];
-  optional bool skip_executable_regions = 10 [(sem_type) = {
-    description: "Set this flag to avoid dumping executable regions.",
-    label: ADVANCED,
-  }];
-  optional bool skip_readonly_regions = 11 [(sem_type) = {
-    description: "Set this flag to avoid dumping readonly regions.",
-    label: ADVANCED,
-  }];
+  optional bool ignore_grr_process = 3 [
+    default = true,
+    (sem_type) = {
+      description: "By default, the GRR process is not dumped. Clear this "
+                   "flag to change this behavior.",
+      label: ADVANCED,
+    }
+  ];
+  optional bool dump_all_processes = 4 [
+    default = false,
+    (sem_type) = {
+      description: "This dumps all processes. Might return lots of data, "
+                   "use with care.",
+      label: ADVANCED,
+    }
+  ];
+  optional uint64 size_limit = 5 [
+    (sem_type) = {
+      description: "Maximum amount of raw process memory to dump. Applies to "
+                   "all requested processes together. The first memory region "
+                   "exceeding the limit will be dumped partially. No "
+                   "following regions will be dumped. 0 indicates no limit.",
+      type: "ByteSize",
+      label: ADVANCED,
+    },
+    default = 0
+  ];
+  optional uint64 chunk_size = 6 [
+    (sem_type) = {
+      description: "The chunk size to use when reading large memory regions.",
+      label: ADVANCED,
+    },
+    default = 104857600  // 100 MB
+  ];
+  optional bool skip_special_regions = 7 [
+    (sem_type) = {
+      description: "Set this flag to avoid dumping device backed regions and "
+                   "guard pages. Applies to Windows only.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
+  optional bool skip_mapped_files = 8 [
+    (sem_type) = {
+      description: "Set this flag to avoid dumping mapped files. Applies to "
+                   "Linux only.",
+      label: ADVANCED,
+    },
+    default = true
+  ];
+  optional bool skip_shared_regions = 9 [
+    (sem_type) = {
+      description: "Set this flag to avoid dumping shared regions. Applies to "
+                   "Linux and macOS.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
+  optional bool skip_executable_regions = 10 [
+    (sem_type) = {
+      description: "Set this flag to avoid dumping executable regions.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
+  optional bool skip_readonly_regions = 11 [
+    (sem_type) = {
+      description: "Set this flag to avoid dumping readonly regions.",
+      label: ADVANCED,
+    },
+    default = false
+  ];
   repeated uint64 prioritize_offsets = 12 [(sem_type) = {
-    description: "Offsets to prioritize when the process memory size is "
+    description: "Offets to prioritize when the process memory size is "
                  "larger than size_limit. First, memory pages containing the "
                  "offsets will be dumped up to size_limit. If not reached, "
                  "the remaining memory pages will be dumped up to size_limit.",
@@ -2599,21 +2494,12 @@ message FlowRequest {
   optional string flow_id = 2;
   optional uint64 request_id = 3;
   optional string next_state = 4;
-  // If specified, the request is treated as 'incremental', that is:
-  // * callback_state is invoked every time new batch of responses arrives
-  // * next_state will be invoked anyway, as usual, when all the responses
-  //   are received.
-  // * callback_state calls are guaranteed to get responses in the correct
-  //   order.
-  optional string callback_state = 9;
   optional Dict request_data = 5;
   optional uint64 start_time = 6 [(sem_type) = {
     type: "RDFDatetime",
   }];
   optional bool needs_processing = 7;
   optional uint64 nr_responses_expected = 8;
-  // Id of the response that should be the next for incremental processing.
-  optional uint64 next_response_id = 10;
 }
 
 // Next id: 8
@@ -2637,17 +2523,6 @@ message FlowResult {
   }];
   optional string tag = 2;
   optional google.protobuf.Any payload = 3;
-}
-
-message FlowError {
-  optional string client_id = 1;
-  optional string flow_id = 2;
-  optional string hunt_id = 3;
-  optional uint64 timestamp = 4 [(sem_type) = {
-    type: "RDFDatetime",
-  }];
-  optional string tag = 5;
-  optional google.protobuf.Any payload = 6;
 }
 
 // Next id: 6
@@ -2715,19 +2590,17 @@ message ClientActionRequest {
 
 // Next id: 35
 message Flow {
-  reserved 10;
-
   optional string flow_id = 1;
   optional string client_id = 2;
   optional string flow_class_name = 3;
   optional string parent_flow_id = 4;
   optional string parent_hunt_id = 31;
   optional uint64 parent_request_id = 5;
-  // TODO(hanuszczak): `long_flow_id` is data duplication. Consider removing it.
   optional string long_flow_id = 6;
   optional google.protobuf.Any args = 7;
   optional AttributedDict persistent_data = 8;
   optional ClientCrash client_crash_info = 9;
+  optional PendingFlowTermination pending_termination = 10;
   optional string error_message = 11;
   optional string backtrace = 12;
   optional uint64 create_time = 13 [(sem_type) = {
@@ -2812,37 +2685,3 @@ message FlowOutputPluginLogEntry {
 }
 
 message EmptyFlowArgs {}
-
-message GlobComponentExplanation {
-  optional string glob_expression = 1;
-  repeated string examples = 2;
-}
-
-message ScheduledFlow {
-  optional string scheduled_flow_id = 1;
-  optional string client_id = 2;
-  optional string creator = 3;
-  optional string flow_name = 4;
-  optional google.protobuf.Any flow_args = 5;
-  optional FlowRunnerArgs runner_args = 6;
-  optional uint64 create_time = 7 [(sem_type) = {
-    type: "RDFDatetime",
-  }];
-  optional string error = 8;
-}
-
-message FlowResultCount {
-  optional string type = 1;
-  optional string tag = 2;
-  optional uint64 count = 3;
-}
-
-message FlowResultMetadata {
-  repeated FlowResultCount num_results_per_type_tag = 2;
-
-  // Bool to distinguish between the repeated field not being set vs being
-  // empty.
-  optional bool is_metadata_set = 3;
-}
-
-message DefaultFlowProgress {}

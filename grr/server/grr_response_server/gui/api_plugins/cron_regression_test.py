@@ -1,10 +1,15 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This module contains regression tests for cron-related API handlers."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
+from grr_response_core.lib.util import compatibility
 from grr_response_server import cronjobs
 from grr_response_server import data_store
 from grr_response_server import foreman_rules
@@ -35,7 +40,8 @@ class ApiListCronJobsHandlerRegressionTest(
           periodicity="1d",
           lifetime="2h",
           description="foo",
-          enabled=False)
+          enabled=False,
+          token=self.token)
 
     # ...one disabled cron job,
     with test_lib.FakeTime(84):
@@ -43,14 +49,16 @@ class ApiListCronJobsHandlerRegressionTest(
           flow_name=file_finder.ClientFileFinder.__name__,
           periodicity="7d",
           lifetime="1d",
-          description="bar")
+          description="bar",
+          token=self.token)
 
     # ...and one failing cron job.
     with test_lib.FakeTime(126):
       cron_id_3 = self.CreateCronJob(
           flow_name=filesystem.ListDirectory.__name__,
           periodicity="7d",
-          lifetime="1d")
+          lifetime="1d",
+          token=self.token)
 
     with test_lib.FakeTime(230):
       data_store.REL_DB.UpdateCronJob(
@@ -68,8 +76,8 @@ class ApiListCronJobsHandlerRegressionTest(
         })
 
 
-def _GetRunId(cron_job_name):
-  runs = cronjobs.CronManager().ReadJobRuns(cron_job_name)
+def _GetRunId(cron_job_name, token=None):
+  runs = cronjobs.CronManager().ReadJobRuns(cron_job_name, token=token)
 
   try:
     return runs[0].run_id
@@ -80,7 +88,8 @@ def _GetRunId(cron_job_name):
 def _SetupAndRunVersionBreakDownCronjob():
   with test_lib.FakeTime(44):
     manager = cronjobs.CronManager()
-    cron_job_name = cron_system.GRRVersionBreakDownCronJob.__name__
+    cron_job_name = compatibility.GetName(
+        cron_system.GRRVersionBreakDownCronJob)
     cronjobs.ScheduleSystemCronJobs(names=[cron_job_name])
     manager.RunOnce()
     manager._GetThreadPool().Stop()
@@ -103,7 +112,7 @@ class ApiCreateCronJobHandlerRegressionTest(
   def Run(self):
 
     def ReplaceCronJobUrn():
-      jobs = list(cronjobs.CronManager().ListJobs())
+      jobs = list(cronjobs.CronManager().ListJobs(token=self.token))
       return {jobs[0]: "CreateAndRunGenericHuntFlow_1234"}
 
     flow_name = file_finder.FileFinder.__name__
@@ -139,7 +148,7 @@ class ApiListCronJobRunsHandlerRegressionTest(
 
   def Run(self):
     cron_job_id = _SetupAndRunVersionBreakDownCronjob()
-    run_id = _GetRunId(cron_job_id)
+    run_id = _GetRunId(cron_job_id, token=self.token)
 
     self.Check(
         "ListCronJobRuns",
@@ -159,7 +168,7 @@ class ApiGetCronJobRunHandlerRegressionTest(
 
   def Run(self):
     cron_job_id = _SetupAndRunVersionBreakDownCronjob()
-    run_id = _GetRunId(cron_job_id)
+    run_id = _GetRunId(cron_job_id, token=self.token)
 
     self.Check(
         "GetCronJobRun",
@@ -180,7 +189,8 @@ class ApiForceRunCronJobRegressionTest(
   handler = cron_plugin.ApiForceRunCronJobHandler
 
   def Run(self):
-    cron_job_id = self.CreateCronJob(flow_name=file_finder.FileFinder.__name__)
+    cron_job_id = self.CreateCronJob(
+        flow_name=file_finder.FileFinder.__name__, token=self.token)
 
     self.Check(
         "ForceRunCronJob",
@@ -198,9 +208,9 @@ class ApiModifyCronJobRegressionTest(api_regression_test_lib.ApiRegressionTest,
   def Run(self):
     with test_lib.FakeTime(44):
       cron_job_id1 = self.CreateCronJob(
-          flow_name=file_finder.FileFinder.__name__)
+          flow_name=file_finder.FileFinder.__name__, token=self.token)
       cron_job_id2 = self.CreateCronJob(
-          flow_name=file_finder.ClientFileFinder.__name__)
+          flow_name=file_finder.ClientFileFinder.__name__, token=self.token)
 
     self.Check(
         "ModifyCronJob",

@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 """Tests for grr.lib.signing."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import platform
 import tempfile
 import unittest
-from unittest import mock
 
 from absl import app
+import mock
 import pexpect
 
 from grr_response_client_builder import signing
@@ -18,7 +21,7 @@ from grr.test_lib import test_lib
 class WindowsOsslsigncodeCodeSignerTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super().setUp()
+    super(WindowsOsslsigncodeCodeSignerTest, self).setUp()
     self.winsign = signing.WindowsOsslsigncodeCodeSigner("", "", "", "")
 
   @unittest.skipUnless(platform.system() == "Linux",

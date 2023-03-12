@@ -1,15 +1,20 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Test client vfs."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import logging
 import os
 import shutil
 import stat
-from unittest import mock
 
 from absl import app
 from absl.testing import absltest
+import mock
 import psutil
 
 # pylint: disable=unused-import,g-bad-import-order
@@ -152,19 +157,6 @@ class VFSTest(vfs_test_lib.VfsTestCase, test_lib.GRRBaseTest):
     p1.Append(p2)
     fd = vfs.VFSOpen(p1)
     self.TestFileHandling(fd)
-
-  def testTSKBTime(self):
-    pathspec = rdf_paths.PathSpec(
-        path=os.path.join(self.base_path, "ntfs_img.dd"),
-        pathtype=rdf_paths.PathSpec.PathType.OS,
-        offset=63 * 512,
-        nested_path=rdf_paths.PathSpec(
-            path="/Test Directory/notes.txt",
-            pathtype=rdf_paths.PathSpec.PathType.TSK))
-
-    fd = vfs.VFSOpen(pathspec)
-    st = fd.Stat()
-    self.assertEqual(str(st.st_btime), "2011-12-17 00:14:37")
 
   def testTSKFileInode(self):
     """Test opening a file through an indirect pathspec."""
@@ -564,7 +556,6 @@ class VFSMultiOpenTest(absltest.TestCase):
         self.assertEqual(filedescs[0].Read(), b"FOO")
         self.assertEqual(filedescs[1].Read(), b"BAR")
         self.assertEqual(filedescs[2].Read(), b"BAZ")
-        files.FlushHandleCache()
 
   def testProgressCallback(self):
     with temp.AutoTempFilePath() as temppath:
@@ -580,7 +571,6 @@ class VFSMultiOpenTest(absltest.TestCase):
         self.assertEqual(filedescs[0].Read(), b"QUUX")
 
       self.assertTrue(func.called)
-      files.FlushHandleCache()
 
   def _Touch(self, filepath, content=b""):
     with io.open(filepath, mode="wb") as filedesc:

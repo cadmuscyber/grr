@@ -5,17 +5,14 @@ goog.module.declareLegacyNamespace();
 
 /**
  * Controller for FlowInfoDirective.
- * @unrestricted
+ *
+ * @constructor
+ * @param {!angular.Scope} $scope
+ * @ngInject
  */
-const FlowInfoController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
-  }
+const FlowInfoController = function($scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 };
 
 
@@ -26,7 +23,9 @@ const FlowInfoController = class {
  */
 exports.FlowInfoDirective = function() {
   return {
-    scope: {descriptor: '='},
+    scope: {
+      descriptor: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/flow/flow-info.html',
     controller: FlowInfoController,

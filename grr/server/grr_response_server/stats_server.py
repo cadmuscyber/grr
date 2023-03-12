@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Stats server implementation."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import errno
 from http import server as http_server
@@ -13,40 +17,28 @@ from grr_response_core import config
 from grr_response_core.lib import utils
 from grr_response_server import base_stats_server
 
+
 StatsServerHandler = prometheus_client.MetricsHandler
-
-
-# Python's standard HTTP server implementation is broken and will work through
-# a IPv4 socket. This means, that on IPv6 only environment, the code will fail
-# to create the socket and fail in mysterious ways.
-#
-# We hack around this by overriding the `address_family` that `HTTPServer` uses
-# to create the socket and always use IPv6 (it was introduced in 1995, so it is
-# safe to expect that every modern stack will support it already).
-class IPv6HTTPServer(http_server.HTTPServer):
-
-  address_family = socket.AF_INET6
 
 
 class StatsServer(base_stats_server.BaseStatsServer):
   """A statistics server that exposes a minimal, custom /varz route."""
 
-  def __init__(self, address, port):
+  def __init__(self, port):
     """Instantiates a new StatsServer.
 
     Args:
-      address: The IP address of the server to bind.
       port: The TCP port that the server should listen to.
     """
-    super().__init__(address, port)
+    super().__init__(port)
     self._http_server = None
     self._server_thread = None
 
   def Start(self):
     """Start HTTPServer."""
     try:
-      self._http_server = IPv6HTTPServer((self.address, self.port),
-                                         StatsServerHandler)
+      self._http_server = http_server.HTTPServer(("", self.port),
+                                                 StatsServerHandler)
     except socket.error as e:
       if e.errno == errno.EADDRINUSE:
         raise base_stats_server.PortInUseError(self.port)
@@ -74,14 +66,13 @@ def InitializeStatsServerOnce():
   a default one.
   """
 
-  address = config.CONFIG["Monitoring.http_address"]
-
   # Figure out which port to use.
   port = config.CONFIG["Monitoring.http_port"]
   if not port:
     logging.info("Monitoring server disabled.")
     return
 
+  # TODO(user): Implement __contains__ for GrrConfigManager.
   max_port = config.CONFIG.Get("Monitoring.http_port_max", None)
   if max_port is None:
     # Use the same number of available ports as the adminui is using. If we
@@ -102,9 +93,8 @@ def InitializeStatsServerOnce():
 
   for port in range(port, max_port + 1):
     try:
-      logging.info("Starting monitoring server on address %s and port %d.",
-                   address, port)
-      server_obj = server_cls(address, port)
+      logging.info("Starting monitoring server on port %d.", port)
+      server_obj = server_cls(port)
       server_obj.Start()
       return
     except base_stats_server.PortInUseError as e:

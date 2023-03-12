@@ -6,7 +6,7 @@ import {Home} from './home';
  * Home page-related routes.
  */
 export const HOME_ROUTES: Routes = [
-  {path: '', component: Home},
+  {path: 'v2/home', component: Home},
 ];
 
 /**

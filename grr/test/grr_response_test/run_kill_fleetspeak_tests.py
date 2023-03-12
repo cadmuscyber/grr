@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Runs an end-to-end test of the kill fleetspeak feature."""
 
 import sys
@@ -14,21 +15,18 @@ from grr_api_client import flow as api_flow
 from grr_response_test.lib import api_helpers
 from grr_response_test.lib import self_contained_components
 
-_MYSQL_DATABASE = flags.DEFINE_string("mysql_database", "grr_test_db",
-                                      "MySQL database name to use.")
+flags.DEFINE_string("mysql_database", "grr_test_db",
+                    "MySQL database name to use.")
 
-_FLEETSPEAK_MYSQL_DATABASE = flags.DEFINE_string(
-    "fleetspeak_mysql_database", "fleetspeak_test_db",
-    "MySQL database name to use for Fleetspeak.")
+flags.DEFINE_string("fleetspeak_mysql_database", "fleetspeak_test_db",
+                    "MySQL database name to use for Fleetspeak.")
 
-_MYSQL_USERNAME = flags.DEFINE_string("mysql_username", None,
-                                      "MySQL username to use.")
+flags.DEFINE_string("mysql_username", None, "MySQL username to use.")
 
-_MYSQL_PASSWORD = flags.DEFINE_string("mysql_password", None,
-                                      "MySQL password to use.")
+flags.DEFINE_string("mysql_password", None, "MySQL password to use.")
 
-_LOGGING_PATH = flags.DEFINE_string(
-    "logging_path", None, "Base logging path for server components to use.")
+flags.DEFINE_string("logging_path", None,
+                    "Base logging path for server components to use.")
 
 
 def FindGrrClientProcess(config_path: Text) -> psutil.Process:
@@ -63,17 +61,17 @@ def RunInterrogate(grr_api: api.GrrApi, client_id: Text) -> api_flow.Flow:
 
 def main(argv):
   grr_configs = self_contained_components.InitGRRConfigs(
-      _MYSQL_DATABASE.value,
-      mysql_username=_MYSQL_USERNAME.value,
-      mysql_password=_MYSQL_PASSWORD.value,
-      logging_path=_LOGGING_PATH.value,
+      flags.FLAGS.mysql_database,
+      mysql_username=flags.FLAGS.mysql_username,
+      mysql_password=flags.FLAGS.mysql_password,
+      logging_path=flags.FLAGS.logging_path,
       with_fleetspeak=True)
 
   fleetspeak_configs = self_contained_components.InitFleetspeakConfigs(
       grr_configs,
-      _FLEETSPEAK_MYSQL_DATABASE.value,
-      mysql_username=_MYSQL_USERNAME.value,
-      mysql_password=_MYSQL_PASSWORD.value)
+      flags.FLAGS.fleetspeak_mysql_database,
+      mysql_username=flags.FLAGS.mysql_username,
+      mysql_password=flags.FLAGS.mysql_password)
 
   server_processes = self_contained_components.StartServerProcesses(
       grr_configs=grr_configs, fleetspeak_configs=fleetspeak_configs)
@@ -101,7 +99,10 @@ def main(argv):
   print("Interrogate flow 1 finished with result {}.".format(result))
 
   print("Running RestartFleetspeakGrrService().")
-  grr_api.Client(client_id).RestartFleetspeakGrrService()
+  self_contained_components.RunApiShellRawAccess(
+      grr_configs.server_config,
+      "grrapi.root.Client(\"{}\").RestartFleetspeakGrrService()".format(
+          client_id))
   print("Finished RestartFleetspeakGrrService().")
 
   # We have to wait for the restart to finish.
@@ -131,7 +132,10 @@ def main(argv):
 
   # With force=False the fleetspeak client performs a graceful shutdown.
   print("Running KillFleetspeak(force=False).")
-  grr_api.Client(client_id).KillFleetspeak(force=False)
+  self_contained_components.RunApiShellRawAccess(
+      grr_configs.server_config,
+      "grrapi.root.Client(\"{}\").KillFleetspeak(force=False)".format(
+          client_id))
   print("Finished KillFleetspeak(force=False).")
 
   print("Waiting for fleetspeak client to terminate.")
@@ -152,7 +156,9 @@ def main(argv):
 
   # With force=True the fleetspeak clients just exits.
   print("Running KillFleetspeak(force=True).")
-  grr_api.Client(client_id).KillFleetspeak(force=True)
+  self_contained_components.RunApiShellRawAccess(
+      grr_configs.server_config,
+      "grrapi.root.Client(\"{}\").KillFleetspeak(force=True)".format(client_id))
   print("Finished KillFleetspeak(force=True).")
 
   print("Waiting for fleetspeak client to terminate.")

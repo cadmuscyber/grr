@@ -1,7 +1,11 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A module with assertion functions for checking preconditions."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 import collections
-from collections import abc
 import re
 from typing import Sized, Text
 
@@ -53,12 +57,12 @@ def AssertIterableType(iterable, expected_item_type):
   # because it makes no sense to construct an iterator for iterator. The most
   # important practical implication is that act of iterating an iterator drains
   # it whereas act of iterating the iterable does not.
-  if isinstance(iterable, collections.abc.Iterator):
+  if isinstance(iterable, collections.Iterator):
     message = "Expected iterable container but got iterator `%s` instead"
     message %= iterable
     raise TypeError(message)
 
-  AssertType(iterable, abc.Iterable)
+  AssertType(iterable, collections.Iterable)
   for item in iterable:
     AssertType(item, expected_item_type)
 
@@ -75,7 +79,7 @@ def AssertDictType(dct, expected_key_type, expected_value_type):
     TypeError: If given dictionary is not really a dictionary or not all its
                keys and values have the expected type.
   """
-  AssertType(dct, abc.Mapping)
+  AssertType(dct, dict)
   for key, value in dct.items():
     AssertType(key, expected_key_type)
     AssertType(value, expected_value_type)
@@ -106,6 +110,3 @@ def ValidateClientId(client_id):
 def ValidateFlowId(flow_id):
   """Raises, if the given value is not a valid FlowId string."""
   _ValidateStringId("flow_id", flow_id)
-  if (len(flow_id) not in [8, 16] or
-      re.match(r"^[0-9a-fA-F]*$", flow_id) is None):
-    raise ValueError("Flow id has incorrect format: `%s`" % flow_id)

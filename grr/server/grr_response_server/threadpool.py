@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A simple thread pool for the Google Response Rig.
 
 This file defines a simple thread pool that is used throughout this
@@ -21,6 +22,9 @@ Example usage:
 >>> SharedPool().Join()
 
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import itertools
 import logging
@@ -341,7 +345,7 @@ class ThreadPool(object):
     # shutdown process will deadlock.
     stop_messages_needed = 0
     for worker in workers:
-      if worker.is_alive():
+      if worker.isAlive():
         stop_messages_needed += 1
 
     for _ in range(stop_messages_needed):
@@ -353,7 +357,7 @@ class ThreadPool(object):
     # Wait for the threads to all exit now.
     for worker in workers:
       worker.join(join_timeout)
-      if worker.is_alive():
+      if worker.isAlive():
         raise RuntimeError("Threadpool worker did not finish in time.")
 
   def AddTask(self,

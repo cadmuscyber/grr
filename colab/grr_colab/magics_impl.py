@@ -1,12 +1,19 @@
 #!/usr/bin/env python
+# -*- encoding: utf-8 -*-
 """GRR Colab magics implementation as usual functions."""
-import binascii
-import ipaddress
-import os
-from typing import Text, Optional, List
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
+import binascii
+import os
+
+import ipaddress
 import numpy as np
 import pandas as pd
+from typing import Text, Optional, List
 
 import grr_colab
 from grr_colab import convert
@@ -15,14 +22,13 @@ from grr_colab._textify import client as client_textify
 
 OS = 'os'
 TSK = 'tsk'
-NTFS = 'ntfs'
 REGISTRY = 'registry'
 
 
 class _State(object):
 
   def __init__(self) -> None:
-    self.client: Optional[grr_colab.Client] = None
+    self.client = None  # type: Optional[grr_colab.Client]
     self.cur_dir = '/'
 
 
@@ -30,7 +36,7 @@ class NoClientSelectedError(Exception):
 
   def __init__(self) -> None:
     msg = 'A client must be selected'
-    super().__init__(msg)
+    super(NoClientSelectedError, self).__init__(msg)
 
 
 _state = _State()
@@ -250,7 +256,7 @@ def grr_ls_impl(path: Optional[Text] = None,
   Args:
     path: Directory path to ls.
     cached: If true, use cached filesystem instead of making call to a client.
-    path_type: Path type to use (one of os, tsk, ntfs, registry).
+    path_type: Path type to use (one of os, tsk, registry).
 
   Returns:
     A sequence of stat entries.
@@ -276,7 +282,7 @@ def grr_stat_impl(path: Text, path_type: Text = OS) -> pd.DataFrame:
 
   Args:
     path: File path to stat.
-    path_type: Path type to use (one of os, tsk, ntfs, registry).
+    path_type: Path type to use (one of os, tsk, registry).
 
   Returns:
     A sequence of stat entries.
@@ -306,7 +312,7 @@ def grr_head_impl(
     bytes: Number of bytes to read.
     offset: Number of bytes to skip from the beginning of the file.
     cached: If true, use cached filesystem instead of making call to a client.
-    path_type: Path type to use (one of os, tsk, ntfs, registry).
+    path_type: Path type to use (one of os, tsk, registry).
 
   Returns:
     Specified number of the first bytes of the file.
@@ -340,7 +346,7 @@ def grr_grep_impl(pattern: Text,
     pattern: Pattern to search for.
     path: File path to grep.
     fixed_strings: If true, interpret pattern as a fixed string (literal).
-    path_type: Path type to use (one of os, tsk, ntfs, registry).
+    path_type: Path type to use (one of os, tsk, registry).
     hex_string: If true, interpret pattern as a hex-encoded byte string.
 
   Returns:
@@ -376,7 +382,7 @@ def grr_fgrep_impl(literal: Text,
   Args:
     literal: Literal to search for.
     path: File path to grep.
-    path_type: Path type to use (one of os, tsk, ntfs, registry).
+    path_type: Path type to use (one of os, tsk, registry).
     hex_string: If true, interpret pattern as a hex-encoded byte string.
 
   Returns:
@@ -551,7 +557,7 @@ def grr_wget_impl(path: Text,
   Args:
     path: A path to the file to download.
     cached: If true, use cached filesystem instead of making call to a client.
-    path_type: Path type to use (one of os, tsk, ntfs, registry).
+    path_type: Path type to use (one of os, tsk, registry).
 
   Returns:
     A link to the file.
@@ -591,8 +597,6 @@ def _get_filesystem(path_type: Text) -> fs.FileSystem:
     return _state.client.os
   elif path_type == TSK:
     return _state.client.tsk
-  elif path_type == NTFS:
-    return _state.client.ntfs
   elif path_type == REGISTRY:
     return _state.client.registry
   raise ValueError('Unsupported path type `{}`'.format(path_type))

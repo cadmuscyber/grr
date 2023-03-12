@@ -1,32 +1,41 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Semantic Protobufs are serialization agnostic, rich data types."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import base64
-from collections import abc
+import collections
 import copy
 import functools
-import logging
 import struct
-from typing import ByteString, Iterator, Optional, Sequence, Text, Type, TypeVar, cast
+from typing import ByteString, Iterator, Sequence, Text, Type, TypeVar, cast
 
 from google.protobuf import any_pb2
 from google.protobuf import wrappers_pb2
 from google.protobuf import text_format
-from grr_response_core import _semantic
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import serialization
 from grr_response_core.lib import type_info
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import proto2 as rdf_proto2
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 from grr_response_proto import semantic_pb2
 
+# pylint: disable=g-import-not-at-top
+try:
+  from grr.core.accelerated import _semantic
+except ImportError:
+  _semantic = None
 
-# pylint: disable=invalid-name
-VarintEncode = _semantic.varint_encode
-VarintReader = _semantic.varint_decode
-SplitBuffer = _semantic.split_buffer
-# pylint: enable=invalid-name
+# pylint: disable=super-init-not-called
+# pylint: enable=g-import-not-at-top
+
+# We copy these here to remove dependency on the protobuf library.
+TAG_TYPE_BITS = 3  # Number of bits used to hold type info in a proto tag.
+TAG_TYPE_MASK = (1 << TAG_TYPE_BITS) - 1  # 0x7
 
 # These numbers identify the wire type of a protocol buffer value.
 # We use the least-significant TAG_TYPE_BITS bits of the varint-encoded
@@ -42,23 +51,167 @@ WIRETYPE_START_GROUP = 3
 WIRETYPE_END_GROUP = 4
 
 WIRETYPE_FIXED32 = 5
+_WIRETYPE_MAX = 5
+
+# The following are the varint encoding/decoding functions taken from the
+# protobuf library. Placing them in this file allows us to remove dependency on
+# the standard protobuf library.
+
+# TODO: Indexing `bytes` objects works differently between Python 2
+# and Python 3. In Python 3 it returns an integer representing given byte,
+# whereas in Python 2 it returns a byte character. Because the code below is
+# (allegedly) hot, we do not want to perform any type and compatibility checks
+# there. Instead, we just override what these maps accept (byte characters in
+# Python 2, integers in Python 3) and everything seems to work fine.
+if compatibility.PY2:
+  ORD_MAP = {chr(x).encode("latin-1"): x for x in range(0, 256)}
+else:
+  ORD_MAP = {x: x for x in range(0, 256)}
+
+CHR_MAP = {x: chr(x).encode("latin-1") for x in range(0, 256)}
+HIGH_CHR_MAP = {x: chr(0x80 | x).encode("latin-1") for x in range(0, 256)}
+
+# Some optimizations to get rid of AND operations below since they are really
+# slow in Python.
+
+# TODO: See a comment above.
+if compatibility.PY2:
+  ORD_MAP_AND_0X80 = {chr(x).encode("latin-1"): x & 0x80 for x in range(0, 256)}
+  ORD_MAP_AND_0X7F = {chr(x).encode("latin-1"): x & 0x7F for x in range(0, 256)}
+else:
+  ORD_MAP_AND_0X80 = {x: x & 0x80 for x in range(0, 256)}
+  ORD_MAP_AND_0X7F = {x: x & 0x7F for x in range(0, 256)}
+
+
+# This function is HOT.
+def ReadTag(buf, pos):
+  """Read a tag from the buffer, and return a (tag_bytes, new_pos) tuple."""
+  try:
+    start = pos
+    while ORD_MAP_AND_0X80[buf[pos]]:
+      pos += 1
+    pos += 1
+    return (buf[start:pos], pos)
+  except IndexError:
+    raise ValueError("Invalid tag")
+
+
+# This function is HOT.
+def VarintEncode(value):
+  """Convert an integer to a varint."""
+  result = b""
+  if value < 0:
+    raise ValueError("Varint can not encode a negative number.")
+
+  bits = value & 0x7f
+  value >>= 7
+
+  while value:
+    result += HIGH_CHR_MAP[bits]
+    bits = value & 0x7f
+    value >>= 7
+
+  result += CHR_MAP[bits]
+
+  return result
 
 
 def SignedVarintEncode(value):
-  """Encode a signed integer as a signed varint."""
+  """Encode a signed integer as a zigzag encoded signed integer."""
+  result = b""
   if value < 0:
     value += (1 << 64)
 
-  return VarintEncode(value)
+  bits = value & 0x7f
+  value >>= 7
+  while value:
+    result += HIGH_CHR_MAP[bits]
+    bits = value & 0x7f
+    value >>= 7
+  result += CHR_MAP[bits]
+
+  return result
+
+
+# This function is HOT.
+def VarintReader(buf, pos=0):
+  """A 64 bit decoder from google.protobuf.internal.decoder."""
+  result = 0
+  shift = 0
+  while 1:
+    b = buf[pos]
+
+    result |= (ORD_MAP_AND_0X7F[b] << shift)
+    pos += 1
+    if not ORD_MAP_AND_0X80[b]:
+      return (result, pos)
+    shift += 7
+    if shift >= 64:
+      raise rdfvalue.DecodeError("Too many bytes when decoding varint.")
 
 
 def SignedVarintReader(buf, pos=0):
-  """A signed 64 bit decoder for signed varints."""
-  result, p = VarintReader(buf, pos)
-  if result > 0x7fffffffffffffff:
-    result -= (1 << 64)
+  """A Signed 64 bit decoder from google.protobuf.internal.decoder."""
+  result = 0
+  shift = 0
+  while 1:
+    b = buf[pos]
+    result |= (ORD_MAP_AND_0X7F[b] << shift)
+    pos += 1
+    if not ORD_MAP_AND_0X80[b]:
+      if result > 0x7fffffffffffffff:
+        result -= (1 << 64)
 
-  return (result, p)
+      return (result, pos)
+
+    shift += 7
+    if shift >= 64:
+      raise rdfvalue.DecodeError("Too many bytes when decoding varint.")
+
+
+def SplitBuffer(buff, index=0, length=None):
+  """Parses the buffer as a prototypes.
+
+  Args:
+    buff: The buffer to parse.
+    index: The position to start parsing.
+    length: Optional length to parse until.
+
+  Yields:
+    Splits the buffer into tuples of strings:
+        (encoded_tag, encoded_length, wire_format).
+  """
+  buffer_len = length or len(buff)
+  while index < buffer_len:
+    # data_index is the index where the data begins (i.e. after the tag).
+    encoded_tag, data_index = ReadTag(buff, index)
+
+    tag_type = ORD_MAP[encoded_tag[0]] & TAG_TYPE_MASK
+    if tag_type == WIRETYPE_VARINT:
+      # new_index is the index of the next tag.
+      _, new_index = VarintReader(buff, data_index)
+      yield (encoded_tag, b"", buff[data_index:new_index])
+      index = new_index
+
+    elif tag_type == WIRETYPE_FIXED64:
+      yield (encoded_tag, b"", buff[data_index:data_index + 8])
+      index = 8 + data_index
+
+    elif tag_type == WIRETYPE_FIXED32:
+      yield (encoded_tag, b"", buff[data_index:data_index + 4])
+      index = 4 + data_index
+
+    elif tag_type == WIRETYPE_LENGTH_DELIMITED:
+      # Start index of the string.
+      length, start = VarintReader(buff, data_index)
+      yield (
+          encoded_tag,
+          buff[data_index:start],  # Encoded length.
+          buff[start:start + length])  # Raw data of element.
+      index = start + length
+
+    else:
+      raise rdfvalue.DecodeError("Unexpected Tag.")
 
 
 def _GetOrderedEntries(data):
@@ -67,24 +220,28 @@ def _GetOrderedEntries(data):
   Args:
     data: A raw data dictionary of `RDFProtoStruct`.
 
-  Returns:
+  Yields:
     Entries of the structured in a well-defined order.
   """
 
-  # Sort struct entries by their field tag.
-  def Tag(entry):
-    _, wire_format, type_descriptor = entry
-    if type_descriptor is not None:
-      encoded_tag = type_descriptor.encoded_tag
-    elif wire_format is not None:
-      encoded_tag = wire_format[0]
-    else:
-      raise AssertionError("Each entry is expected to have "
-                           "either a type_descriptor or wire_format.")
+  # The raw data dictionary has two kinds of keys: strings (which correspond to
+  # field name) or integers (if the name is unknown). In Python 3 it is not
+  # possible to compare integers and strings to each other, so we first tag each
+  # with either a 0 or 1 (so named fields are going to be serialized first) and
+  # let the lexicographical ordering of the tuples take care of the rest.
+  def Tag(field):
+    """Tags field name with a number to make comparison possible."""
 
-    return VarintReader(encoded_tag, 0)[0]
+    if isinstance(field, str):
+      return 0, field
+    if isinstance(field, int):
+      return 1, field
 
-  return sorted(data.values(), key=Tag)
+    message = "Unexpected field '{}' of type '{}'".format(field, type(field))
+    raise TypeError(message)
+
+  for field in sorted(data.keys(), key=Tag):
+    yield data[field]
 
 
 def _SerializeEntries(entries):
@@ -149,6 +306,14 @@ def ReadIntoObject(buff, index, value_obj, length=0):
   value_obj.SetRawData(raw_data)
 
 
+# pylint: disable=invalid-name
+if _semantic:
+  VarintEncode = _semantic.varint_encode
+  VarintReader = _semantic.varint_decode
+  SplitBuffer = _semantic.split_buffer
+# pylint: enable=invalid-name
+
+
 class ProtoType(type_info.TypeInfoObject):
   """A specific type descriptor for protobuf fields.
 
@@ -188,7 +353,7 @@ class ProtoType(type_info.TypeInfoObject):
     super().__init__(**kwargs)
     # TODO: Without this type hint, pytype thinks that field_number
     # is always None.
-    self.field_number: int = field_number
+    self.field_number = field_number  # type: int
     self.required = required
     if set_default_on_access is not None:
       self.set_default_on_access = set_default_on_access
@@ -212,7 +377,7 @@ class ProtoType(type_info.TypeInfoObject):
     # In python Varint encoding is expensive so we want to move as much of the
     # hard work from the Write() methods which are called frequently to the type
     # descriptor constructor which is only called once (during protobuf
-    # declaration time). Pre-calculating the tag makes for faster serialization.
+    # decleration time). Pre-calculating the tag makes for faster serialization.
     self.tag = self.field_number << 3 | self.wire_type
     self.encoded_tag = VarintEncode(self.tag)
 
@@ -344,8 +509,7 @@ class ProtoString(ProtoType):
 
     raise type_info.TypeValueError(
         "Not a valid unicode string: {!r} of type {}".format(
-            value,
-            type(value).__name__))
+            value, compatibility.GetName(type(value))))
 
   def ConvertFromWireFormat(self, value, container=None):
     """Internally strings are utf8 encoded."""
@@ -615,16 +779,15 @@ class EnumNamedValue(rdfvalue.RDFPrimitive):
 
   def __repr__(self):
     return "{}(initializer={!r}, name={!r})".format(
-        type(self).__name__, self.id, self.name)
+        compatibility.GetName(type(self)), self.id, self.name)
 
   def __int__(self):
     return self.id
 
-  def __index__(self):
-    return self.id
-
   def __bool__(self):
     return bool(self.id)
+
+  __nonzero__ = __bool__
 
   def Copy(self):
     return type(self)(self.id, self.name, self.description, self.labels)
@@ -762,14 +925,14 @@ class ProtoBoolean(ProtoEnum):
 
   def GetDefault(self, container=None):
     """Return boolean value."""
-    return bool(int(super().GetDefault(container=container)))
+    return bool(int(super(ProtoBoolean, self).GetDefault(container=container)))
 
   def Validate(self, value, **_):
     """Check that value is a valid enum."""
     if value is None:
       return
 
-    return bool(int(super().Validate(value)))
+    return bool(int(super(ProtoBoolean, self).Validate(value)))
 
   def ConvertFromWireFormat(self, value, container=None):
     return bool(
@@ -778,7 +941,7 @@ class ProtoBoolean(ProtoEnum):
                   self).ConvertFromWireFormat(value, container=container)))
 
   def ConvertToWireFormat(self, value):
-    return super().ConvertToWireFormat(bool(value))
+    return super(ProtoBoolean, self).ConvertToWireFormat(bool(value))
 
 
 class ProtoEmbedded(ProtoType):
@@ -1030,7 +1193,7 @@ class ProtoDynamicAnyValueEmbedded(ProtoDynamicEmbedded):
     # Is it a protobuf-based value?
     if hasattr(value.__class__, "protobuf"):
       if value.__class__.protobuf:
-        type_name = ("type.googleapis.com/grr.%s" %
+        type_name = ("type.googleapis.com/%s" %
                      value.__class__.protobuf.__name__)
       else:
         type_name = value.__class__.__name__
@@ -1045,7 +1208,7 @@ class ProtoDynamicAnyValueEmbedded(ProtoDynamicEmbedded):
                    wrapper_cls.__name__)
       data = wrapped_data.SerializeToString()
     else:
-      raise ValueError("Can't convert value %s to a protobuf.Any value." %
+      raise ValueError("Can't convert value %s to an protobuf.Any value." %
                        value)
 
     any_value = AnyValue(type_url=type_name, value=data)
@@ -1054,36 +1217,7 @@ class ProtoDynamicAnyValueEmbedded(ProtoDynamicEmbedded):
     return (self.encoded_tag, VarintEncode(len(output)), output)
 
 
-class ProtoAnyValue(ProtoType):
-  """A raw Protocol Buffers `Any` type without dynamic typing magic."""
-
-  wire_type = WIRETYPE_LENGTH_DELIMITED
-  proto_type_name = "google.protobuf.Any"
-  set_default_on_access = True
-
-  def GetDefault(self, container=None):
-    del container  # Unused.
-    return AnyValue()
-
-  def Validate(self, value, container=None):
-    del container  # Unused.
-    precondition.AssertType(value, AnyValue)
-
-    return value
-
-  def ConvertFromWireFormat(self, value, container=None):
-    del container  # Unused.
-
-    return AnyValue.FromSerializedBytes(value[2])
-
-  def ConvertToWireFormat(self, value):
-    precondition.AssertType(value, AnyValue)
-
-    data = value.SerializeToBytes()
-    return (self.encoded_tag, VarintEncode(len(data)), data)
-
-
-class RepeatedFieldHelper(abc.Sequence, object):
+class RepeatedFieldHelper(collections.Sequence, object):
   """A helper for the RDFProto to handle repeated fields.
 
   This helper is intended to only be constructed from the RDFProto class.
@@ -1224,7 +1358,8 @@ class RepeatedFieldHelper(abc.Sequence, object):
 
   def __repr__(self):
     # Skip self.container and self.type_descriptor to avoid cyclical output.
-    return "<{} {!r}>".format(type(self).__name__, self.wrapped_list)
+    return "<{} {!r}>".format(
+        compatibility.GetName(type(self)), self.wrapped_list)
 
   def Validate(self):
     for x in self:
@@ -1542,7 +1677,7 @@ class RDFStructMetaclass(rdfvalue.RDFValueMetaclass):
     # biggest caveat here is that RDFStruct is defined *with the help*
     # of RDFStructMetaclass, so its name is not defined at the time
     # this code is evaluated.
-    cls: Type["RDFStruct"] = untyped_cls
+    cls = untyped_cls  # type: Type["RDFStruct"]
     cls.type_infos = type_info.TypeDescriptorSet()
 
     # Keep track of the late bound fields.
@@ -1606,7 +1741,7 @@ class RDFStruct(rdfvalue.RDFValue, metaclass=RDFStructMetaclass):  # pylint: dis
   protobuf = None
 
   # This is where the type infos are constructed.
-  type_infos: type_info.TypeDescriptorSet = None
+  type_infos = None
 
   # Mark as dirty each time we modify this object.
   dirty = False
@@ -1632,7 +1767,7 @@ class RDFStruct(rdfvalue.RDFValue, metaclass=RDFStructMetaclass):  # pylint: dis
         raise AttributeError("Proto %s has no field %s" %
                              (self.__class__.__name__, arg))
 
-      # Call setattr to allow the class to define @property pseudo fields which
+      # Call setattr to allow the class to define @property psuedo fields which
       # can also be initialized.
       setattr(self, arg, value)
 
@@ -1742,14 +1877,7 @@ class RDFStruct(rdfvalue.RDFValue, metaclass=RDFStructMetaclass):  # pylint: dis
   def FromSerializedBytes(cls, value: bytes):
     precondition.AssertType(value, bytes)
     instance = cls()
-
-    try:
-      ReadIntoObject(value, 0, instance)
-    except ValueError:
-      logging.error("Error in ReadIntoObject. %d bytes, extract: %r",
-                    len(value), value[:1000])
-      raise
-
+    ReadIntoObject(value, 0, instance)
     instance.dirty = True
     return instance
 
@@ -1768,21 +1896,11 @@ class RDFStruct(rdfvalue.RDFValue, metaclass=RDFStructMetaclass):  # pylint: dis
     # are unset in both `self` and `other`. We deliberately check fields that
     # are set in one class and not in the other. This allows RDFStructs to be
     # considered equal, when one has a field set to its default value and the
-    # other has the field unset (where .Get implicitly returns the default
-    # value then).
+    # other has the field unset (where .Get implicitly returns the default value
+    # then).
     for field in set(self.GetRawData()) | set(other.GetRawData()):
-
-      # Deserializing Protobuf of newer versions can put `_unknown_field_{n}` in
-      # _data. This is a special field without type descriptor, thus raising an
-      # error in Get(). To follow Protobuf semantics, ignore fields that do not
-      # have a type descriptor.
-      # pylint: disable=unsupported-membership-test
-      if field not in self.type_infos:
-        continue
-
       self_val = self.Get(field, allow_set_default=False)
       other_val = other.Get(field, allow_set_default=False)
-
       if self_val != other_val:
         return False
 
@@ -1815,7 +1933,7 @@ class RDFStruct(rdfvalue.RDFValue, metaclass=RDFStructMetaclass):  # pylint: dis
 
   def __dir__(self):
     """Add the virtualized fields to the console's tab completion."""
-    return (dir(super()) + [x.name for x in self.type_infos])  # pylint: disable=not-an-iterable
+    return (dir(super(RDFStruct, self)) + [x.name for x in self.type_infos])
 
   def _Set(self, value, type_descriptor):
     """Validate the value and set the attribute with it."""
@@ -1839,14 +1957,14 @@ class RDFStruct(rdfvalue.RDFValue, metaclass=RDFStructMetaclass):  # pylint: dis
         prev_value != self.Get(attr, allow_set_default=False)):
       try:
         hash(self)  # Recompute hash to raise if hash changed due to mutation.
-      except AssertionError as ex:
+      except AssertionError:
         raise AssertionError(
             "Cannot set {}.{} to {} with previous value {}! hash() has "
             "changed after it has been used! Usage of RDFStructs as members of "
             "sets or keys of dicts is discouraged. If used anyway, mutating is "
             "prohibited, because it causes the hash to change. Be aware that "
             "accessing unset fields can trigger a mutation.".format(
-                type(self).__name__, attr, value, prev_value)) from ex
+                compatibility.GetName(type(self)), attr, value, prev_value))
     return value
 
   def Set(self, attr, value):
@@ -1875,7 +1993,7 @@ class RDFStruct(rdfvalue.RDFValue, metaclass=RDFStructMetaclass):  # pylint: dis
       The attribute's value, or the attribute's type's default value, if unset.
     """
     entry = self._data.get(attr)
-    # We don't have this field, try the defaults.
+    # We dont have this field, try the defaults.
     if entry is None:
       type_descriptor = self._GetTypeDescriptor(attr)
       default = type_descriptor.GetDefault(container=self)
@@ -1948,13 +2066,6 @@ class EnumContainer(object):
 
   def FromInt(self, v):
     return getattr(self, self.reverse_enum[v])
-
-  def FromString(self, v: str) -> Optional[EnumNamedValue]:
-    if not v:
-      return None
-    if v not in self.enum_dict:
-      raise ValueError(f"Invalid value {v} for {self.name}.")
-    return getattr(self, v)
 
 
 class RDFProtoStruct(RDFStruct):
@@ -2078,6 +2189,9 @@ class RDFProtoStruct(RDFStruct):
   def __bool__(self):
     return bool(self._data)
 
+  # TODO: Remove after support for Python 2 is dropped.
+  __nonzero__ = __bool__
+
   @classmethod
   def EmitProto(cls):
     """Emits .proto file definitions."""
@@ -2182,48 +2296,7 @@ class SemanticDescriptor(RDFProtoStruct):
   protobuf = semantic_pb2.SemanticDescriptor
 
 
-_V = TypeVar("_V", bound=rdfvalue.RDFValue)
-
-
 class AnyValue(RDFProtoStruct):
   """Protobuf with arbitrary serialized proto and its type."""
   protobuf = any_pb2.Any
   allow_custom_class_name = True
-
-  @classmethod
-  def Pack(cls, value: RDFProtoStruct) -> "AnyValue":
-    """Packs given RDF value into the `Any` RDF wrapper.
-
-    Args:
-      value: An RDF value to pack.
-
-    Returns:
-      An instance of RDF wrapper for `Any` with packed message.
-    """
-    result = cls()
-    result.type_url = TypeURL(type(value))
-    result.value = value.SerializeToBytes()
-    return result
-
-  def Unpack(self, cls: Type[_V]) -> _V:
-    """Unpacks `Any` into an instance of the specified RDF class.
-
-    Args:
-      cls: A class into instance of which the value should be unpacked into.
-
-    Returns:
-      An instance of the specified class.
-    """
-    # Because messages can get renamed, unpacking into an unexpected type is not
-    # necessarily an error, but it still worth to log it as it might be helpful
-    # in identifying issues.
-    cls_type_url = TypeURL(cls)
-    if cls_type_url != self.type_url:
-      message = "Unpacking value of type '%s' to message of type '%s'."
-      logging.warning(message, self.type_url, cls_type_url)
-
-    return cls.FromSerializedBytes(self.value)
-
-
-def TypeURL(cls: Type[_V]) -> str:
-  return f"type.googleapis.com/{cls.protobuf.DESCRIPTOR.full_name}"

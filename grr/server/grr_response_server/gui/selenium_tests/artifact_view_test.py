@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Test the artifact rendering interface."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import os
@@ -39,7 +44,7 @@ class TestArtifactRender(gui_test_lib.GRRSeleniumTest):
     artifact_registry.REGISTRY.AddFileSource(test_artifacts_file)
 
   def setUp(self):
-    super().setUp()
+    super(TestArtifactRender, self).setUp()
     self.client_id = self.SetupClient(0, system="linux")
     self.RequestAndGrantClientApproval(self.client_id)
 

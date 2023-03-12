@@ -1,8 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """File-type specific flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib.rdfvalues import plist as rdf_plist
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_proto import flows_pb2
 from grr_response_server import flow_base
 from grr_response_server import server_stubs
@@ -58,7 +63,7 @@ class PlistValueFilter(flow_base.FlowBase):
     self.CallClient(
         server_stubs.PlistQuery,
         request=self.args.request,
-        next_state=self.Receive.__name__)
+        next_state=compatibility.GetName(self.Receive))
 
   def Receive(self, responses):
     if not responses.success:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 from absl import app
 
 from grr_response_server.gui import gui_test_lib

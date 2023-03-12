@@ -1,18 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Registry for parsers and abstract classes for basic parser functionality."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
-from typing import Generic
-from typing import IO
-from typing import Iterable
-from typing import Iterator
 from typing import Optional
 from typing import Text
-from typing import TypeVar
-
-from grr_response_core.lib import rdfvalue
-from grr_response_core.lib.rdfvalues import client as rdf_client
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 
 
 class ParseError(Exception):
@@ -39,10 +34,7 @@ class ParseError(Exception):
     self.cause = cause
 
 
-_O = TypeVar("_O")  # Type variable for parser output types.
-
-
-class Parser(Generic[_O], metaclass=abc.ABCMeta):
+class Parser(metaclass=abc.ABCMeta):
   """A base interface for all parsers types."""
 
   # TODO(hanuszczak): Once support for Python 2 is dropped, properties below can
@@ -72,15 +64,11 @@ class Parser(Generic[_O], metaclass=abc.ABCMeta):
   output_types = []
 
 
-class SingleResponseParser(Parser[_O]):
+class SingleResponseParser(Parser):
   """An abstract class for parsers that are able to parse individual replies."""
 
   @abc.abstractmethod
-  def ParseResponse(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      response: rdfvalue.RDFValue,
-  ) -> Iterator[_O]:
+  def ParseResponse(self, knowledge_base, response):
     """Parse a single response from the client.
 
     Args:
@@ -92,18 +80,13 @@ class SingleResponseParser(Parser[_O]):
     """
 
 
-class SingleFileParser(Parser[_O]):
+class SingleFileParser(Parser):
   """An interface for parsers that read file content."""
 
   # TODO(hanuszczak): Define a clear file reader interface.
 
   @abc.abstractmethod
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[_O]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     """Parses a single file from the client.
 
     Args:
@@ -119,15 +102,11 @@ class SingleFileParser(Parser[_O]):
     """
 
 
-class MultiResponseParser(Parser[_O]):
+class MultiResponseParser(Parser):
   """An interface for parsers requiring all replies in order to parse them."""
 
   @abc.abstractmethod
-  def ParseResponses(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      responses: Iterable[rdfvalue.RDFValue],
-  ) -> Iterator[_O]:
+  def ParseResponses(self, knowledge_base, responses):
     """Parse responses from the client.
 
     Args:
@@ -139,7 +118,7 @@ class MultiResponseParser(Parser[_O]):
     """
 
 
-class MultiFileParser(Parser[_O]):
+class MultiFileParser(Parser):
   """An interface for parsers that need to read content of multiple files."""
 
   # TODO(hanuszczak): The file interface mentioned above should also have
@@ -149,18 +128,13 @@ class MultiFileParser(Parser[_O]):
   # be to use a list of pairs but this is ugly to document.
 
   @abc.abstractmethod
-  def ParseFiles(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspecs: Iterable[rdf_paths.PathSpec],
-      filedescs: Iterable[IO[bytes]],
-  ) -> Iterator[_O]:
+  def ParseFiles(self, knowledge_base, pathspecs, filedescs):
     """Parses multiple files from the client.
 
     Args:
       knowledge_base: A knowledgebase for the client to whome the files belong.
       pathspecs: A list of pathspecs corresponding to the parsed files.
-      filedescs: A list of file-like objects to parse.
+      filedescs: A list fo file-like objects to parse.
 
     Yields:
       RDF values with parsed data.

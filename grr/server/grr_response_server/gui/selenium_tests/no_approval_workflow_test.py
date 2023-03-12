@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Tests acl policies when approvals system is disabled."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -13,7 +18,7 @@ class TestWorkflowWithoutApprovals(gui_test_lib.GRRSeleniumTest):
   """Tests acl policies when approvals system is not used."""
 
   def setUp(self):
-    super().setUp()
+    super(TestWorkflowWithoutApprovals, self).setUp()
     self.client_id = self.SetupClient(0)
 
   def InstallACLChecks(self):

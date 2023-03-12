@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 """A module that configures the behaviour of pytest runner."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import os
 import sys
@@ -9,14 +13,8 @@ import traceback
 from absl import flags
 import pytest
 
-# pylint: disable=g-import-not-at-top
-try:
-  # This depends on grr_response_server, which is NOT available on all
-  # (especially non-Linux development) platforms.
-  from grr.test_lib import testing_startup
-except ModuleNotFoundError:
-  testing_startup = None
-# pylint: enable=g-import-not-at-top
+from grr_response_core.lib.util import compatibility
+from grr.test_lib import testing_startup
 
 FLAGS = flags.FLAGS
 
@@ -45,7 +43,9 @@ def pytest_cmdline_main(config):
     # result of the execution of pytest_cmdline_main in the main process.
     sys.argv = config.workerinput["mainargv"]
   else:
-    sys.argv = ["pytest"] + test_args
+    # TODO: `sys.argv` on Python 2 uses `bytes` to represent passed
+    # arguments.
+    sys.argv = [compatibility.NativeStr("pytest")] + test_args
 
 
 last_module = None
@@ -58,8 +58,7 @@ def pytest_runtest_setup(item):
   global last_module
   if last_module != item.module:
     FLAGS(sys.argv)
-    if testing_startup:
-      testing_startup.TestInit()
+    testing_startup.TestInit()
   last_module = item.module
 
 

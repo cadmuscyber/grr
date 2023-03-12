@@ -1,19 +1,20 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for logging classes."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 
 import time
-from unittest import mock
-
 from absl import app
+from werkzeug import wrappers as werkzeug_wrappers
 
+from grr_response_core.lib import utils
 from grr_response_proto import jobs_pb2
 from grr_response_server import server_logging
-from grr_response_server.gui import api_call_context
-from grr_response_server.gui import http_response
 from grr_response_server.gui import wsgiapp
-from grr.test_lib import acl_test_lib
 from grr.test_lib import test_lib
 
 
@@ -27,14 +28,14 @@ class ApplicationLoggerTests(test_lib.GRRBaseTest):
       self.log += msg
 
   def setUp(self):
-    super().setUp()
+    super(ApplicationLoggerTests, self).setUp()
 
     self.l = server_logging.GrrApplicationLogger()
 
     self.log = ""
-    log_stubber = mock.patch.object(logging, "info", self.Log)
-    log_stubber.start()
-    self.addCleanup(log_stubber.stop)
+    log_stubber = utils.Stubber(logging, "info", self.Log)
+    log_stubber.Start()
+    self.addCleanup(log_stubber.Stop)
 
   def testGetEventId(self):
     self.assertGreater(
@@ -51,13 +52,12 @@ class ApplicationLoggerTests(test_lib.GRRBaseTest):
     })
     request.user = "testuser"
 
-    response = http_response.HttpResponse(
+    response = werkzeug_wrappers.Response(
         status=202,
-        headers={"X-API-Method": "TestMethod"},
-        context=api_call_context.ApiCallContext(
-            username=request.user,
-            approval=acl_test_lib.BuildClientApprovalRequest(
-                reason="foo/test1234", requestor_username=request.user)))
+        headers={
+            "X-GRR-Reason": "foo/test1234",
+            "X-API-Method": "TestMethod"
+        })
 
     self.l.LogHttpAdminUIAccess(request, response)
     self.assertIn("foo/test1234", self.log)

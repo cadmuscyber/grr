@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 
@@ -58,22 +61,16 @@ class ReadTest(absltest.TestCase):
 
   def testIncorrectSizeTag(self):
     buf = io.BytesIO(b"\x00\xff\xee")
-    with self.assertRaises(chunked.IncorrectSizeTagError):
+    with self.assertRaises(ValueError):
       chunked.Read(buf)
 
-  def testMalformedInpuWithMaxChunkSizeSet(self):
-    buf = io.BytesIO(b"\xff" * 1024)
+  def testContentTooShort(self):
+    buf = io.BytesIO()
+    chunked.Write(buf, b"foobarbaz")
 
-    with self.assertRaises(chunked.ChunkSizeTooBigError):
-      chunked.Read(buf, max_chunk_size=1024)
-
-  def testMalformedInputWithoutMaxChunkSizeSet(self):
-    buf1 = io.BytesIO()
-    chunked.Write(buf1, b"foobarbaz")
-
-    buf2 = io.BytesIO(buf1.getvalue()[:-2])
-    with self.assertRaises(chunked.ChunkTruncatedError):
-      chunked.Read(buf2)
+    buf = io.BytesIO(buf.getvalue()[:-2])
+    with self.assertRaises(ValueError):
+      chunked.Read(buf)
 
 
 class ReadAllTest(absltest.TestCase):
@@ -97,12 +94,6 @@ class ReadAllTest(absltest.TestCase):
 
     buf.seek(0, io.SEEK_SET)
     self.assertEqual(list(chunked.ReadAll(buf)), [b"foo", b"bar", b"quux"])
-
-  def testMalformedInputWithMaxChunkSizeSet(self):
-    buf = io.BytesIO(b"\xff" * 1024)
-
-    with self.assertRaises(chunked.ChunkSizeTooBigError):
-      list(chunked.ReadAll(buf, max_chunk_size=1024))
 
 
 class EncodeTest(absltest.TestCase):

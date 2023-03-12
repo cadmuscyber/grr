@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Implement low level disk access using the sleuthkit."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 import stat
@@ -12,6 +16,7 @@ from grr_response_client.vfs_handlers import base as vfs_base
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 
 # A central Cache for vfs handlers. This can be used to keep objects alive
@@ -56,7 +61,7 @@ class MyImgInfo(pytsk3.Img_Info):
     # Windows is unable to report the true size of the raw device and allows
     # arbitrary reading past the end - so we lie here to force tsk to read it
     # anyway
-    return 10 ** 12
+    return 1e12
 
 
 class TSKFile(vfs_base.VFSHandler):
@@ -88,7 +93,7 @@ class TSKFile(vfs_base.VFSHandler):
   }
 
   # Files we won't return in directories.
-  _IGNORE_FILES = [
+  BLACKLIST_FILES = [
       "$OrphanFiles"  # Special TSK dir that invokes processing.
   ]
 
@@ -184,7 +189,13 @@ class TSKFile(vfs_base.VFSHandler):
         self.size = self.fd.info.meta.size
 
     else:
-      path = self.pathspec.last.path
+      # TODO: In Python 2 TSK expects bytestring paths whereas in
+      # Python 3 it expects unicode paths. Once support for Python 2 is dropped,
+      # this branching can be removed.
+      if compatibility.PY2:
+        path = self.pathspec.last.path.encode("utf-8")
+      else:
+        path = self.pathspec.last.path
 
       # Does the filename exist in the image?
       self.fd = self.fs.open(path)
@@ -211,9 +222,6 @@ class TSKFile(vfs_base.VFSHandler):
       # objects - so we convert to unicode as soon as we receive data from
       # TSK. Prefer to compare unicode objects to guarantee they are normalized.
       name = _DecodeUTF8WithWarning(f.info.name.name)
-
-      if name in [".", ".."] or name in self._IGNORE_FILES:
-        continue
 
       # TODO: TSK lists duplicate filenames. Only return unique
       # names from ListNames(), because parts of the system fail otherwise.
@@ -248,6 +256,7 @@ class TSKFile(vfs_base.VFSHandler):
       response.st_ino = meta.addr
       for attribute in [
           "mode", "nlink", "uid", "gid", "size", "atime", "mtime", "ctime",
+          "crtime"
       ]:
         try:
           value = int(getattr(meta, attribute))
@@ -257,12 +266,6 @@ class TSKFile(vfs_base.VFSHandler):
           setattr(response, "st_%s" % attribute, value)
         except AttributeError:
           pass
-
-      if hasattr(meta, "crtime"):
-        value = meta.crtime
-        if value < 0:
-          value &= 0xFFFFFFFF
-        response.st_btime = value
 
     name = info.name
     child_pathspec = self.pathspec.Copy()
@@ -352,7 +355,7 @@ class TSKFile(vfs_base.VFSHandler):
       try:
         name = _DecodeUTF8WithWarning(f.info.name.name)
         # Drop these useless entries.
-        if name in [".", ".."] or name in self._IGNORE_FILES:
+        if name in [".", ".."] or name in self.BLACKLIST_FILES:
           continue
 
         # First we yield a standard response using the default attributes.

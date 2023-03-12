@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The blob store abstraction."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 import time
@@ -86,7 +90,7 @@ class BlobStore(metaclass=abc.ABCMeta):
 
     Args:
       blob_id_data_map: An dict of blob_id -> blob_datas. Each blob_id should be
-        a blob hash (i.e. uniquely identify the blob) expressed as
+        a blob hash (i.e. uniquely idenitify the blob) expressed as
         rdf_objects.BlobID. blob_data should be expressed as bytes.
     """
 
@@ -191,7 +195,7 @@ class BlobStore(metaclass=abc.ABCMeta):
     while True:
       blob_id_exists = self.CheckBlobsExist(remaining_blob_ids)
 
-      elapsed = rdfvalue.RDFDatetime.Now() - start_time
+      elapsed = start_time - rdfvalue.RDFDatetime.Now()
       elapsed_secs = elapsed.ToFractional(rdfvalue.SECONDS)
       ticks += 1
 

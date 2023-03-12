@@ -1,13 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Module with GRRWorker implementation."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 import time
-from typing import Sequence
+
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import registry
-from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.util import collection
 from grr_response_core.stats import metrics
 from grr_response_server import data_store
@@ -17,8 +20,6 @@ from grr_response_server import handler_registry
 from grr_response_server import server_stubs
 # pylint: enable=unused-import
 from grr_response_server.databases import db
-from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
-from grr_response_server.rdfvalues import objects as rdf_objects
 
 WELL_KNOWN_FLOW_REQUESTS = metrics.Counter(
     "well_known_flow_requests", fields=[("flow", str)])
@@ -28,15 +29,10 @@ class Error(Exception):
   """Base error class."""
 
 
-class FlowHasNothingToProcessError(Error):
-  """Raised when a flow is expected to have work to do, but doesn't."""
-
-
-def ProcessMessageHandlerRequests(
-    requests: Sequence[rdf_objects.MessageHandlerRequest]):
+def ProcessMessageHandlerRequests(requests):
   """Processes message handler requests."""
-  logging.info("Leased message handler request ids: %s",
-               ",".join(str(r.request_id) for r in requests))
+  logging.debug("Leased message handler request ids: %s",
+                ",".join(str(r.request_id) for r in requests))
   grouped_requests = collection.Group(requests, lambda r: r.handler_name)
   for handler_name, requests_for_handler in grouped_requests.items():
     handler_cls = handler_registry.handler_name_map.get(handler_name)
@@ -56,8 +52,8 @@ def ProcessMessageHandlerRequests(
       logging.exception("Exception while processing message handler %s: %s",
                         handler_name, e)
 
-  logging.info("Deleting message handler request ids: %s",
-               ",".join(str(r.request_id) for r in requests))
+  logging.debug("Deleting message handler request ids: %s",
+                ",".join(str(r.request_id) for r in requests))
   data_store.REL_DB.DeleteMessageHandlerRequests(requests)
 
 
@@ -70,11 +66,11 @@ class GRRWorker(object):
     """Constructor."""
     logging.info("Started GRR worker.")
 
-  def Shutdown(self) -> None:
+  def Shutdown(self):
     data_store.REL_DB.UnregisterMessageHandler()
     data_store.REL_DB.UnregisterFlowProcessingHandler()
 
-  def Run(self) -> None:
+  def Run(self):
     """Event loop."""
     data_store.REL_DB.RegisterMessageHandler(
         ProcessMessageHandlerRequests,
@@ -91,7 +87,7 @@ class GRRWorker(object):
       logging.info("Caught interrupt, exiting.")
       self.Shutdown()
 
-  def _ReleaseProcessedFlow(self, flow_obj: rdf_flow_objects.Flow) -> bool:
+  def _ReleaseProcessedFlow(self, flow_obj):
     rdf_flow = flow_obj.rdf_flow
     if rdf_flow.processing_deadline < rdfvalue.RDFDatetime.Now():
       raise flow_base.FlowError(
@@ -102,8 +98,7 @@ class GRRWorker(object):
 
     return data_store.REL_DB.ReleaseProcessedFlow(rdf_flow)
 
-  def ProcessFlow(
-      self, flow_processing_request: rdf_flows.FlowProcessingRequest) -> None:
+  def ProcessFlow(self, flow_processing_request):
     """The callback for the flow processing queue."""
 
     client_id = flow_processing_request.client_id
@@ -133,19 +128,21 @@ class GRRWorker(object):
           "running.", flow_id, client_id)
       return
 
-    processed, incrementally_processed = flow_obj.ProcessAllReadyRequests()
-    if processed == 0 and incrementally_processed == 0:
-      raise FlowHasNothingToProcessError(
+    processed = flow_obj.ProcessAllReadyRequests()
+    if processed == 0:
+      raise ValueError(
           "Unable to process any requests for flow %s on client %s." %
           (flow_id, client_id))
 
     while not self._ReleaseProcessedFlow(flow_obj):
-      processed, incrementally_processed = flow_obj.ProcessAllReadyRequests()
-      if processed == 0 and incrementally_processed == 0:
-        raise FlowHasNothingToProcessError(
+      new_processed = flow_obj.ProcessAllReadyRequests()
+      if new_processed == 0:
+        raise ValueError(
             "%s/%s: ReleaseProcessedFlow returned false but no "
             "request could be processed (next req: %d)." %
             (client_id, flow_id, flow_obj.rdf_flow.next_request_to_process))
+
+      processed += new_processed
 
     if flow_obj.IsRunning():
       logging.info(

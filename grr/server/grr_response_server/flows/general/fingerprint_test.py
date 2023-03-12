@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Tests for the Fingerprint flow."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
 
@@ -32,7 +37,7 @@ class TestFingerprintFlow(flow_test_lib.FlowTestsBaseclass):
     session_id = flow_test_lib.TestFlowHelper(
         flows_fingerprint.FingerprintFile.__name__,
         client_mock,
-        creator=self.test_username,
+        token=self.token,
         client_id=client_id,
         pathspec=pathspec)
 

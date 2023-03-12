@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A module with utilities for dealing with context managers."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from typing import ContextManager
 from typing import Generic
@@ -42,6 +46,9 @@ class MultiContext(ContextManager[Sequence[_T]], Generic[_T]):
   open multiple files.
   """
 
+  # TODO: `Collection` would be a better type here, but it is only
+  # available in Python 3.6+. Once support for Python 2 is dropped, this can be
+  # generalized.
   def __init__(self, managers: Sequence[ContextManager[_T]]) -> None:
     self._managers = managers
 

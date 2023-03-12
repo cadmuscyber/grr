@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """End to end tests for GRR filesystem-related flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_test.end_to_end_tests import test_base
 
@@ -32,10 +35,6 @@ class TestListDirectoryTSKLinux(test_base.EndToEndTest):
   platforms = [test_base.EndToEndTest.Platform.LINUX]
 
   def runTest(self):
-    if self.os_release == "CentOS Linux":
-      self.skipTest(
-          "TSK is not supported on CentOS due to an xfs root filesystem.")
-
     # We look for the directories inside /usr. It's very difficult to find a
     # file common across all versions of default OS X, Ubuntu, and CentOS that
     # isn't symlinked and doesn't live in a huge directory that takes forever to
@@ -88,10 +87,6 @@ class TestFindTSKLinux(test_base.EndToEndTest):
   platforms = [test_base.EndToEndTest.Platform.LINUX]
 
   def runTest(self):
-    if self.os_release == "CentOS Linux":
-      self.skipTest(
-          "TSK is not supported on CentOS due to an xfs root filesystem.")
-
     args = self.grr_api.types.CreateFlowArgs("FindFiles")
     # Cut down the number of files by specifying a partial regex
     # match, we just want to find /usr/bin/diff, when run on a real
@@ -210,39 +205,6 @@ class TestListDirectoryTSKWindows(test_base.EndToEndTest):
       self.RunFlowAndWait("ListDirectory", args=args)
 
 
-class TestListDirectoryNTFSWindows(test_base.EndToEndTest):
-  """Tests if ListDirectory works on Windows using libfsntfs."""
-
-  platforms = [test_base.EndToEndTest.Platform.WINDOWS]
-
-  def runTest(self):
-    args = self.grr_api.types.CreateFlowArgs("ListDirectory")
-    args.pathspec.path = "C:\\Windows"
-    args.pathspec.pathtype = args.pathspec.NTFS
-
-    f = self.RunFlowAndWait("ListDirectory", args=args)
-
-    results = list(f.ListResults())
-    self.assertNotEmpty(results)
-
-    regedit_path = None
-    for r in results:
-      path = "fs/ntfs"
-      pathspec = r.payload.pathspec
-      while pathspec.path:
-        path += pathspec.path
-        pathspec = pathspec.nested_path
-
-      if path.endswith("/regedit.exe"):
-        regedit_path = path
-        break
-
-    self.assertTrue(regedit_path)
-
-    with self.WaitForFileRefresh(regedit_path):
-      self.RunFlowAndWait("ListDirectory", args=args)
-
-
 class TestListDirectoryRootTSKWindows(test_base.EndToEndTest):
   """Tests if listing root folder on Windows works with The Sleuth Kit."""
 
@@ -259,28 +221,6 @@ class TestListDirectoryRootTSKWindows(test_base.EndToEndTest):
       return (pathspec.pathtype == args.pathspec.OS and
               pathspec.mount_point == "C:" and
               pathspec.nested_path.pathtype == args.pathspec.TSK and
-              pathspec.nested_path.path.upper().endswith("WINDOWS"))
-
-    pathspecs = [result.payload.pathspec for result in flow.ListResults()]
-    self.assertTrue(any(map(IsWindowsDirPath, pathspecs)))
-
-
-class TestListDirectoryRootNTFSWindows(test_base.EndToEndTest):
-  """Tests if listing root folder on Windows works with libfsntfs."""
-
-  platforms = [test_base.EndToEndTest.Platform.WINDOWS]
-
-  def runTest(self):
-    args = self.grr_api.types.CreateFlowArgs("ListDirectory")
-    args.pathspec.path = "C:\\"
-    args.pathspec.pathtype = args.pathspec.NTFS
-
-    flow = self.RunFlowAndWait("ListDirectory", args=args)
-
-    def IsWindowsDirPath(pathspec):
-      return (pathspec.pathtype == args.pathspec.OS and
-              pathspec.mount_point == "C:" and
-              pathspec.nested_path.pathtype == args.pathspec.NTFS and
               pathspec.nested_path.path.upper().endswith("WINDOWS"))
 
     pathspecs = [result.payload.pathspec for result in flow.ListResults()]

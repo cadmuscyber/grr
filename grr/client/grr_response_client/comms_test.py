@@ -1,17 +1,22 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Test for client comms."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import queue
 import time
-from unittest import mock
 
 from absl import app
+import mock
 import requests
 
 from grr_response_client import comms
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
+from grr_response_core.lib.util import compatibility
 from grr.test_lib import test_lib
 
 
@@ -74,7 +79,7 @@ class URLFilter(RequestsInstrumentor):
   def request(self, url=None, **kwargs):
     # If request is from server2 - return a valid response. Assume, server2 is
     # reachable from all proxies.
-    response = super().request(url=url, **kwargs)
+    response = super(URLFilter, self).request(url=url, **kwargs)
     if "server2" in url:
       return _make_200("Good")
     return response
@@ -347,20 +352,22 @@ class GRRClientWorkerTest(test_lib.GRRBaseTest):
   """Tests the GRRClientWorker class."""
 
   def setUp(self):
-    super().setUp()
+    super(GRRClientWorkerTest, self).setUp()
     # GRRClientWorker starts a stats collector thread that will send replies
     # shortly after starting up. Those replies interfere with the test below so
     # we disable the ClientStatsCollector thread here.
-    with mock.patch.object(comms.GRRClientWorker, "StartStatsCollector",
-                           lambda self: None):
-      self.client_worker = comms.GRRClientWorker()
+    with utils.Stubber(comms.GRRClientWorker,
+                       "StartStatsCollector", lambda self: None):
+      self.client_worker = comms.GRRClientWorker(
+          internal_nanny_monitoring=False)
 
   def testSendReplyHandlesFalseyPrimitivesCorrectly(self):
     self.client_worker.SendReply(rdfvalue.RDFDatetime(0))
     messages = self.client_worker.Drain().job
 
     self.assertLen(messages, 1)
-    self.assertEqual(messages[0].args_rdf_name, rdfvalue.RDFDatetime.__name__)
+    self.assertEqual(messages[0].args_rdf_name,
+                     compatibility.GetName(rdfvalue.RDFDatetime))
     self.assertIsInstance(messages[0].payload, rdfvalue.RDFDatetime)
     self.assertEqual(messages[0].payload, rdfvalue.RDFDatetime(0))
 

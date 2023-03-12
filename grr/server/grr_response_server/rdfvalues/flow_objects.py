@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Rdfvalues for flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import re
 
@@ -9,62 +13,30 @@ from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_proto import flows_pb2
+from grr_response_proto import jobs_pb2
 from grr_response_server import action_registry
 from grr_response_server import output_plugin
 from grr_response_server.rdfvalues import flow_runner as rdf_flow_runner
 from grr_response_server.rdfvalues import objects as rdf_objects
 
 
-class FlowRequest(rdf_structs.RDFProtoStruct):
-  """Flow request object."""
+class PendingFlowTermination(rdf_structs.RDFProtoStruct):
+  """Descriptor of a pending flow termination."""
+  protobuf = jobs_pb2.PendingFlowTermination
 
+
+class FlowRequest(rdf_structs.RDFProtoStruct):
   protobuf = flows_pb2.FlowRequest
   rdf_deps = [
       rdf_protodict.Dict,
       rdfvalue.RDFDatetime,
   ]
 
-  def __init__(self, *args, **kwargs):
-    super().__init__(*args, **kwargs)
-    if not self.HasField("next_response_id"):
-      self.next_response_id = 1
-
 
 class FlowMessage(object):
   """Base class for all messages flows can receive."""
-
-  @property
-  def client_id(self) -> str:
-    return self.Get("client_id")
-
-  @client_id.setter
-  def client_id(self, value: str) -> None:
-    self.Set("client_id", value)
-
-  @property
-  def flow_id(self) -> str:
-    return self.Get("flow_id")
-
-  @flow_id.setter
-  def flow_id(self, value: str) -> None:
-    self.Set("flow_id", value)
-
-  @property
-  def request_id(self) -> int:
-    return self.Get("request_id")
-
-  @request_id.setter
-  def request_id(self, value: int) -> None:
-    self.Set("request_id", value)
-
-  @property
-  def response_id(self) -> int:
-    return self.Get("response_id")
-
-  @response_id.setter
-  def response_id(self, value: int) -> None:
-    self.Set("response_id", value)
 
 
 class FlowResponse(FlowMessage, rdf_structs.RDFProtoStruct):
@@ -140,11 +112,6 @@ class FlowResult(rdf_structs.RDFProtoStruct):
         payload=self.payload)
 
 
-class FlowError(rdf_structs.RDFProtoStruct):
-  protobuf = flows_pb2.FlowError
-  rdf_deps = [rdfvalue.RDFDatetime]
-
-
 class FlowLogEntry(rdf_structs.RDFProtoStruct):
   protobuf = flows_pb2.FlowLogEntry
   rdf_deps = [
@@ -179,6 +146,7 @@ class Flow(rdf_structs.RDFProtoStruct):
   rdf_deps = [
       "OutputPluginDescriptor",  # TODO(user): dependency loop.
       rdf_flow_runner.OutputPluginState,
+      PendingFlowTermination,
       rdf_client.ClientCrash,
       rdf_client_stats.CpuSeconds,
       rdf_objects.FlowReference,
@@ -271,7 +239,7 @@ def FlowResponseForLegacyResponse(legacy_msg):
 
 def GRRMessageFromClientActionRequest(request):
   stub = action_registry.ACTION_STUB_BY_ID[request.action_identifier]
-  name = stub.__name__
+  name = compatibility.GetName(stub)
 
   return rdf_flows.GrrMessage(
       session_id="%s/%s" % (request.client_id, request.flow_id),
@@ -285,28 +253,3 @@ def GRRMessageFromClientActionRequest(request):
       # Legacy clients will fail if the task id is not set.
       # TODO(amoser): Remove task ids after April 2021.
       generate_task_id=True)
-
-
-class ScheduledFlow(rdf_structs.RDFProtoStruct):
-  """A scheduled flow, to be executed after approval has been granted."""
-  protobuf = flows_pb2.ScheduledFlow
-
-  rdf_deps = [rdf_flow_runner.FlowRunnerArgs, rdfvalue.RDFDatetime]
-
-
-class FlowResultCount(rdf_structs.RDFProtoStruct):
-  """Result count per type and tag."""
-  protobuf = flows_pb2.FlowResultCount
-
-
-class FlowResultMetadata(rdf_structs.RDFProtoStruct):
-  """Metadata about results returned for the flow."""
-  protobuf = flows_pb2.FlowResultMetadata
-  rdf_deps = [
-      FlowResultCount,
-  ]
-
-
-class DefaultFlowProgress(rdf_structs.RDFProtoStruct):
-  """Default flow progress for flows without a custom GetProgress handler."""
-  protobuf = flows_pb2.DefaultFlowProgress

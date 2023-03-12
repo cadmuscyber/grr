@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Test the hunt_view interface."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
 import traceback
@@ -534,12 +539,12 @@ class TestHuntView(gui_test_lib.GRRSeleniumHuntTest):
         "css=table > tbody td.proto_key:contains(\"Session id\") "
         "~ td.proto_value")
     self.WaitUntilContains(
-        self.test_username, self.GetText,
+        self.token.username, self.GetText,
         "css=table > tbody td.proto_key:contains(\"Creator\") "
         "~ td.proto_value")
 
   def testHuntCreatorIsNotifiedWhenHuntIsStoppedDueToCrashes(self):
-    hunt_id = self.StartHunt(crash_limit=3, creator=self.test_username)
+    hunt_id = self.StartHunt(crash_limit=3, creator=self.token.username)
 
     # Run the hunt on 3 clients, one by one. Crash detection check happens
     # when client is scheduled, so it's important to schedule the clients
@@ -553,7 +558,7 @@ class TestHuntView(gui_test_lib.GRRSeleniumHuntTest):
     self.WaitUntilEqual("1", self.GetText, "css=button[id=notification_button]")
     self.Click("css=button[id=notification_button]")
 
-    # Click on the "hunt [id] reached the crashes limit" notification.
+    # Click on the "hunt [id] reached the crashes limit" notificaiton.
     self.Click("css=td:contains(Hunt %s reached the crashes limit)" % hunt_id)
 
     # Clicking on notification should shown the hunt's overview page.

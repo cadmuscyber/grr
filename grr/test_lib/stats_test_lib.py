@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 """Classes for stats-related testing."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import contextlib
-from unittest import mock
+import mock
 
 from grr_response_core.lib.util import precondition
 from grr_response_core.stats import metrics

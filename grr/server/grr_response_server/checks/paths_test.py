@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Tests for path misconfiguration checks."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -15,7 +20,7 @@ class PathsCheckTests(checks_test_lib.HostCheckTest):
   parser = None
 
   def setUp(self, *args, **kwargs):
-    super().setUp(*args, **kwargs)
+    super(PathsCheckTests, self).setUp(*args, **kwargs)
     if not self.check_loaded:
       self.check_loaded = self.LoadCheck("paths.yaml")
     if not self.parser:
@@ -58,7 +63,7 @@ class PathsCheckTests(checks_test_lib.HostCheckTest):
     host_data = self.GenFileData("AllShellConfigs", paths, self.parser, modes)
     host_data.update(
         self.GenFileData(
-            "ShellConfigurationFile",
+            "GlobalShellConfigs",
             paths,
             self.parser,
             modes,

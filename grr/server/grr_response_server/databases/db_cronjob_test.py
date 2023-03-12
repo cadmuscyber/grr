@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Mixin tests for storing cronjob objects in the relational db."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 
 from grr_response_core.lib import rdfvalue
@@ -63,11 +67,6 @@ class DatabaseTestCronJobMixin(object):
     self.db.UpdateCronJob(job.cron_job_id, last_run_time=t)
     new_job = self.db.ReadCronJob(job.cron_job_id)
     self.assertEqual(new_job.last_run_time, t)
-
-    # To test `current_run_id` we first need to create a CronJobRun with it.
-    job_run0 = rdf_cronjobs.CronJobRun(
-        cron_job_id=job.cron_job_id, run_id="ABCD1234")
-    self.db.WriteCronJobRun(job_run0)
 
     self.db.UpdateCronJob(job.cron_job_id, current_run_id="ABCD1234")
     new_job = self.db.ReadCronJob(job.cron_job_id)
@@ -242,14 +241,14 @@ class DatabaseTestCronJobMixin(object):
       self.db.WriteCronJobRun(
           rdf_cronjobs.CronJobRun(cron_job_id="job1", run_id="00000000"))
 
-    before_writing = rdfvalue.RDFDatetime.Now()
-    for j in range(1, 3):
-      self.db.WriteCronJob(rdf_cronjobs.CronJob(cron_job_id="job%d" % j))
-      for r in range(1, 3):
-        run = rdf_cronjobs.CronJobRun(
-            cron_job_id="job%d" % j, run_id="abcd123%d" % r)
-        self.db.WriteCronJobRun(run)
-    after_writing = rdfvalue.RDFDatetime.Now()
+    now = rdfvalue.RDFDatetime.Now()
+    with test_lib.FakeTime(now):
+      for j in range(1, 3):
+        self.db.WriteCronJob(rdf_cronjobs.CronJob(cron_job_id="job%d" % j))
+        for r in range(1, 3):
+          run = rdf_cronjobs.CronJobRun(
+              cron_job_id="job%d" % j, run_id="abcd123%d" % r)
+          self.db.WriteCronJobRun(run)
 
     for j in range(1, 3):
       job_id = "job%d" % j
@@ -257,12 +256,12 @@ class DatabaseTestCronJobMixin(object):
       self.assertLen(jobs, 2)
       for job in jobs:
         self.assertEqual(job.cron_job_id, job_id)
-        self.assertBetween(job.timestamp, before_writing, after_writing)
+        self.assertEqual(job.timestamp, now)
 
     job = self.db.ReadCronJobRun("job1", "abcd1231")
     self.assertEqual(job.cron_job_id, "job1")
     self.assertEqual(job.run_id, "abcd1231")
-    self.assertBetween(job.timestamp, before_writing, after_writing)
+    self.assertEqual(job.timestamp, now)
 
     with self.assertRaises(ValueError):
       self.db.ReadCronJobRun(job_id, "invalid_id")
@@ -303,26 +302,17 @@ class DatabaseTestCronJobMixin(object):
     fake_time = rdfvalue.RDFDatetime.Now() - rdfvalue.Duration.From(
         7, rdfvalue.DAYS)
     with test_lib.FakeTime(fake_time):
-      run = rdf_cronjobs.CronJobRun(
-          cron_job_id=job_id, run_id="00000000", started_at=fake_time)
+      run = rdf_cronjobs.CronJobRun(cron_job_id=job_id, run_id="00000000")
       self.db.WriteCronJobRun(run)
 
-    fake_time_one_day_later = fake_time + rdfvalue.Duration.From(
-        1, rdfvalue.DAYS)
-    with test_lib.FakeTime(fake_time_one_day_later):
-      run = rdf_cronjobs.CronJobRun(
-          cron_job_id=job_id,
-          run_id="00000001",
-          started_at=fake_time_one_day_later)
+    with test_lib.FakeTime(fake_time +
+                           rdfvalue.Duration.From(1, rdfvalue.DAYS)):
+      run = rdf_cronjobs.CronJobRun(cron_job_id=job_id, run_id="00000001")
       self.db.WriteCronJobRun(run)
 
-    fake_time_two_days_later = fake_time + rdfvalue.Duration.From(
-        2, rdfvalue.DAYS)
-    with test_lib.FakeTime(fake_time_two_days_later):
-      run = rdf_cronjobs.CronJobRun(
-          cron_job_id=job_id,
-          run_id="00000002",
-          started_at=fake_time_two_days_later)
+    with test_lib.FakeTime(fake_time +
+                           rdfvalue.Duration.From(2, rdfvalue.DAYS)):
+      run = rdf_cronjobs.CronJobRun(cron_job_id=job_id, run_id="00000002")
       self.db.WriteCronJobRun(run)
 
     self.assertLen(self.db.ReadCronJobRuns(job_id), 3)

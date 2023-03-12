@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 """A module with utilities for testing parsers."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import functools
-from unittest import mock
+
+import mock
 
 from grr_response_core.lib import factory
 from grr_response_core.lib import parsers

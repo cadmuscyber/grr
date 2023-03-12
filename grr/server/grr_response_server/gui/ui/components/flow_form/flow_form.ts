@@ -1,10 +1,10 @@
 import {AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, ViewChild} from '@angular/core';
-import {BehaviorSubject, combineLatest, fromEvent} from 'rxjs';
-import {map, startWith, takeUntil, withLatestFrom} from 'rxjs/operators';
+import {ClientFacade} from '@app/store/client_facade';
+import {fromEvent, Subject} from 'rxjs';
+import {takeUntil, withLatestFrom} from 'rxjs/operators';
 
-import {RequestStatusType} from '../../lib/api/track_request';
-import {observeOnDestroy} from '../../lib/reactive';
-import {ClientPageGlobalStore} from '../../store/client_page_global_store';
+import {FlowDescriptor} from '../../lib/models/flow';
+import {FlowFacade} from '../../store/flow_facade';
 import {FlowArgsForm} from '../flow_args_form/flow_args_form';
 
 /**
@@ -17,65 +17,49 @@ import {FlowArgsForm} from '../flow_args_form/flow_args_form';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowForm implements OnInit, OnDestroy, AfterViewInit {
-  readonly ngOnDestroy = observeOnDestroy(this);
+  private readonly unsubscribe$ = new Subject<void>();
 
-  readonly selectedFD$ = this.clientPageGlobalStore.selectedFlowDescriptor$;
+  selectedFlow?: FlowDescriptor;
+  readonly selectedFlow$ = this.flowFacade.selectedFlow$;
+  readonly selectedClient$ = this.clientFacade.selectedClient$;
 
-  @ViewChild('form') formElement!: ElementRef<HTMLFormElement>;
+  @ViewChild('form') form!: ElementRef<HTMLFormElement>;
 
   @ViewChild(FlowArgsForm) flowArgsForm!: FlowArgsForm;
 
-  private readonly flowArgsFormValid$ = new BehaviorSubject<boolean>(true);
-
-  readonly disabled$ =
-      combineLatest([
-        this.flowArgsFormValid$,
-        this.clientPageGlobalStore.startFlowStatus$,
-      ])
-          .pipe(
-              map(([valid, startFlowStatus]) => !valid ||
-                      startFlowStatus?.status === RequestStatusType.SENT),
-              startWith(false),
-          );
-
-  readonly requestInProgress$ =
-      this.clientPageGlobalStore.startFlowStatus$.pipe(
-          map(status => status?.status === RequestStatusType.SENT),
-      );
-
-  readonly error$ = this.clientPageGlobalStore.startFlowStatus$.pipe(
-      map(status => status?.status === RequestStatusType.ERROR ? status.error :
-                                                                 undefined));
-
-  readonly hasAccess$ =
-      this.clientPageGlobalStore.hasAccess$.pipe(startWith(false));
-
   constructor(
-      private readonly clientPageGlobalStore: ClientPageGlobalStore,
-  ) {}
+      private readonly flowFacade: FlowFacade,
+      private readonly clientFacade: ClientFacade,
+  ) {
+    this.flowFacade.selectedFlow$.subscribe(selectedFlow => {
+      this.selectedFlow = selectedFlow;
+    });
+  }
 
   ngOnInit() {}
 
   ngAfterViewInit() {
-    fromEvent(this.formElement.nativeElement, 'submit')
+    fromEvent(this.form.nativeElement, 'submit')
         .pipe(
-            takeUntil(this.ngOnDestroy.triggered$),
+            takeUntil(this.unsubscribe$),
             withLatestFrom(
-                this.flowArgsForm.flowArgValues$,
-                this.disabled$,
-                ),
+                this.selectedFlow$, this.selectedClient$,
+                this.flowArgsForm.flowArgValues$),
             )
-        .subscribe(([e, flowArgs, disabled]) => {
+        .subscribe(([e, selectedFlow, selectedClient, flowArgs]) => {
           e.preventDefault();
 
-          if (!disabled) {
-            this.clientPageGlobalStore.scheduleOrStartFlow(flowArgs);
+          if (selectedFlow === undefined) {
+            throw new Error('Cannot submit flow form without selected flow.');
           }
-        });
 
-    this.flowArgsForm.valid$.pipe(takeUntil(this.ngOnDestroy.triggered$))
-        .subscribe(valid => {
-          this.flowArgsFormValid$.next(valid);
+          this.clientFacade.startFlow(
+              selectedClient.clientId, selectedFlow.name, flowArgs);
         });
+  }
+
+  ngOnDestroy() {
+    this.unsubscribe$.next();
+    this.unsubscribe$.complete();
   }
 }

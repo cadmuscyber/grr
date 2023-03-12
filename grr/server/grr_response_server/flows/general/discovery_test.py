@@ -1,28 +1,25 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Tests for Interrogate."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import platform
 import socket
-from typing import Iterable
-from typing import Iterator
-from unittest import mock
 
 from absl import app
+import mock
 
 from grr_response_client.client_actions import admin
 from grr_response_core import config
-from grr_response_core.lib import parsers
-from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
-from grr_response_core.lib.rdfvalues import client as rdf_client
-from grr_response_core.lib.rdfvalues import client_action as rdf_client_action
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr_response_server import artifact_registry
 from grr_response_server import client_index
 from grr_response_server import data_store
 from grr_response_server import events
 from grr_response_server import fleetspeak_utils
-from grr_response_server.databases import db_test_utils
 from grr_response_server.flows.general import discovery
 from grr.test_lib import acl_test_lib
 from grr.test_lib import action_mocks
@@ -42,7 +39,7 @@ class DiscoveryTestEventListener(events.EventListener):
   # For this test we just write the event as a class attribute.
   event = None
 
-  def ProcessEvents(self, msgs=None, publisher_username=None):
+  def ProcessMessages(self, msgs=None, token=None):
     DiscoveryTestEventListener.event = msgs[0]
 
 
@@ -182,12 +179,10 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
                      "zone/project_id/instance_id")
 
   def setUp(self):
-    super().setUp()
+    super(TestClientInterrogate, self).setUp()
     # This test checks for notifications so we can't use a system user.
-    self.test_username = "discovery_test_user"
-    self.CreateUser(self.test_username)
-    # Labels are added using the `GRR` system user.
-    self.CreateUser("GRR")
+    self.token.username = "discovery_test_user"
+    self.CreateUser(self.token.username)
 
   def _SetupMinimalClient(self):
     client_id = "C.0000000000000000"
@@ -214,7 +209,7 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
           flow_test_lib.TestFlowHelper(
               discovery.Interrogate.__name__,
               client_mock,
-              creator=self.test_username,
+              token=self.token,
               client_id=client_id)
 
     client = self._OpenClient(client_id)
@@ -235,7 +230,7 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
           flow_test_lib.TestFlowHelper(
               discovery.Interrogate.__name__,
               client_mock,
-              creator=self.test_username,
+              token=self.token,
               client_id=client_id)
 
     client = self._OpenClient(client_id)
@@ -259,14 +254,14 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
           flow_test_lib.TestFlowHelper(
               discovery.Interrogate.__name__,
               client_mock,
-              creator=self.test_username,
+              token=self.token,
               client_id=client_id)
 
     client = self._OpenClient(client_id)
     self._CheckBasicInfo(client, "test_node.test", "Linux", 100 * 1000000)
     self._CheckClientInfo(client)
     self._CheckGRRConfig(client)
-    self._CheckNotificationsCreated(self.test_username, client_id)
+    self._CheckNotificationsCreated(self.token.username, client_id)
     self._CheckClientSummary(
         client_id,
         client.GetSummary(),
@@ -307,14 +302,14 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
           flow_test_lib.TestFlowHelper(
               discovery.Interrogate.__name__,
               client_mock,
-              creator=self.test_username,
+              token=self.token,
               client_id=client_id)
 
     client = self._OpenClient(client_id)
     self._CheckBasicInfo(client, "test_node.test", "Windows", 100 * 1000000)
     self._CheckClientInfo(client)
     self._CheckGRRConfig(client)
-    self._CheckNotificationsCreated(self.test_username, client_id)
+    self._CheckNotificationsCreated(self.token.username, client_id)
     self._CheckClientSummary(
         client_id,
         client.GetSummary(),
@@ -339,10 +334,7 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
   def testFleetspeakClient(self, mock_labels_fn):
     mock_labels_fn.return_value = ["foo", "bar"]
     client_id = "C.0000000000000001"
-    data_store.REL_DB.WriteClientMetadata(
-        client_id,
-        fleetspeak_enabled=True,
-        fleetspeak_validation_info={"IP": "12.34.56.78"})
+    data_store.REL_DB.WriteClientMetadata(client_id, fleetspeak_enabled=True)
     client_mock = action_mocks.InterrogatedClient()
     client_mock.InitializeClient(
         fqdn="fleetspeak.test.com",
@@ -355,7 +347,7 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
       flow_test_lib.TestFlowHelper(
           discovery.Interrogate.__name__,
           client_mock,
-          creator=self.test_username,
+          token=self.token,
           client_id=client_id)
 
     snapshot = data_store.REL_DB.ReadClientSnapshot(client_id)
@@ -363,13 +355,11 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
     self.assertEqual(snapshot.knowledge_base.os, "Linux")
     self._CheckClientInfo(snapshot)
     self._CheckGRRConfig(snapshot)
-    self._CheckNotificationsCreated(self.test_username, client_id)
+    self._CheckNotificationsCreated(self.token.username, client_id)
     self._CheckRelease(snapshot, "Ubuntu", "14.4")
     self._CheckNetworkInfo(snapshot)
     labels = data_store.REL_DB.ReadClientLabels(client_id)
     self.assertCountEqual([l.name for l in labels], ["foo", "bar"])
-    self.assertEqual(snapshot.fleetspeak_validation_info.ToStringDict(),
-                     {"IP": "12.34.56.78"})
 
   @parser_test_lib.WithAllParsers
   @mock.patch.object(fleetspeak_utils, "GetLabelsFromFleetspeak")
@@ -392,7 +382,7 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
         flow_test_lib.TestFlowHelper(
             discovery.Interrogate.__name__,
             client_mock,
-            creator=self.test_username,
+            token=self.token,
             client_id=client_id)
 
     rdf_labels = data_store.REL_DB.ReadClientLabels(client_id)
@@ -401,80 +391,6 @@ class TestClientInterrogate(acl_test_lib.AclTestMixin,
         action_mocks.InterrogatedClient.LABEL2,
     ]
     self.assertCountEqual([l.name for l in rdf_labels], expected_labels)
-
-  def testEdrAgentCollection(self):
-    client_id = db_test_utils.InitializeClient(data_store.REL_DB)
-
-    artifact_source = rdf_artifacts.ArtifactSource()
-    artifact_source.type = rdf_artifacts.ArtifactSource.SourceType.COMMAND
-    artifact_source.attributes = {"cmd": "/bin/echo", "args": ["1337"]}
-
-    artifact = rdf_artifacts.Artifact()
-    artifact.name = "Foo"
-    artifact.doc = "Lorem ipsum."
-    artifact.sources = [artifact_source]
-
-    class FooParser(parsers.SingleResponseParser):
-
-      supported_artifacts = ["Foo"]
-
-      def ParseResponse(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          response: rdf_client_action.ExecuteResponse,
-      ) -> Iterator[rdf_client.EdrAgent]:
-        edr_agent = rdf_client.EdrAgent()
-        edr_agent.name = "echo"
-        edr_agent.agent_id = response.stdout.decode("utf-8")
-
-        yield edr_agent
-
-    class EchoActionMock(action_mocks.InterrogatedClient):
-
-      def ExecuteCommand(
-          self,
-          args: rdf_client_action.ExecuteRequest,
-      ) -> Iterable[rdf_client_action.ExecuteResponse]:
-        response = rdf_client_action.ExecuteResponse()
-        response.stdout = " ".join(args.args).encode("utf-8")
-        response.exit_status = 0
-
-        return [response]
-
-    with mock.patch.object(artifact_registry, "REGISTRY",
-                           artifact_registry.ArtifactRegistry()) as registry:
-      registry.RegisterArtifact(artifact)
-
-      with test_lib.ConfigOverrider({"Artifacts.edr_agents": ["Foo"]}):
-        with parser_test_lib._ParserContext("Foo", FooParser):
-          flow_test_lib.TestFlowHelper(
-              discovery.Interrogate.__name__,
-              client_mock=EchoActionMock(),
-              client_id=client_id,
-              creator=self.test_username)
-
-          flow_test_lib.FinishAllFlowsOnClient(client_id)
-
-    snapshot = data_store.REL_DB.ReadClientSnapshot(client_id)
-    self.assertLen(snapshot.edr_agents, 1)
-    self.assertEqual(snapshot.edr_agents[0].name, "echo")
-    self.assertEqual(snapshot.edr_agents[0].agent_id, "1337")
-
-  @parser_test_lib.WithAllParsers
-  def testSourceFlowIdIsSet(self):
-    client_id = self._SetupMinimalClient()
-    client_mock = action_mocks.InterrogatedClient()
-    client_mock.InitializeClient()
-    with test_lib.SuppressLogs():
-      flow_id = flow_test_lib.TestFlowHelper(
-          discovery.Interrogate.__name__,
-          client_mock,
-          creator=self.test_username,
-          client_id=client_id)
-
-    client = self._OpenClient(client_id)
-    self.assertNotEmpty(client.metadata.source_flow_id)
-    self.assertEqual(client.metadata.source_flow_id, flow_id)
 
 
 def main(argv):

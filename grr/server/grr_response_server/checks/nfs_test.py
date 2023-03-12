@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Tests for nfs export checks."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 
@@ -21,7 +26,7 @@ class NfsExportsTests(checks_test_lib.HostCheckTest):
     cls.LoadCheck("nfs.yaml")
 
   def setUp(self, *args, **kwargs):
-    super().setUp(*args, **kwargs)
+    super(NfsExportsTests, self).setUp(*args, **kwargs)
     if not NfsExportsTests.results:
       parser = config_file.NfsExportsParser()
       host_data = self.SetKnowledgeBase()

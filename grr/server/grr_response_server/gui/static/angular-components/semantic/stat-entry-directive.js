@@ -1,12 +1,10 @@
 goog.module('grrUi.semantic.statEntryDirective');
 goog.module.declareLegacyNamespace();
 
-const apiService = goog.requireType('grrUi.core.apiService');
 const {ServerErrorButtonDirective} = goog.require('grrUi.core.serverErrorButtonDirective');
 const {pathSpecToAff4Path} = goog.require('grrUi.core.fileDownloadUtils');
 
 
-/** @const */
 var ERROR_EVENT_NAME = ServerErrorButtonDirective.error_event_name;
 
 
@@ -16,7 +14,7 @@ var ERROR_EVENT_NAME = ServerErrorButtonDirective.error_event_name;
  *
  * @param {!angular.Scope} $rootScope
  * @param {!angular.Scope} $scope
- * @param {!apiService.ApiService} grrApiService
+ * @param {!grrUi.core.apiService.ApiService} grrApiService
  * @constructor
  * @ngInject
  */
@@ -28,7 +26,7 @@ const StatEntryController = function(
   /** @private {!angular.Scope} */
   this.scope_ = $scope;
 
-  /** @private {!apiService.ApiService} */
+  /** @private {!grrUi.core.apiService.ApiService} */
   this.grrApiService_ = grrApiService;
 
   /** @type {string} */

@@ -5,63 +5,62 @@ goog.module.declareLegacyNamespace();
 
 /**
  * Controller for periodic-refresh directive.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @param {!angular.$interval} $interval
+ * @constructor
+ * @ngInject
  */
-const PeriodicRefreshController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @param {!angular.$interval} $interval
-   * @ngInject
-   */
-  constructor($scope, $interval) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const PeriodicRefreshController = function(
+    $scope, $interval) {
 
-    /** @private {!angular.$interval} */
-    this.interval_ = $interval;
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @export {number} */
-    this.refreshTrigger = 0;
+  /** @private {!angular.$interval} */
+  this.interval_ = $interval;
 
-    /** @private {angular.$q.Promise} */
-    this.updateOperationInterval_;
+  /** @export {number} */
+  this.refreshTrigger = 0;
 
-    this.scope_.$watch('interval', this.onIntervalChange_.bind(this));
+  /** @private {angular.$q.Promise} */
+  this.updateOperationInterval_;
 
-    this.scope_.$on('$destroy', function() {
-      if (this.updateOperationInterval_) {
-        this.interval_.cancel(this.updateOperationInterval_);
-      }
-    }.bind(this));
-  }
+  this.scope_.$watch('interval', this.onIntervalChange_.bind(this));
 
-  /**
-   * @param {?} newValue
-   * @private
-   */
-  onIntervalChange_(newValue) {
+  this.scope_.$on('$destroy', function() {
     if (this.updateOperationInterval_) {
       this.interval_.cancel(this.updateOperationInterval_);
-      this.updateOperationInterval_ = null;
     }
+  }.bind(this));
+};
 
-    if (angular.isDefined(newValue)) {
-      this.updateOperationInterval_ =
-          this.interval_(this.onInterval_.bind(this), newValue);
-    }
+
+/**
+ * @param {?} newValue
+ * @private
+ */
+PeriodicRefreshController.prototype.onIntervalChange_ = function(newValue) {
+  if (this.updateOperationInterval_) {
+    this.interval_.cancel(this.updateOperationInterval_);
+    this.updateOperationInterval_ = null;
   }
 
-  /**
-   * @private
-   */
-  onInterval_() {
-    this.refreshTrigger += 1;
-    if (this.scope_['onRefresh']) {
-      this.scope_['onRefresh']();
-    }
+  if (angular.isDefined(newValue)) {
+    this.updateOperationInterval_ = this.interval_(
+        this.onInterval_.bind(this), newValue);
   }
 };
 
+/**
+ * @private
+ */
+PeriodicRefreshController.prototype.onInterval_ = function() {
+  this.refreshTrigger += 1;
+  if (this.scope_['onRefresh']) {
+    this.scope_['onRefresh']();
+  }
+};
 
 
 /**
@@ -73,7 +72,10 @@ const PeriodicRefreshController = class {
  */
 exports.PeriodicRefreshDirective = function() {
   return {
-    scope: {interval: '=', onRefresh: '&'},
+    scope: {
+      interval: '=',
+      onRefresh: '&'
+    },
     restrict: 'EA',
     transclude: true,
     template: '<grr-force-refresh ' +

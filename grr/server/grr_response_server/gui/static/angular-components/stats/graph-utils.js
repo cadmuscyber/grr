@@ -15,8 +15,8 @@ exports.buildTimeseriesGraph = function(graphDiv, legendDiv, seriesDict) {
   const labels = ['Time'];
 
   const dataMap = new Map();
-  for (const label in seriesDict) {
-    const serie = seriesDict[label];
+  for (var label in seriesDict) {
+    var serie = seriesDict[label];
     labels.push(label);
 
     angular.forEach(serie, (dataPoint) => {

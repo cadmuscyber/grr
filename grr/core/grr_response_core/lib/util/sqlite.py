@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A module with utility functions for working with SQLite databases."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import contextlib
 import io
@@ -37,7 +41,7 @@ class ConnectionContext(object):
     Yields:
       Database rows that are results of the query.
     """
-    with contextlib.closing(self._conn.cursor()) as cursor:  # pytype: disable=wrong-arg-types
+    with contextlib.closing(self._conn.cursor()) as cursor:
       cursor.execute(query)
 
       while True:
@@ -65,7 +69,7 @@ def IOConnection(db_filedesc: IO[bytes]) -> Iterator[ConnectionContext]:
     with io.open(temp_db_filepath, mode="wb") as temp_db_filedesc:
       _CopyIO(input=db_filedesc, output=temp_db_filedesc)
 
-    with contextlib.closing(sqlite3.connect(temp_db_filepath)) as conn:  # pytype: disable=wrong-arg-types
+    with contextlib.closing(sqlite3.connect(temp_db_filepath)) as conn:
       yield ConnectionContext(conn)
 
 

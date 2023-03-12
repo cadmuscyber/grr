@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The in memory database methods for path handling."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from typing import Dict
 from typing import Iterable
@@ -299,6 +303,9 @@ class InMemoryDBPathMixin(object):
 
   def _WritePathInfo(self, client_id, path_info):
     """Writes a single path info record for given client."""
+    if client_id not in self.metadatas:
+      raise db.UnknownClientError(client_id)
+
     path_record = self._GetPathRecord(client_id, path_info)
     path_record.AddPathInfo(path_info)
 
@@ -308,10 +315,12 @@ class InMemoryDBPathMixin(object):
       parent_path_record.AddChild(path_info)
 
   @utils.Synchronized
-  def WritePathInfos(self, client_id, path_infos):
-    if client_id not in self.metadatas:
-      raise db.UnknownClientError(client_id)
+  def MultiWritePathInfos(self, path_infos):
+    for client_id, client_path_infos in path_infos.items():
+      self.WritePathInfos(client_id, client_path_infos)
 
+  @utils.Synchronized
+  def WritePathInfos(self, client_id, path_infos):
     for path_info in path_infos:
       self._WritePathInfo(client_id, path_info)
       for ancestor_path_info in path_info.GetAncestors():

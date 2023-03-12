@@ -5,44 +5,41 @@ goog.module.declareLegacyNamespace();
 
 /**
  * Controller for MarkdownDirective.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @param {!angular.jQuery} $element
+ * @param {!angular.$window} $window
+ * @constructor
+ * @ngInject
  */
-const MarkdownController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @param {!angular.jQuery} $element
-   * @param {!angular.$window} $window
-   * @ngInject
-   */
-  constructor($scope, $element, $window) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const MarkdownController = function($scope, $element, $window) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @private {!angular.jQuery} */
-    this.element_ = $element;
+  /** @private {!angular.jQuery} */
+  this.element_ = $element;
 
-    /** @private {!angular.$window} */
-    this.window_ = $window;
+  /** @private {!angular.$window} */
+  this.window_ = $window;
 
-    this.scope_.$watch('source', this.onSourceChange_.bind(this));
-  }
-
-  /**
-   * Handles changes in 'source' binding.
-   *
-   * @param {string} newValue
-   * @private
-   */
-  onSourceChange_(newValue) {
-    this.element_.html('');
-
-    if (angular.isDefined(newValue)) {
-      // marked() is part of the "marked" library.
-      this.element_.html(marked(newValue));
-    }
-  }
+  this.scope_.$watch('source', this.onSourceChange_.bind(this));
 };
 
+
+/**
+ * Handles changes in 'source' binding.
+ *
+ * @param {string} newValue
+ * @private
+ */
+MarkdownController.prototype.onSourceChange_ = function(newValue) {
+  this.element_.html('');
+
+  if (angular.isDefined(newValue)) {
+    // marked() is part of the "marked" library.
+    this.element_.html(marked(newValue));
+  }
+};
 
 
 /**
@@ -53,7 +50,13 @@ const MarkdownController = class {
  * @export
  */
 exports.MarkdownDirective = function() {
-  return {scope: {source: '='}, restrict: 'E', controller: MarkdownController};
+  return {
+    scope: {
+      source: '='
+    },
+    restrict: 'E',
+    controller: MarkdownController
+  };
 };
 
 

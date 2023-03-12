@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Flows related to process memory."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import collections
 import logging
@@ -10,6 +14,7 @@ from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import memory as rdf_memory
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
+from grr_response_core.lib.util import compatibility
 from grr_response_server import data_store
 from grr_response_server import flow_base
 from grr_response_server import flow_responses
@@ -41,20 +46,18 @@ class YaraProcessScan(flow_base.FlowBase):
       message = ("`yara_signature` can't be used together with "
                  "`yara_signature_blob_id")
       raise flow_base.FlowError(message)
-    elif self.args.yara_signature:
+
+    if self.args.yara_signature:
       rules = self.args.yara_signature.GetRules()
       if not list(rules):
         raise flow_base.FlowError(
             "No rules found in the signature specification.")
-    elif self.args.yara_signature_blob_id:
+
+    if self.args.yara_signature_blob_id:
       blob_id = rdf_objects.BlobID(self.args.yara_signature_blob_id)
       if not data_store.REL_DB.VerifyYaraSignatureReference(blob_id):
         message = "Incorrect YARA signature reference: {}".format(blob_id)
         raise flow_base.FlowError(message)
-    else:
-      raise flow_base.FlowError(
-          "Flow args contain neither yara_signature nor yara_signature_blob_id."
-          " Provide a yara_signature for scanning.")
 
     if self.args.process_regex and self.args.cmdline_regex:
       raise flow_base.FlowError(
@@ -75,7 +78,7 @@ class YaraProcessScan(flow_base.FlowBase):
       self.CallClient(
           server_stubs.YaraProcessScan,
           request=self.args,
-          next_state=self.ProcessScanResults.__name__)
+          next_state=compatibility.GetName(self.ProcessScanResults))
       return
 
     if self.args.scan_runtime_limit_us:
@@ -106,7 +109,7 @@ class YaraProcessScan(flow_base.FlowBase):
           server_stubs.YaraProcessScan,
           request=client_request,
           request_data=request_data,
-          next_state=self.ProcessScanResults.__name__)
+          next_state=compatibility.GetName(self.ProcessScanResults))
 
   def ProcessScanResults(
       self,
@@ -159,7 +162,7 @@ class YaraProcessScan(flow_base.FlowBase):
           skip_shared_regions=self.args.skip_shared_regions,
           skip_executable_regions=self.args.skip_executable_regions,
           skip_readonly_regions=self.args.skip_readonly_regions,
-          next_state=self.CheckDumpProcessMemoryResults.__name__)
+          next_state=compatibility.GetName(self.CheckDumpProcessMemoryResults))
 
   def CheckDumpProcessMemoryResults(self, responses: flow_responses.Responses[
       Union[rdf_client_fs.StatEntry, rdf_memory.YaraProcessDumpResponse]]):
@@ -260,7 +263,7 @@ class DumpProcessMemory(flow_base.FlowBase):
     self.CallClient(
         server_stubs.YaraProcessDump,
         request=self.args,
-        next_state=self.ProcessResults.__name__)
+        next_state=compatibility.GetName(self.ProcessResults))
 
   def ProcessResults(
       self,
@@ -295,7 +298,7 @@ class DumpProcessMemory(flow_base.FlowBase):
         pathspecs=dump_files_to_get,
         file_size=1024 * 1024 * 1024,
         use_external_stores=False,
-        next_state=self.ProcessMemoryRegions.__name__,
+        next_state=compatibility.GetName(self.ProcessMemoryRegions),
         request_data={"YaraProcessDumpResponse": response})
 
   def ProcessMemoryRegions(
@@ -322,7 +325,7 @@ class DumpProcessMemory(flow_base.FlowBase):
       self.CallClient(
           server_stubs.DeleteGRRTempFiles,
           response.pathspec,
-          next_state=self.LogDeleteFiles.__name__)
+          next_state=compatibility.GetName(self.LogDeleteFiles))
 
   def LogDeleteFiles(
       self, responses: flow_responses.Responses[rdf_client.LogMessage]):

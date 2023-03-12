@@ -1,6 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Base test classes for API handlers tests."""
-import json
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 import logging
 import os
 import threading
@@ -11,9 +15,11 @@ import portpicker
 import requests
 
 from google.protobuf import json_format
-from grr_api_client import connectors
+from grr_api_client.connectors import http_connector
 from grr_response_core.lib import utils
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
+from grr_response_core.lib.util.compat import json
 from grr_response_server import gui
 from grr_response_server.gui import api_auth_manager
 from grr_response_server.gui import api_call_router
@@ -54,10 +60,11 @@ class HttpApiRegressionTestMixinBase(object):
 
         _HTTP_ENDPOINTS[api_version] = "http://localhost:%d" % port
 
-      return connectors.HttpConnector(api_endpoint=_HTTP_ENDPOINTS[api_version])
+      return http_connector.HttpConnector(
+          api_endpoint=_HTTP_ENDPOINTS[api_version])
 
   def setUp(self):
-    super().setUp()
+    super(HttpApiRegressionTestMixinBase, self).setUp()
     self.connector = self.GetConnector(self.__class__.api_version)
 
   def _ParseJSON(self, json_str):
@@ -68,7 +75,7 @@ class HttpApiRegressionTestMixinBase(object):
     if json_str.startswith(xssi_prefix):
       json_str = json_str[len(xssi_prefix):]
 
-    return json.loads(json_str)
+    return json.Parse(json_str)
 
   def _PrepareV1Request(self, method, args=None):
     """Prepares API v1 request for a given method and args."""
@@ -83,12 +90,10 @@ class HttpApiRegressionTestMixinBase(object):
       json_format.Parse(request.data, body_proto)
       body_args = args.__class__.FromSerializedBytes(
           body_proto.SerializeToString())
-      request.data = json.dumps(
+      request.data = json.Dump(
           api_value_renderers.StripTypeInfo(
-              api_value_renderers.RenderValue(body_args)
-          ),
-          cls=http_api.JSONEncoderWithRDFPrimitivesSupport,
-      )
+              api_value_renderers.RenderValue(body_args)),
+          encoder=http_api.JSONEncoderWithRDFPrimitivesSupport)
 
     prepped_request = request.prepare()
 
@@ -130,7 +135,11 @@ class HttpApiRegressionTestMixinBase(object):
     }
 
     if request.data:
-      request_payload = self._ParseJSON(replace(request.data))
+      if compatibility.PY2:
+        data = request.data.decode("utf-8")
+      else:
+        data = request.data
+      request_payload = self._ParseJSON(replace(data))
       if request_payload:
         check_result["request_payload"] = request_payload
 
@@ -168,7 +177,7 @@ class HttpApiRegressionTestMixinBase(object):
 
 
 class HttpApiV1RelationalDBRegressionTestMixin(HttpApiRegressionTestMixinBase):
-  """Test class for HTTP v1 protocol API regression test."""
+  """Test class for HTTP v1 protocol with Database.enabled=True."""
 
   connection_type = "http_v1"
   skip_legacy_dynamic_proto_tests = False
@@ -181,7 +190,7 @@ class HttpApiV1RelationalDBRegressionTestMixin(HttpApiRegressionTestMixinBase):
 
 
 class HttpApiV2RelationalDBRegressionTestMixin(HttpApiRegressionTestMixinBase):
-  """Test class for HTTP v2 protocol API regression test."""
+  """Test class for HTTP v2 protocol with Database.enabled=True."""
 
   connection_type = "http_v2"
   skip_legacy_dynamic_proto_tests = True

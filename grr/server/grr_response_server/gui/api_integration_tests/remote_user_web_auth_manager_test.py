@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 import requests
@@ -12,7 +16,7 @@ from grr.test_lib import test_lib
 class RemoteUserWebAuthManagerTest(api_integration_test_lib.ApiIntegrationTest):
 
   def setUp(self):
-    super().setUp()
+    super(RemoteUserWebAuthManagerTest, self).setUp()
     config_overrider = test_lib.ConfigOverrider({
         "AdminUI.webauth_manager": "RemoteUserWebAuthManager",
         "AdminUI.remote_user_trusted_ips": ["127.0.0.1", "::1"]

@@ -1,6 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Configuration parameters for the artifact subsystem."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import config_lib
 
@@ -14,7 +18,7 @@ config_lib.DEFINE_list(
     "Artifacts.knowledge_base", [
         "LinuxReleaseInfo",
         "LinuxUserProfiles",
-        "UsersDirectory",
+        "MacOSUsers",
         "WindowsCodePage",
         "WindowsDomainName",
         "WindowsEnvironmentVariableAllUsersAppData",
@@ -75,11 +79,6 @@ config_lib.DEFINE_list(
     " from /etc/netgroup files.")
 
 config_lib.DEFINE_list(
-    "Artifacts.netgroup_ignore_users", [],
+    "Artifacts.netgroup_user_blacklist", [],
     help="Exclude these users when parsing /etc/netgroup "
     "files.")
-
-config_lib.DEFINE_list(
-    name="Artifacts.edr_agents",
-    default=[],
-    help="Artifacts used for collecting metadata about EDR agents.")

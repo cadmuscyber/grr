@@ -1,11 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Mixin class to be used in tests for BlobStore implementations."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 import threading
 import time
-from unittest import mock
+
+import mock
 
 from grr_response_core.lib import rdfvalue
 from grr_response_server import blob_store
@@ -31,7 +36,7 @@ class BlobStoreTestMixin(stats_test_lib.StatsTestMixin, metaclass=abc.ABCMeta):
     """
 
   def setUp(self):
-    super().setUp()
+    super(BlobStoreTestMixin, self).setUp()
     bs, cleanup = self.CreateBlobStore()
     if cleanup is not None:
       self.addCleanup(cleanup)

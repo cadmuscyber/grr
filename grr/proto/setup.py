@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 """setup.py file for a GRR API client library."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-import configparser
-from distutils.command.build_py import build_py
 import os
 import shutil
 import subprocess
 import sys
+
+import configparser
+from distutils.command.build_py import build_py
 
 from setuptools import find_packages
 from setuptools import setup
@@ -16,9 +20,8 @@ from setuptools.command.sdist import sdist
 THIS_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 os.chdir(THIS_DIRECTORY)
 
-GRPCIO = "grpcio==1.46.3"
-GRPCIO_TOOLS = "grpcio-tools==1.43.0"
-PROTOBUF = "protobuf>=3.12.2,<4"
+GRPCIO_TOOLS = "grpcio-tools==1.24.1"
+PROTOBUF = "protobuf==3.11.1"
 
 
 def get_config():
@@ -32,7 +35,7 @@ def get_config():
     if not os.path.exists(ini_path):
       raise RuntimeError("Couldn't find version.ini")
 
-  config = configparser.ConfigParser()
+  config = configparser.SafeConfigParser()
   config.read(ini_path)
   return config
 
@@ -54,9 +57,8 @@ def compile_protos():
     # version. Otherwise latest protobuf library will be installed with
     # grpcio-tools and then uninstalled when grr-response-proto's setup.py runs
     # and reinstalled to the version required by grr-response-proto.
-    subprocess.check_call([
-        sys.executable, "-m", "pip", "install", GRPCIO, GRPCIO_TOOLS, PROTOBUF
-    ])
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", GRPCIO_TOOLS, PROTOBUF])
 
   # If there's no makefile, we're likely installing from an sdist,
   # so there's no need to compile the protos (they should be already
@@ -101,7 +103,6 @@ class Sdist(sdist):
 
 
 VERSION = get_config()
-PACKAGES = find_packages()
 
 setup_args = dict(
     name="grr-response-proto",
@@ -116,10 +117,12 @@ setup_args = dict(
         "develop": Develop,
         "sdist": Sdist,
     },
-    package_data={package: ["py.typed", "*.pyi"] for package in PACKAGES},
-    packages=PACKAGES,
+    packages=find_packages(),
     install_requires=[
         PROTOBUF,
+    ],
+    setup_requires=[
+        GRPCIO_TOOLS,
     ],
     data=["version.ini"])
 

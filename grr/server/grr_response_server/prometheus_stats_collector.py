@@ -1,14 +1,20 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Prometheus-based statistics collection."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import collections
 from typing import Dict, Text
 
 import prometheus_client
+import six
 
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import stats as rdf_stats
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 from grr_response_core.stats import stats_collector
 from grr_response_core.stats import stats_utils
@@ -83,7 +89,8 @@ class _Metric(object):
 
   def __repr__(self):
     return "<{} varname={!r} fields={!r} metric={!r}>".format(
-        type(self).__name__, self.metadata.varname, self.fields, self.metric)
+        compatibility.GetName(type(self)), self.metadata.varname, self.fields,
+        self.metric)
 
 
 def _DistributionFromHistogram(metric, values_by_suffix):
@@ -157,7 +164,7 @@ class PrometheusStatsCollector(stats_collector.StatsCollector):
         new CollectorRegistry is instantiated. Use prometheus_client.REGISTRY
         for the global default registry.
     """
-    self._metrics: Dict[Text, _Metric] = {}
+    self._metrics = {}  # type: Dict[Text, _Metric]
 
     if registry is None:
       self._registry = prometheus_client.CollectorRegistry(auto_describe=True)
@@ -172,7 +179,7 @@ class PrometheusStatsCollector(stats_collector.StatsCollector):
   @utils.Synchronized
   def IncrementCounter(self, metric_name, delta=1, fields=None):
     metric = self._metrics[metric_name]
-    counter: prometheus_client.Counter = metric.ForFields(fields)
+    counter = metric.ForFields(fields)  # type: prometheus_client.Counter
     counter.inc(delta)
 
   @utils.Synchronized
@@ -180,22 +187,22 @@ class PrometheusStatsCollector(stats_collector.StatsCollector):
     # TODO(user): decouple validation from implementation.
     # Use validation wrapper approach in StatsCollector (similar to
     # how it's done in REL_DB).
-    precondition.AssertType(value, (int,) + (float,))
+    precondition.AssertType(value, six.integer_types + (float,))
 
     metric = self._metrics[metric_name]
-    histogram: prometheus_client.Histogram = metric.ForFields(fields)
+    histogram = metric.ForFields(fields)  # type: prometheus_client.Histogram
     histogram.observe(value)
 
   @utils.Synchronized
   def SetGaugeValue(self, metric_name, value, fields=None):
     metric = self._metrics[metric_name]
-    gauge: prometheus_client.Gauge = metric.ForFields(fields)
+    gauge = metric.ForFields(fields)  # type: prometheus_client.Gauge
     gauge.set(value)
 
   @utils.Synchronized
   def SetGaugeCallback(self, metric_name, callback, fields=None):
     metric = self._metrics[metric_name]
-    gauge: prometheus_client.Gauge = metric.ForFields(fields)
+    gauge = metric.ForFields(fields)  # type: prometheus_client.Gauge
     gauge.set_function(callback)
 
   @utils.Synchronized

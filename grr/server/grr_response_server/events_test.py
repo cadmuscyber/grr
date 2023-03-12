@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for the event publishing system."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -16,7 +20,7 @@ class TestListener(events.EventListener):  # pylint: disable=unused-variable
 
   received_events = []
 
-  def ProcessEvents(self, msgs=None, publisher_username=None):
+  def ProcessMessages(self, msgs=None, token=None):
     # Store the results for later inspection.
     self.__class__.received_events.extend(msgs)
 
@@ -34,7 +38,7 @@ class EventsTest(flow_test_lib.FlowTestsBaseclass):
         source="aff4:/C.0000000000000001",
         auth_state="AUTHENTICATED")
 
-    events.Events.PublishEvent("TestEvent", event, username=self.test_username)
+    events.Events.PublishEvent("TestEvent", event, token=self.token)
 
     # Make sure the source is correctly propagated.
     self.assertEqual(TestListener.received_events[0], event)

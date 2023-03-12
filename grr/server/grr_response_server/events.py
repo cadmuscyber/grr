@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The GRR event publishing classes."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 
 from grr_response_core.lib import rdfvalue
@@ -14,18 +18,18 @@ class EventListener(metaclass=EventRegistry):
   """
   EVENTS = []
 
-  def ProcessEvents(self, msgs=None, publisher_username=None):
+  def ProcessMessages(self, msgs=None, token=None):
     """Processes a message for the event."""
 
-  def ProcessEvent(self, event=None, publisher_username=None):
-    return self.ProcessEvents([event], publisher_username=publisher_username)
+  def ProcessMessage(self, msg=None, token=None):
+    return self.ProcessMessages([msg], token=token)
 
 
 class Events(object):
   """A class that provides event publishing methods."""
 
   @classmethod
-  def PublishEvent(cls, event_name, event, username=None):
+  def PublishEvent(cls, event_name, msg, token=None):
     """Publish the message into all listeners of the event.
 
     We send the message to all event handlers which contain this
@@ -34,23 +38,23 @@ class Events(object):
 
     Args:
       event_name: An event name.
-      event: The message to send to the event handler.
-      username: Username of the publisher of the message.
+      msg: The message to send to the event handler.
+      token: ACL token.
 
     Raises:
       ValueError: If the message is invalid. The message must be a Semantic
         Value (instance of RDFValue) or a full GrrMessage.
     """
-    cls.PublishMultipleEvents({event_name: [event]}, username=username)
+    cls.PublishMultipleEvents({event_name: [msg]}, token=token)
 
   @classmethod
-  def PublishMultipleEvents(cls, events, username=None):
+  def PublishMultipleEvents(cls, events, token=None):
     """Publishes multiple messages at once.
 
     Args:
       events: A dict with keys being event names and values being lists of
         messages.
-      username: Username of the publisher of the messages.
+      token: ACL token.
 
     Raises:
       ValueError: If the message is invalid. The message must be a Semantic
@@ -66,4 +70,4 @@ class Events(object):
           raise ValueError("Can only publish RDFValue instances.")
 
       for event_cls in event_name_map.get(event_name, []):
-        event_cls().ProcessEvents(messages, publisher_username=username)
+        event_cls().ProcessMessages(messages, token=token)

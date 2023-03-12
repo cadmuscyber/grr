@@ -1,19 +1,19 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Simple parsers for Linux Release files."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import collections
 import re
 
-from typing import IO
-from typing import Iterable
-from typing import Iterator
 from typing import Text
 
 from grr_response_core.lib import parsers
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import anomaly as rdf_anomaly
-from grr_response_core.lib.rdfvalues import client as rdf_client
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.util import precondition
 
@@ -135,7 +135,7 @@ class ReleaseFileParseHandler(ReleaseParseHandler):
     return complete, ParsedRelease(self.name, major, minor)
 
 
-class LinuxReleaseParser(parsers.MultiFileParser[rdf_protodict.Dict]):
+class LinuxReleaseParser(parsers.MultiFileParser):
   """Parser for Linux distribution information."""
 
   output_types = [rdf_protodict.Dict]
@@ -174,12 +174,7 @@ class LinuxReleaseParser(parsers.MultiFileParser[rdf_protodict.Dict]):
       result[path] = contents
     return result
 
-  def ParseFiles(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspecs: Iterable[rdf_paths.PathSpec],
-      filedescs: Iterable[IO[bytes]],
-  ) -> Iterator[rdf_protodict.Dict]:
+  def ParseFiles(self, knowledge_base, pathspecs, filedescs):
     del knowledge_base  # Unused.
 
     # Collate files into path: contents dictionary.

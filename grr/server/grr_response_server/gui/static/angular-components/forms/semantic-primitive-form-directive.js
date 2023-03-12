@@ -1,71 +1,67 @@
 goog.module('grrUi.forms.semanticPrimitiveFormDirective');
 goog.module.declareLegacyNamespace();
 
-const reflectionService = goog.requireType('grrUi.core.reflectionService');
-
 
 
 /**
  * Controller for SemanticPrimitiveFormDirective.
- * @unrestricted
+ *
+ * @constructor
+ * @param {!angular.Scope} $scope
+ * @param {!grrUi.core.reflectionService.ReflectionService} grrReflectionService
+ * @ngInject
  */
-const SemanticPrimitiveFormController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @param {!reflectionService.ReflectionService}
-   *     grrReflectionService
-   * @ngInject
-   */
-  constructor($scope, grrReflectionService) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const SemanticPrimitiveFormController =
+    function($scope, grrReflectionService) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @private {!reflectionService.ReflectionService} */
-    this.grrReflectionService_ = grrReflectionService;
+  /** @private {!grrUi.core.reflectionService.ReflectionService} */
+  this.grrReflectionService_ = grrReflectionService;
 
-    /** @export {string|undefined} */
-    this.valueType;
+  /** @export {string|undefined} */
+  this.valueType;
 
-    this.scope_.$watch('value.type', this.onValueTypeChange_.bind(this));
-  }
-
-  /**
-   * Handles changes of the value type.
-   *
-   * @param {string|undefined} newValue
-   * @private
-   */
-  onValueTypeChange_(newValue) {
-    // We use direct equality instead of `angular.isUndefined` because otherwise
-    // Closure Compiler is not able to infer that `newValue` passed to a method
-    // below is not `undefined`.
-    if (newValue === undefined) {
-      this.valueType = undefined;
-      return;
-    }
-
-    var descriptorHandler = function(descriptor) {
-      var allowedTypes = exports.SemanticPrimitiveFormDirective.semantic_types;
-      var typeIndex = -1;
-      angular.forEach(allowedTypes, function(type) {
-        var index = descriptor['mro'].indexOf(type);
-        if (index != -1 && (typeIndex == -1 || typeIndex > index)) {
-          typeIndex = index;
-          this.valueType = type;
-        }
-      }.bind(this));
-
-      if (!this.valueType) {
-        this.valueType = 'RDFString';
-      }
-    }.bind(this);
-
-    this.grrReflectionService_.getRDFValueDescriptor(newValue).then(
-        descriptorHandler);
-  }
+  this.scope_.$watch('value.type', this.onValueTypeChange_.bind(this));
 };
 
 
+/**
+ * Handles changes of the value type.
+ *
+ * @param {string|undefined} newValue
+ * @private
+ */
+SemanticPrimitiveFormController.prototype.onValueTypeChange_ = function(
+    newValue) {
+  // We use direct equality instead of `angular.isUndefined` because otherwise
+  // Closure Compiler is not able to infer that `newValue` passed to a method
+  // below is not `undefined`.
+  if (newValue === undefined) {
+    this.valueType = undefined;
+    return;
+  }
+
+  var descriptorHandler = function(descriptor) {
+    var allowedTypes = exports.SemanticPrimitiveFormDirective.semantic_types;
+    var typeIndex = -1;
+    angular.forEach(
+        allowedTypes, function(type) {
+          var index = descriptor['mro'].indexOf(type);
+          if (index != -1 && (typeIndex == -1 || typeIndex > index)) {
+            typeIndex = index;
+            this.valueType = type;
+          }
+        }.bind(this));
+
+    if (!this.valueType) {
+      this.valueType = 'RDFString';
+    }
+  }.bind(this);
+
+  this.grrReflectionService_.getRDFValueDescriptor(newValue)
+      .then(descriptorHandler);
+};
 
 /**
  * SemanticPrimitiveFormDirective renders a form for a boolean value.
@@ -75,7 +71,9 @@ const SemanticPrimitiveFormController = class {
 exports.SemanticPrimitiveFormDirective = function() {
   return {
     restrict: 'E',
-    scope: {value: '='},
+    scope: {
+      value: '='
+    },
     templateUrl: '/static/angular-components/forms/' +
         'semantic-primitive-form.html',
     controller: SemanticPrimitiveFormController,
