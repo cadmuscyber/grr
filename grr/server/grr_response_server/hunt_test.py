@@ -1,25 +1,20 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for the hunt."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import glob
 import os
 import sys
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
+from grr_response_core.lib.rdfvalues import structs as rdf_structs
 from grr_response_core.lib.util import collection
-from grr_response_core.lib.util import compatibility
 from grr_response_server import data_store
 from grr_response_server import flow_base
 from grr_response_server import foreman
@@ -46,16 +41,16 @@ class HuntTest(stats_test_lib.StatsTestMixin,
   """Tests for the relational hunts implementation."""
 
   def GetFileHuntArgs(self):
+    args = transfer.GetFileArgs()
+    args.pathspec.path = "/tmp/evil.txt"
+    args.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+
     return rdf_hunt_objects.HuntArguments.Standard(
-        flow_name=compatibility.GetName(transfer.GetFile),
-        flow_args=transfer.GetFileArgs(
-            pathspec=rdf_paths.PathSpec(
-                path="/tmp/evil.txt",
-                pathtype=rdf_paths.PathSpec.PathType.OS,
-            )))
+        flow_name=transfer.GetFile.__name__,
+        flow_args=rdf_structs.AnyValue.Pack(args))
 
   def _CreateHunt(self, **kwargs):
-    hunt_obj = rdf_hunt_objects.Hunt(creator=self.token.username, **kwargs)
+    hunt_obj = rdf_hunt_objects.Hunt(creator=self.test_username, **kwargs)
     hunt.CreateHunt(hunt_obj)
     hunt_obj = hunt.StartHunt(hunt_obj.hunt_id)
 
@@ -85,11 +80,11 @@ class HuntTest(stats_test_lib.StatsTestMixin,
     return hunt_id, client_ids
 
   def setUp(self):
-    super(HuntTest, self).setUp()
+    super().setUp()
 
     # Making sure we don't use a system username here.
-    self.token.username = "hunt_test"
-    acl_test_lib.CreateUser(self.token.username)
+    self.test_username = "hunt_test"
+    acl_test_lib.CreateUser(self.test_username)
 
   def testForemanRulesAreCorrectlyPropagatedWhenHuntStarts(self):
     client_rule_set = foreman_rules.ForemanClientRuleSet(rules=[
@@ -294,12 +289,14 @@ class HuntTest(stats_test_lib.StatsTestMixin,
     num_files = len(glob.glob(path))
     self.assertGreater(num_files, 1)
 
+    flow_args = rdf_file_finder.FileFinderArgs()
+    flow_args.paths = [path]
+    flow_args.action.action_type = rdf_file_finder.FileFinderAction.Action.STAT
+
     hunt_args = rdf_hunt_objects.HuntArguments.Standard(
-        flow_name=compatibility.GetName(file_finder.FileFinder),
-        flow_args=rdf_file_finder.FileFinderArgs(
-            paths=[path],
-            action=rdf_file_finder.FileFinderAction(action_type="STAT"),
-        ))
+        flow_name=file_finder.FileFinder.__name__,
+        flow_args=rdf_structs.AnyValue.Pack(flow_args))
+
     hunt_id, _ = self._CreateAndRunHunt(
         num_clients=5,
         client_mock=action_mocks.FileFinderClientMock(),
@@ -313,7 +310,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
 
   def testStoppingHuntMarksHuntFlowsForTermination(self):
     hunt_args = rdf_hunt_objects.HuntArguments.Standard(
-        flow_name=compatibility.GetName(flow_test_lib.InfiniteFlow))
+        flow_name=flow_test_lib.InfiniteFlow.__name__)
     hunt_id, client_ids = self._CreateAndRunHunt(
         num_clients=5,
         iteration_limit=10,
@@ -542,7 +539,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
             output_plugins=[plugin_descriptor])
 
   def _CheckHuntStoppedNotification(self, str_match):
-    pending = self.GetUserNotifications(self.token.username)
+    pending = self.GetUserNotifications(self.test_username)
     self.assertLen(pending, 1)
     self.assertIn(str_match, pending[0].message)
 
@@ -574,7 +571,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
     client_ids = self.SetupClients(5)
 
     hunt_args = rdf_hunt_objects.HuntArguments.Standard(
-        flow_name=compatibility.GetName(processes.ListProcesses))
+        flow_name=processes.ListProcesses.__name__)
     hunt_id = self._CreateHunt(
         client_rule_set=foreman_rules.ForemanClientRuleSet(),
         client_rate=0,
@@ -583,7 +580,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
 
     single_process = [rdf_client.Process(pid=1, exe="a.exe")]
 
-    with utils.Stubber(hunt, "MIN_CLIENTS_FOR_AVERAGE_THRESHOLDS", 4):
+    with mock.patch.object(hunt, "MIN_CLIENTS_FOR_AVERAGE_THRESHOLDS", 4):
 
       def CheckState(hunt_state, num_results):
         hunt_obj = data_store.REL_DB.ReadHuntObject(hunt_id)
@@ -638,7 +635,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
         avg_cpu_seconds_per_client_limit=3,
         args=self.GetFileHuntArgs())
 
-    with utils.Stubber(hunt, "MIN_CLIENTS_FOR_AVERAGE_THRESHOLDS", 4):
+    with mock.patch.object(hunt, "MIN_CLIENTS_FOR_AVERAGE_THRESHOLDS", 4):
 
       def CheckState(hunt_state, user_cpu_time, system_cpu_time):
         hunt_obj = data_store.REL_DB.ReadHuntObject(hunt_id)
@@ -693,7 +690,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
         avg_network_bytes_per_client_limit=1,
         args=self.GetFileHuntArgs())
 
-    with utils.Stubber(hunt, "MIN_CLIENTS_FOR_AVERAGE_THRESHOLDS", 4):
+    with mock.patch.object(hunt, "MIN_CLIENTS_FOR_AVERAGE_THRESHOLDS", 4):
 
       def CheckState(hunt_state, network_bytes_sent):
         hunt_obj = data_store.REL_DB.ReadHuntObject(hunt_id)
@@ -786,21 +783,26 @@ class HuntTest(stats_test_lib.StatsTestMixin,
   def testHuntIsStoppedWhenExpirationTimeIsReached(self):
     client_ids = self.SetupClients(5)
 
+    fake_time = (
+        rdfvalue.RDFDatetime.Now() - rdfvalue.Duration.From(30, rdfvalue.DAYS))
+
     duration = rdfvalue.Duration.From(1, rdfvalue.DAYS)
-    expiry_time = rdfvalue.RDFDatetime.Now() + duration
+    expiry_time = fake_time + duration
 
-    hunt_id = self._CreateHunt(
-        client_rule_set=foreman_rules.ForemanClientRuleSet(),
-        client_rate=0,
-        duration=duration,
-        args=self.GetFileHuntArgs())
+    with test_lib.FakeTime(fake_time):
+      hunt_id = self._CreateHunt(
+          client_rule_set=foreman_rules.ForemanClientRuleSet(),
+          client_rate=0,
+          duration=duration,
+          args=self.GetFileHuntArgs())
 
-    client_mock = hunt_test_lib.SampleHuntMock(failrate=-1)
-    foreman_obj = foreman.Foreman()
-    for client_id in client_ids:
-      foreman_obj.AssignTasksToClient(client_id)
+      client_mock = hunt_test_lib.SampleHuntMock(failrate=-1)
+      foreman_obj = foreman.Foreman()
+      for client_id in client_ids:
+        foreman_obj.AssignTasksToClient(client_id)
 
-    hunt_test_lib.TestHuntHelper(client_mock, client_ids[:3])
+      hunt_test_lib.TestHuntHelper(client_mock, client_ids[:3])
+
     hunt_obj = data_store.REL_DB.ReadHuntObject(hunt_id)
     self.assertEqual(hunt_obj.hunt_state,
                      rdf_hunt_objects.Hunt.HuntState.STARTED)
@@ -882,7 +884,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
 
   def testHuntFlowLogsAreCorrectlyWrittenAndCanBeRead(self):
     hunt_args = rdf_hunt_objects.HuntArguments.Standard(
-        flow_name=compatibility.GetName(flow_test_lib.DummyLogFlow))
+        flow_name=flow_test_lib.DummyLogFlow.__name__)
     hunt_id, client_ids = self._CreateAndRunHunt(
         num_clients=10,
         client_mock=hunt_test_lib.SampleHuntMock(failrate=-1),
@@ -913,7 +915,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
         args=self.GetFileHuntArgs())
 
     hunt_obj = data_store.REL_DB.ReadHuntObject(hunt_id)
-    self.assertEqual(hunt_obj.creator, self.token.username)
+    self.assertEqual(hunt_obj.creator, self.test_username)
 
     flows = data_store.REL_DB.ReadAllFlowObjects(client_id=client_ids[0])
     self.assertLen(flows, 1)
@@ -929,7 +931,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
         args=self.GetFileHuntArgs())
 
     hunt_obj = data_store.REL_DB.ReadHuntObject(hunt_id)
-    self.assertEqual(hunt_obj.creator, self.token.username)
+    self.assertEqual(hunt_obj.creator, self.test_username)
 
     flows = data_store.REL_DB.ReadAllFlowObjects(client_id=client_ids[0])
     self.assertLen(flows, 1)
@@ -942,15 +944,15 @@ class HuntTest(stats_test_lib.StatsTestMixin,
     hunt_obj = rdf_hunt_objects.Hunt(client_rate=0)
     hunt_obj.args.hunt_type = hunt_obj.args.HuntType.VARIABLE
     for index in range(2):
+      flow_args = transfer.GetFileArgs()
+      flow_args.pathspec.path = f"/tmp/evil_{index}.txt"
+      flow_args.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+
       hunt_obj.args.variable.flow_groups.append(
           rdf_hunt_objects.VariableHuntFlowGroup(
               client_ids=[client_id],
-              flow_name=compatibility.GetName(transfer.GetFile),
-              flow_args=transfer.GetFileArgs(
-                  pathspec=rdf_paths.PathSpec(
-                      path="/tmp/evil_%d.txt" % index,
-                      pathtype=rdf_paths.PathSpec.PathType.OS,
-                  ))))
+              flow_name=transfer.GetFile.__name__,
+              flow_args=rdf_structs.AnyValue.Pack(flow_args)))
 
     data_store.REL_DB.WriteHuntObject(hunt_obj)
 
@@ -982,15 +984,15 @@ class HuntTest(stats_test_lib.StatsTestMixin,
     hunt_obj.args.hunt_type = hunt_obj.args.HuntType.VARIABLE
 
     for index, pair in enumerate(collection.Batch(client_ids, 2)):
+      flow_args = transfer.GetFileArgs()
+      flow_args.pathspec.path = f"/tmp/evil_{index}.txt"
+      flow_args.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+
       hunt_obj.args.variable.flow_groups.append(
           rdf_hunt_objects.VariableHuntFlowGroup(
               client_ids=pair,
-              flow_name=compatibility.GetName(transfer.GetFile),
-              flow_args=transfer.GetFileArgs(
-                  pathspec=rdf_paths.PathSpec(
-                      path="/tmp/evil_%d.txt" % index,
-                      pathtype=rdf_paths.PathSpec.PathType.OS,
-                  ))))
+              flow_name=transfer.GetFile.__name__,
+              flow_args=rdf_structs.AnyValue.Pack(flow_args)))
 
     data_store.REL_DB.WriteHuntObject(hunt_obj)
     hunt.StartHunt(hunt_obj.hunt_id)
@@ -1008,7 +1010,7 @@ class HuntTest(stats_test_lib.StatsTestMixin,
         self.assertLen(all_flows, 1)
 
         self.assertEqual(all_flows[0].flow_class_name,
-                         compatibility.GetName(transfer.GetFile))
+                         transfer.GetFile.__name__)
         self.assertEqual(all_flows[0].args.pathspec.path,
                          "/tmp/evil_%d.txt" % index)
 

@@ -1,12 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for the Linux process memory reading."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import builtins
 import os
+from unittest import mock
 
 from absl import app
 
@@ -25,7 +22,7 @@ class ProcessTest(test_lib.GRRBaseTest):
       del requested_path, mode
       raise OSError("Error in open64.")
 
-    with utils.Stubber(process, "open64", FailingOpen):
+    with mock.patch.object(process, "open64", FailingOpen):
       with self.assertRaises(process_error.ProcessError):
         process.Process(pid=1).Open()
 

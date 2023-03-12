@@ -10,7 +10,9 @@
         },
         "client_id": "C.1000000000000000",
         "creator": "",
+        "error_description": "Cancelled by user",
         "flow_id": "W:ABCDEF",
+        "is_robot": false,
         "last_active_at": 4242000000,
         "name": "ListProcesses",
         "runner_args": {
@@ -39,7 +41,9 @@
         "args": {},
         "client_id": "C.1000000000000000",
         "creator": "",
+        "error_description": "Cancelled by user",
         "flow_id": "W:ABCDEF",
+        "is_robot": false,
         "last_active_at": 4242000000,
         "name": "ListProcesses",
         "runner_args": {
@@ -52,6 +56,39 @@
         "urn": "aff4:/C.1000000000000000/W:ABCDEF"
       },
       "url": "/api/clients/C.1000000000000000/flows/W:ABCDEF/actions/cancel"
+    }
+  ],
+  "ApiCountHuntResultsByTypeHandler": [
+    {
+      "api_method": "CountHuntResultsByType",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "type": "ApiTypeCount",
+            "value": {
+              "count": {
+                "type": "long",
+                "value": 1
+              },
+              "type": {
+                "type": "unicode",
+                "value": "RDFString"
+              }
+            }
+          }
+        ]
+      },
+      "test_class": "ApiCountHuntResultsByTypeRegressionTest_http_v1",
+      "type_stripped_response": {
+        "items": [
+          {
+            "count": 1,
+            "type": "RDFString"
+          }
+        ]
+      },
+      "url": "/api/hunts/H:123456/result-counts"
     }
   ],
   "ApiCreateClientApprovalHandler": [
@@ -88,6 +125,10 @@
           "email_message_id": {
             "type": "unicode",
             "value": "<message id stub>"
+          },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419326000000
           },
           "id": {
             "type": "unicode",
@@ -205,12 +246,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4A"
@@ -220,6 +269,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8A"
@@ -327,6 +380,7 @@
           "test@example.com"
         ],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419326000000,
         "id": "approval:112233",
         "is_valid": false,
         "is_valid_message": "Need at least 1 additional approver for access.",
@@ -364,12 +418,15 @@
                   "address_type": "INET6",
                   "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                 }
-              ]
+              ],
+              "ifname": "if0"
             },
             {
+              "ifname": "if1",
               "mac_address": "qrvM3e4A"
             },
             {
+              "ifname": "if2",
               "mac_address": "u8zd7v8A"
             }
           ],
@@ -490,9 +547,13 @@
                   "hunt_cron_action": {
                     "type": "HuntCronAction",
                     "value": {
+                      "flow_args": {
+                        "type": "InterrogateArgs",
+                        "value": {}
+                      },
                       "flow_name": {
                         "type": "unicode",
-                        "value": ""
+                        "value": "Interrogate"
                       },
                       "hunt_runner_args": {
                         "type": "HuntRunnerArgs",
@@ -508,6 +569,10 @@
                           "avg_results_per_client_limit": {
                             "type": "long",
                             "value": 1000
+                          },
+                          "client_rate": {
+                            "type": "float",
+                            "value": 20.0
                           },
                           "crash_limit": {
                             "type": "long",
@@ -566,11 +631,13 @@
           "args": {
             "action_type": "HUNT_CRON_ACTION",
             "hunt_cron_action": {
-              "flow_name": "",
+              "flow_args": {},
+              "flow_name": "Interrogate",
               "hunt_runner_args": {
                 "avg_cpu_seconds_per_client_limit": 60,
                 "avg_network_bytes_per_client_limit": 10485760,
                 "avg_results_per_client_limit": 1000,
+                "client_rate": 20.0,
                 "crash_limit": 100
               }
             }
@@ -601,6 +668,7 @@
           "avg_cpu_seconds_per_client_limit": 60,
           "avg_network_bytes_per_client_limit": 10485760,
           "avg_results_per_client_limit": 1000,
+          "client_rate": 20.0,
           "client_rule_set": {
             "rules": [
               {
@@ -662,6 +730,10 @@
                       "avg_results_per_client_limit": {
                         "type": "long",
                         "value": 1000
+                      },
+                      "client_rate": {
+                        "type": "float",
+                        "value": 20.0
                       },
                       "client_rule_set": {
                         "type": "ForemanClientRuleSet",
@@ -740,6 +812,7 @@
               "avg_cpu_seconds_per_client_limit": 60,
               "avg_network_bytes_per_client_limit": 10485760,
               "avg_results_per_client_limit": 1000,
+              "client_rate": 20.0,
               "client_rule_set": {
                 "rules": [
                   {
@@ -808,6 +881,10 @@
             "type": "ApiFlowId",
             "value": "W:ABCDEF"
           },
+          "is_robot": {
+            "type": "bool",
+            "value": false
+          },
           "last_active_at": {
             "type": "RDFDatetime",
             "value": 42000000
@@ -856,6 +933,7 @@
         "client_id": "C.1000000000000000",
         "creator": "api_test_user",
         "flow_id": "W:ABCDEF",
+        "is_robot": false,
         "last_active_at": 42000000,
         "name": "ListProcesses",
         "runner_args": {
@@ -904,6 +982,10 @@
           "email_message_id": {
             "type": "unicode",
             "value": "<message id stub>"
+          },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419326000000
           },
           "id": {
             "type": "unicode",
@@ -978,10 +1060,6 @@
                     }
                   ]
                 }
-              },
-              "clients_queued_count": {
-                "type": "long",
-                "value": 0
               },
               "clients_with_results_count": {
                 "type": "long",
@@ -1107,6 +1185,10 @@
                   }
                 }
               },
+              "hunt_type": {
+                "type": "EnumNamedValue",
+                "value": "STANDARD"
+              },
               "is_robot": {
                 "type": "bool",
                 "value": false
@@ -1126,6 +1208,10 @@
               "state": {
                 "type": "EnumNamedValue",
                 "value": "PAUSED"
+              },
+              "state_comment": {
+                "type": "unicode",
+                "value": ""
               },
               "total_cpu_usage": {
                 "type": "long",
@@ -1152,6 +1238,7 @@
           "test@example.com"
         ],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419326000000,
         "id": "approval:112233",
         "is_valid": false,
         "is_valid_message": "Need at least 1 additional approver for access.",
@@ -1176,7 +1263,6 @@
               }
             ]
           },
-          "clients_queued_count": 0,
           "clients_with_results_count": 0,
           "completed_clients_count": 0,
           "crash_limit": 100,
@@ -1214,17 +1300,285 @@
             "hunt_name": "GenericHunt",
             "original_object": {}
           },
+          "hunt_type": "STANDARD",
           "is_robot": false,
           "name": "GenericHunt",
           "remaining_clients_count": 0,
           "results_count": 0,
           "state": "PAUSED",
+          "state_comment": "",
           "total_cpu_usage": 0,
           "total_net_usage": 0,
           "urn": "aff4:/hunts/H:123456"
         }
       },
       "url": "/api/users/me/approvals/hunt/H:123456"
+    }
+  ],
+  "ApiCreatePerClientFileCollectionHuntHandler": [
+    {
+      "api_method": "CreatePerClientFileCollectionHunt",
+      "method": "POST",
+      "request_payload": {
+        "description": "Per-client file collection",
+        "per_client_args": [
+          {
+            "client_id": "C.1000000000000000",
+            "paths": [
+              "/etc/hosts",
+              "/foo/bar"
+            ]
+          }
+        ]
+      },
+      "response": {
+        "type": "ApiHunt",
+        "value": {
+          "all_clients_count": {
+            "type": "long",
+            "value": 0
+          },
+          "client_limit": {
+            "type": "long",
+            "value": 100
+          },
+          "client_rate": {
+            "type": "long",
+            "value": 0
+          },
+          "client_rule_set": {
+            "type": "ForemanClientRuleSet",
+            "value": {}
+          },
+          "clients_with_results_count": {
+            "type": "long",
+            "value": 0
+          },
+          "completed_clients_count": {
+            "type": "long",
+            "value": 0
+          },
+          "crash_limit": {
+            "type": "long",
+            "value": 100
+          },
+          "creator": {
+            "type": "unicode",
+            "value": "api_test_user"
+          },
+          "description": {
+            "type": "unicode",
+            "value": "Per-client file collection"
+          },
+          "duration": {
+            "type": "DurationSeconds",
+            "value": 1209600
+          },
+          "flow_args": {
+            "type": "HuntArgumentsVariable",
+            "value": {
+              "flow_groups": [
+                {
+                  "type": "VariableHuntFlowGroup",
+                  "value": {
+                    "client_ids": [
+                      {
+                        "type": "unicode",
+                        "value": "C.1000000000000000"
+                      }
+                    ],
+                    "flow_args": {
+                      "type": "MultiGetFileArgs",
+                      "value": {
+                        "pathspecs": [
+                          {
+                            "type": "PathSpec",
+                            "value": {
+                              "path": {
+                                "type": "unicode",
+                                "value": "/etc/hosts"
+                              },
+                              "pathtype": {
+                                "type": "EnumNamedValue",
+                                "value": "OS"
+                              }
+                            }
+                          },
+                          {
+                            "type": "PathSpec",
+                            "value": {
+                              "path": {
+                                "type": "unicode",
+                                "value": "/foo/bar"
+                              },
+                              "pathtype": {
+                                "type": "EnumNamedValue",
+                                "value": "OS"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "flow_name": {
+                      "type": "unicode",
+                      "value": "MultiGetFile"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "hunt_id": {
+            "type": "ApiHuntId",
+            "value": "H:123456"
+          },
+          "hunt_runner_args": {
+            "type": "HuntRunnerArgs",
+            "value": {
+              "avg_cpu_seconds_per_client_limit": {
+                "type": "long",
+                "value": 60
+              },
+              "avg_network_bytes_per_client_limit": {
+                "type": "long",
+                "value": 10485760
+              },
+              "avg_results_per_client_limit": {
+                "type": "long",
+                "value": 1000
+              },
+              "client_rate": {
+                "type": "long",
+                "value": 0
+              },
+              "client_rule_set": {
+                "type": "ForemanClientRuleSet",
+                "value": {}
+              },
+              "crash_limit": {
+                "type": "long",
+                "value": 100
+              },
+              "description": {
+                "type": "unicode",
+                "value": "Per-client file collection"
+              },
+              "expiry_time": {
+                "type": "DurationSeconds",
+                "value": 1209600
+              },
+              "hunt_name": {
+                "type": "unicode",
+                "value": "VariableGenericHunt"
+              },
+              "original_object": {
+                "type": "FlowLikeObjectReference",
+                "value": {}
+              }
+            }
+          },
+          "hunt_type": {
+            "type": "EnumNamedValue",
+            "value": "VARIABLE"
+          },
+          "is_robot": {
+            "type": "bool",
+            "value": false
+          },
+          "name": {
+            "type": "unicode",
+            "value": "VariableGenericHunt"
+          },
+          "remaining_clients_count": {
+            "type": "long",
+            "value": 0
+          },
+          "results_count": {
+            "type": "long",
+            "value": 0
+          },
+          "state": {
+            "type": "EnumNamedValue",
+            "value": "PAUSED"
+          },
+          "state_comment": {
+            "type": "unicode",
+            "value": ""
+          },
+          "total_cpu_usage": {
+            "type": "long",
+            "value": 0
+          },
+          "total_net_usage": {
+            "type": "long",
+            "value": 0
+          },
+          "urn": {
+            "type": "SessionID",
+            "value": "aff4:/hunts/H:123456"
+          }
+        }
+      },
+      "test_class": "ApiCreatePerClientFileCollectionHuntRegressionTest_http_v1",
+      "type_stripped_response": {
+        "all_clients_count": 0,
+        "client_limit": 100,
+        "client_rate": 0,
+        "client_rule_set": {},
+        "clients_with_results_count": 0,
+        "completed_clients_count": 0,
+        "crash_limit": 100,
+        "creator": "api_test_user",
+        "description": "Per-client file collection",
+        "duration": 1209600,
+        "flow_args": {
+          "flow_groups": [
+            {
+              "client_ids": [
+                "C.1000000000000000"
+              ],
+              "flow_args": {
+                "pathspecs": [
+                  {
+                    "path": "/etc/hosts",
+                    "pathtype": "OS"
+                  },
+                  {
+                    "path": "/foo/bar",
+                    "pathtype": "OS"
+                  }
+                ]
+              },
+              "flow_name": "MultiGetFile"
+            }
+          ]
+        },
+        "hunt_id": "H:123456",
+        "hunt_runner_args": {
+          "avg_cpu_seconds_per_client_limit": 60,
+          "avg_network_bytes_per_client_limit": 10485760,
+          "avg_results_per_client_limit": 1000,
+          "client_rate": 0,
+          "client_rule_set": {},
+          "crash_limit": 100,
+          "description": "Per-client file collection",
+          "expiry_time": 1209600,
+          "hunt_name": "VariableGenericHunt",
+          "original_object": {}
+        },
+        "hunt_type": "VARIABLE",
+        "is_robot": false,
+        "name": "VariableGenericHunt",
+        "remaining_clients_count": 0,
+        "results_count": 0,
+        "state": "PAUSED",
+        "state_comment": "",
+        "total_cpu_usage": 0,
+        "total_net_usage": 0,
+        "urn": "aff4:/hunts/H:123456"
+      },
+      "url": "/api/hunts/per-client-file-collection"
     }
   ],
   "ApiCreateVfsRefreshOperationHandler": [
@@ -1236,7 +1590,7 @@
         "max_depth": 1
       },
       "response": {
-        "operation_id": "W:ABCDEF"
+        "operation_id": "ABCDEF"
       },
       "test_class": "ApiCreateVfsRefreshOperationHandlerRegressionTest_http_v1",
       "url": "/api/clients/C.1000000000000000/vfs-refresh-operations"
@@ -1251,6 +1605,53 @@
       },
       "test_class": "ApiDeleteHuntHandlerRegressionTest_http_v1",
       "url": "/api/hunts/H:123456"
+    }
+  ],
+  "ApiExplainGlobExpressionHandler": [
+    {
+      "api_method": "ExplainGlobExpression",
+      "method": "POST",
+      "request_payload": {
+        "glob_expression": "/foo/*"
+      },
+      "response": {
+        "components": [
+          {
+            "type": "GlobComponentExplanation",
+            "value": {
+              "examples": [],
+              "glob_expression": {
+                "type": "unicode",
+                "value": "/foo/"
+              }
+            }
+          },
+          {
+            "type": "GlobComponentExplanation",
+            "value": {
+              "examples": [],
+              "glob_expression": {
+                "type": "unicode",
+                "value": "*"
+              }
+            }
+          }
+        ]
+      },
+      "test_class": "ApiExplainGlobExpressionHandlerTest_http_v1",
+      "type_stripped_response": {
+        "components": [
+          {
+            "examples": [],
+            "glob_expression": "/foo/"
+          },
+          {
+            "examples": [],
+            "glob_expression": "*"
+          }
+        ]
+      },
+      "url": "/api/clients/C.1000000000000000/glob-expressions:explain"
     }
   ],
   "ApiForceRunCronJobHandler": [
@@ -1281,6 +1682,10 @@
           "email_message_id": {
             "type": "unicode",
             "value": "<message id stub>"
+          },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419244000000
           },
           "id": {
             "type": "unicode",
@@ -1394,12 +1799,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4A"
@@ -1409,6 +1822,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8A"
@@ -1514,6 +1931,7 @@
         ],
         "email_cc_addresses": [],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419244000000,
         "id": "approval:111111",
         "is_valid": false,
         "is_valid_message": "Need at least 1 additional approver for access.",
@@ -1550,12 +1968,15 @@
                   "address_type": "INET6",
                   "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                 }
-              ]
+              ],
+              "ifname": "if0"
             },
             {
+              "ifname": "if1",
               "mac_address": "qrvM3e4A"
             },
             {
+              "ifname": "if2",
               "mac_address": "u8zd7v8A"
             }
           ],
@@ -1613,6 +2034,10 @@
           "email_message_id": {
             "type": "unicode",
             "value": "<message id stub>"
+          },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419245000000
           },
           "id": {
             "type": "unicode",
@@ -1722,12 +2147,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4B"
@@ -1737,6 +2170,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8B"
@@ -1843,6 +2280,7 @@
         ],
         "email_cc_addresses": [],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419245000000,
         "id": "approval:222222",
         "is_valid": true,
         "notified_users": [
@@ -1878,12 +2316,15 @@
                   "address_type": "INET6",
                   "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAQ=="
                 }
-              ]
+              ],
+              "ifname": "if0"
             },
             {
+              "ifname": "if1",
               "mac_address": "qrvM3e4B"
             },
             {
+              "ifname": "if2",
               "mac_address": "u8zd7v8B"
             }
           ],
@@ -2012,12 +2453,20 @@
                       }
                     }
                   }
-                ]
+                ],
+                "ifname": {
+                  "type": "unicode",
+                  "value": "if0"
+                }
               }
             },
             {
               "type": "Interface",
               "value": {
+                "ifname": {
+                  "type": "unicode",
+                  "value": "if1"
+                },
                 "mac_address": {
                   "type": "MacAddress",
                   "value": "qrvM3e4A"
@@ -2027,6 +2476,10 @@
             {
               "type": "Interface",
               "value": {
+                "ifname": {
+                  "type": "unicode",
+                  "value": "if2"
+                },
                 "mac_address": {
                   "type": "MacAddress",
                   "value": "u8zd7v8A"
@@ -2156,12 +2609,15 @@
                 "address_type": "INET6",
                 "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
               }
-            ]
+            ],
+            "ifname": "if0"
           },
           {
+            "ifname": "if1",
             "mac_address": "qrvM3e4A"
           },
           {
+            "ifname": "if2",
             "mac_address": "u8zd7v8A"
           }
         ],
@@ -2326,12 +2782,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4A"
@@ -2341,6 +2805,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8A"
@@ -2519,12 +2987,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4A"
@@ -2534,6 +3010,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8A"
@@ -2662,12 +3142,15 @@
                     "address_type": "INET6",
                     "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "mac_address": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "mac_address": "u8zd7v8A"
               }
             ],
@@ -2729,12 +3212,15 @@
                     "address_type": "INET6",
                     "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "mac_address": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "mac_address": "u8zd7v8A"
               }
             ],
@@ -2860,12 +3346,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4A"
@@ -2875,6 +3369,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8A"
@@ -3003,12 +3501,15 @@
                     "address_type": "INET6",
                     "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "mac_address": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "mac_address": "u8zd7v8A"
               }
             ],
@@ -3134,12 +3635,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4A"
@@ -3149,6 +3658,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8A"
@@ -3277,12 +3790,15 @@
                     "address_type": "INET6",
                     "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "mac_address": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "mac_address": "u8zd7v8A"
               }
             ],
@@ -3383,9 +3899,13 @@
                   "hunt_cron_action": {
                     "type": "HuntCronAction",
                     "value": {
+                      "flow_args": {
+                        "type": "InterrogateArgs",
+                        "value": {}
+                      },
                       "flow_name": {
                         "type": "unicode",
-                        "value": ""
+                        "value": "Interrogate"
                       },
                       "hunt_runner_args": {
                         "type": "HuntRunnerArgs",
@@ -3401,6 +3921,10 @@
                           "avg_results_per_client_limit": {
                             "type": "long",
                             "value": 1000
+                          },
+                          "client_rate": {
+                            "type": "float",
+                            "value": 20.0
                           },
                           "crash_limit": {
                             "type": "long",
@@ -3456,11 +3980,13 @@
           "args": {
             "action_type": "HUNT_CRON_ACTION",
             "hunt_cron_action": {
-              "flow_name": "",
+              "flow_args": {},
+              "flow_name": "Interrogate",
               "hunt_runner_args": {
                 "avg_cpu_seconds_per_client_limit": 60,
                 "avg_network_bytes_per_client_limit": 10485760,
                 "avg_results_per_client_limit": 1000,
+                "client_rate": 20.0,
                 "crash_limit": 100
               }
             }
@@ -3534,9 +4060,13 @@
                   "hunt_cron_action": {
                     "type": "HuntCronAction",
                     "value": {
+                      "flow_args": {
+                        "type": "InterrogateArgs",
+                        "value": {}
+                      },
                       "flow_name": {
                         "type": "unicode",
-                        "value": ""
+                        "value": "Interrogate"
                       },
                       "hunt_runner_args": {
                         "type": "HuntRunnerArgs",
@@ -3552,6 +4082,10 @@
                           "avg_results_per_client_limit": {
                             "type": "long",
                             "value": 1000
+                          },
+                          "client_rate": {
+                            "type": "float",
+                            "value": 20.0
                           },
                           "crash_limit": {
                             "type": "long",
@@ -3607,11 +4141,13 @@
           "args": {
             "action_type": "HUNT_CRON_ACTION",
             "hunt_cron_action": {
-              "flow_name": "",
+              "flow_args": {},
+              "flow_name": "Interrogate",
               "hunt_runner_args": {
                 "avg_cpu_seconds_per_client_limit": 60,
                 "avg_network_bytes_per_client_limit": 10485760,
                 "avg_results_per_client_limit": 1000,
+                "client_rate": 20.0,
                 "crash_limit": 100
               }
             }
@@ -3800,6 +4336,10 @@
             "type": "ApiFlowId",
             "value": "F:ABCDEF12"
           },
+          "is_robot": {
+            "type": "bool",
+            "value": false
+          },
           "last_active_at": {
             "type": "RDFDatetime",
             "value": 42000000
@@ -3807,6 +4347,19 @@
           "name": {
             "type": "unicode",
             "value": "Interrogate"
+          },
+          "progress": {
+            "type": "DefaultFlowProgress",
+            "value": {}
+          },
+          "result_metadata": {
+            "type": "FlowResultMetadata",
+            "value": {
+              "is_metadata_set": {
+                "type": "bool",
+                "value": true
+              }
+            }
           },
           "runner_args": {
             "type": "FlowRunnerArgs",
@@ -3842,6 +4395,28 @@
                   "value": {
                     "key": {
                       "type": "unicode",
+                      "value": "_result_metadata"
+                    },
+                    "type": {
+                      "type": "unicode",
+                      "value": "FlowResultMetadata"
+                    },
+                    "value": {
+                      "type": "FlowResultMetadata",
+                      "value": {
+                        "is_metadata_set": {
+                          "type": "bool",
+                          "value": true
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "ApiDataObjectKeyValuePair",
+                  "value": {
+                    "key": {
+                      "type": "unicode",
                       "value": "client"
                     },
                     "type": {
@@ -3854,6 +4429,15 @@
                         "client_id": {
                           "type": "unicode",
                           "value": "C.1000000000000000"
+                        },
+                        "metadata": {
+                          "type": "ClientSnapshotMetadata",
+                          "value": {
+                            "source_flow_id": {
+                              "type": "unicode",
+                              "value": "F:ABCDEF12"
+                            }
+                          }
                         }
                       }
                     }
@@ -3912,8 +4496,13 @@
         },
         "creator": "api_test_user",
         "flow_id": "F:ABCDEF12",
+        "is_robot": false,
         "last_active_at": 42000000,
         "name": "Interrogate",
+        "progress": {},
+        "result_metadata": {
+          "is_metadata_set": true
+        },
         "runner_args": {
           "client_id": "aff4:/C.1000000000000000",
           "flow_name": "Interrogate",
@@ -3924,7 +4513,13 @@
         "state_data": {
           "items": [
             {
-              "client_id": "C.1000000000000000"
+              "is_metadata_set": true
+            },
+            {
+              "client_id": "C.1000000000000000",
+              "metadata": {
+                "source_flow_id": "F:ABCDEF12"
+              }
             },
             {
               "invalid": true,
@@ -4004,9 +4599,17 @@
             "type": "unicode",
             "value": "api_test_user"
           },
+          "error_description": {
+            "type": "unicode",
+            "value": "Pending termination: Some reason"
+          },
           "flow_id": {
             "type": "ApiFlowId",
             "value": "F:ABCDEF13"
+          },
+          "is_robot": {
+            "type": "bool",
+            "value": false
           },
           "last_active_at": {
             "type": "RDFDatetime",
@@ -4015,6 +4618,19 @@
           "name": {
             "type": "unicode",
             "value": "Interrogate"
+          },
+          "progress": {
+            "type": "DefaultFlowProgress",
+            "value": {}
+          },
+          "result_metadata": {
+            "type": "FlowResultMetadata",
+            "value": {
+              "is_metadata_set": {
+                "type": "bool",
+                "value": true
+              }
+            }
           },
           "runner_args": {
             "type": "FlowRunnerArgs",
@@ -4050,6 +4666,28 @@
                   "value": {
                     "key": {
                       "type": "unicode",
+                      "value": "_result_metadata"
+                    },
+                    "type": {
+                      "type": "unicode",
+                      "value": "FlowResultMetadata"
+                    },
+                    "value": {
+                      "type": "FlowResultMetadata",
+                      "value": {
+                        "is_metadata_set": {
+                          "type": "bool",
+                          "value": true
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "ApiDataObjectKeyValuePair",
+                  "value": {
+                    "key": {
+                      "type": "unicode",
                       "value": "client"
                     },
                     "type": {
@@ -4062,6 +4700,15 @@
                         "client_id": {
                           "type": "unicode",
                           "value": "C.1000000000000000"
+                        },
+                        "metadata": {
+                          "type": "ClientSnapshotMetadata",
+                          "value": {
+                            "source_flow_id": {
+                              "type": "unicode",
+                              "value": "F:ABCDEF13"
+                            }
+                          }
                         }
                       }
                     }
@@ -4120,9 +4767,15 @@
           "status": "Pending termination: Some reason"
         },
         "creator": "api_test_user",
+        "error_description": "Pending termination: Some reason",
         "flow_id": "F:ABCDEF13",
+        "is_robot": false,
         "last_active_at": 42000000,
         "name": "Interrogate",
+        "progress": {},
+        "result_metadata": {
+          "is_metadata_set": true
+        },
         "runner_args": {
           "client_id": "aff4:/C.1000000000000000",
           "flow_name": "Interrogate",
@@ -4133,7 +4786,13 @@
         "state_data": {
           "items": [
             {
-              "client_id": "C.1000000000000000"
+              "is_metadata_set": true
+            },
+            {
+              "client_id": "C.1000000000000000",
+              "metadata": {
+                "source_flow_id": "F:ABCDEF13"
+              }
             },
             {
               "invalid": true,
@@ -4223,6 +4882,10 @@
             "type": "unicode",
             "value": "<message id stub>"
           },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419244000000
+          },
           "id": {
             "type": "unicode",
             "value": "approval:111111"
@@ -4292,10 +4955,6 @@
                     }
                   ]
                 }
-              },
-              "clients_queued_count": {
-                "type": "long",
-                "value": 0
               },
               "clients_with_results_count": {
                 "type": "long",
@@ -4421,6 +5080,10 @@
                   }
                 }
               },
+              "hunt_type": {
+                "type": "EnumNamedValue",
+                "value": "STANDARD"
+              },
               "is_robot": {
                 "type": "bool",
                 "value": false
@@ -4440,6 +5103,10 @@
               "state": {
                 "type": "EnumNamedValue",
                 "value": "PAUSED"
+              },
+              "state_comment": {
+                "type": "unicode",
+                "value": ""
               },
               "total_cpu_usage": {
                 "type": "long",
@@ -4464,6 +5131,7 @@
         ],
         "email_cc_addresses": [],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419244000000,
         "id": "approval:111111",
         "is_valid": false,
         "is_valid_message": "Need at least 1 additional approver for access.",
@@ -4487,7 +5155,6 @@
               }
             ]
           },
-          "clients_queued_count": 0,
           "clients_with_results_count": 0,
           "completed_clients_count": 0,
           "crash_limit": 100,
@@ -4525,11 +5192,13 @@
             "hunt_name": "GenericHunt",
             "original_object": {}
           },
+          "hunt_type": "STANDARD",
           "is_robot": false,
           "name": "GenericHunt",
           "remaining_clients_count": 0,
           "results_count": 0,
           "state": "PAUSED",
+          "state_comment": "",
           "total_cpu_usage": 0,
           "total_net_usage": 0,
           "urn": "aff4:/hunts/H:123456"
@@ -4557,6 +5226,10 @@
           "email_message_id": {
             "type": "unicode",
             "value": "<message id stub>"
+          },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419245000000
           },
           "id": {
             "type": "unicode",
@@ -4623,10 +5296,6 @@
                     }
                   ]
                 }
-              },
-              "clients_queued_count": {
-                "type": "long",
-                "value": 0
               },
               "clients_with_results_count": {
                 "type": "long",
@@ -4752,6 +5421,10 @@
                   }
                 }
               },
+              "hunt_type": {
+                "type": "EnumNamedValue",
+                "value": "STANDARD"
+              },
               "is_robot": {
                 "type": "bool",
                 "value": false
@@ -4771,6 +5444,10 @@
               "state": {
                 "type": "EnumNamedValue",
                 "value": "PAUSED"
+              },
+              "state_comment": {
+                "type": "unicode",
+                "value": ""
               },
               "total_cpu_usage": {
                 "type": "long",
@@ -4796,6 +5473,7 @@
         ],
         "email_cc_addresses": [],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419245000000,
         "id": "approval:222222",
         "is_valid": true,
         "notified_users": [
@@ -4818,7 +5496,6 @@
               }
             ]
           },
-          "clients_queued_count": 0,
           "clients_with_results_count": 0,
           "completed_clients_count": 0,
           "crash_limit": 100,
@@ -4856,11 +5533,13 @@
             "hunt_name": "GenericHunt",
             "original_object": {}
           },
+          "hunt_type": "STANDARD",
           "is_robot": false,
           "name": "GenericHunt",
           "remaining_clients_count": 0,
           "results_count": 0,
           "state": "PAUSED",
+          "state_comment": "",
           "total_cpu_usage": 0,
           "total_net_usage": 0,
           "urn": "aff4:/hunts/H:567890"
@@ -4923,10 +5602,6 @@
                     }
                   ]
                 }
-              },
-              "clients_queued_count": {
-                "type": "long",
-                "value": 0
               },
               "clients_with_results_count": {
                 "type": "long",
@@ -5052,6 +5727,10 @@
                   }
                 }
               },
+              "hunt_type": {
+                "type": "EnumNamedValue",
+                "value": "STANDARD"
+              },
               "is_robot": {
                 "type": "bool",
                 "value": false
@@ -5072,6 +5751,10 @@
                 "type": "EnumNamedValue",
                 "value": "PAUSED"
               },
+              "state_comment": {
+                "type": "unicode",
+                "value": ""
+              },
               "total_cpu_usage": {
                 "type": "long",
                 "value": 0
@@ -5090,6 +5773,10 @@
           "email_message_id": {
             "type": "unicode",
             "value": "<message id stub>"
+          },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419244000000
           },
           "id": {
             "type": "unicode",
@@ -5160,10 +5847,6 @@
                     }
                   ]
                 }
-              },
-              "clients_queued_count": {
-                "type": "long",
-                "value": 0
               },
               "clients_with_results_count": {
                 "type": "long",
@@ -5303,6 +5986,10 @@
                   }
                 }
               },
+              "hunt_type": {
+                "type": "EnumNamedValue",
+                "value": "STANDARD"
+              },
               "is_robot": {
                 "type": "bool",
                 "value": false
@@ -5341,6 +6028,10 @@
                 "type": "EnumNamedValue",
                 "value": "PAUSED"
               },
+              "state_comment": {
+                "type": "unicode",
+                "value": ""
+              },
               "total_cpu_usage": {
                 "type": "long",
                 "value": 0
@@ -5377,7 +6068,6 @@
               }
             ]
           },
-          "clients_queued_count": 0,
           "clients_with_results_count": 0,
           "completed_clients_count": 0,
           "crash_limit": 100,
@@ -5415,17 +6105,20 @@
             "hunt_name": "GenericHunt",
             "original_object": {}
           },
+          "hunt_type": "STANDARD",
           "is_robot": false,
           "name": "GenericHunt",
           "remaining_clients_count": 0,
           "results_count": 0,
           "state": "PAUSED",
+          "state_comment": "",
           "total_cpu_usage": 0,
           "total_net_usage": 0,
           "urn": "aff4:/hunts/H:556677"
         },
         "email_cc_addresses": [],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419244000000,
         "id": "approval:333333",
         "is_valid": false,
         "is_valid_message": "Need at least 1 additional approver for access.",
@@ -5449,7 +6142,6 @@
               }
             ]
           },
-          "clients_queued_count": 0,
           "clients_with_results_count": 0,
           "completed_clients_count": 0,
           "crash_limit": 100,
@@ -5492,6 +6184,7 @@
               "object_type": "HUNT_REFERENCE"
             }
           },
+          "hunt_type": "STANDARD",
           "is_robot": false,
           "name": "GenericHunt",
           "original_object": {
@@ -5503,6 +6196,7 @@
           "remaining_clients_count": 0,
           "results_count": 0,
           "state": "PAUSED",
+          "state_comment": "",
           "total_cpu_usage": 0,
           "total_net_usage": 0,
           "urn": "aff4:/hunts/H:DDEEFF"
@@ -5540,6 +6234,10 @@
               "flow_id": {
                 "type": "ApiFlowId",
                 "value": "F:112233"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": false
               },
               "last_active_at": {
                 "type": "RDFDatetime",
@@ -5584,6 +6282,10 @@
           "email_message_id": {
             "type": "unicode",
             "value": "<message id stub>"
+          },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419244000000
           },
           "id": {
             "type": "unicode",
@@ -5654,10 +6356,6 @@
                     }
                   ]
                 }
-              },
-              "clients_queued_count": {
-                "type": "long",
-                "value": 0
               },
               "clients_with_results_count": {
                 "type": "long",
@@ -5801,6 +6499,10 @@
                   }
                 }
               },
+              "hunt_type": {
+                "type": "EnumNamedValue",
+                "value": "STANDARD"
+              },
               "is_robot": {
                 "type": "bool",
                 "value": false
@@ -5843,6 +6545,10 @@
                 "type": "EnumNamedValue",
                 "value": "PAUSED"
               },
+              "state_comment": {
+                "type": "unicode",
+                "value": ""
+              },
               "total_cpu_usage": {
                 "type": "long",
                 "value": 0
@@ -5869,6 +6575,7 @@
           "client_id": "C.1000000000000000",
           "creator": "api_test_user",
           "flow_id": "F:112233",
+          "is_robot": false,
           "last_active_at": 42000000,
           "name": "Interrogate",
           "runner_args": {
@@ -5882,6 +6589,7 @@
         },
         "email_cc_addresses": [],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419244000000,
         "id": "approval:444444",
         "is_valid": false,
         "is_valid_message": "Need at least 1 additional approver for access.",
@@ -5905,7 +6613,6 @@
               }
             ]
           },
-          "clients_queued_count": 0,
           "clients_with_results_count": 0,
           "completed_clients_count": 0,
           "crash_limit": 100,
@@ -5949,6 +6656,7 @@
               "object_type": "FLOW_REFERENCE"
             }
           },
+          "hunt_type": "STANDARD",
           "is_robot": false,
           "name": "GenericHunt",
           "original_object": {
@@ -5961,6 +6669,7 @@
           "remaining_clients_count": 0,
           "results_count": 0,
           "state": "PAUSED",
+          "state_comment": "",
           "total_cpu_usage": 0,
           "total_net_usage": 0,
           "urn": "aff4:/hunts/H:667788"
@@ -6263,10 +6972,6 @@
               ]
             }
           },
-          "clients_queued_count": {
-            "type": "long",
-            "value": 0
-          },
           "clients_with_results_count": {
             "type": "long",
             "value": 0
@@ -6409,6 +7114,10 @@
               }
             }
           },
+          "hunt_type": {
+            "type": "EnumNamedValue",
+            "value": "STANDARD"
+          },
           "is_robot": {
             "type": "bool",
             "value": false
@@ -6451,6 +7160,10 @@
             "type": "EnumNamedValue",
             "value": "PAUSED"
           },
+          "state_comment": {
+            "type": "unicode",
+            "value": ""
+          },
           "total_cpu_usage": {
             "type": "long",
             "value": 0
@@ -6481,7 +7194,6 @@
             }
           ]
         },
-        "clients_queued_count": 0,
         "clients_with_results_count": 0,
         "completed_clients_count": 0,
         "crash_limit": 100,
@@ -6525,6 +7237,7 @@
             "object_type": "FLOW_REFERENCE"
           }
         },
+        "hunt_type": "STANDARD",
         "is_robot": false,
         "name": "GenericHunt",
         "original_object": {
@@ -6537,6 +7250,7 @@
         "remaining_clients_count": 0,
         "results_count": 0,
         "state": "PAUSED",
+        "state_comment": "",
         "total_cpu_usage": 0,
         "total_net_usage": 0,
         "urn": "aff4:/hunts/H:123456"
@@ -6589,10 +7303,6 @@
                 }
               ]
             }
-          },
-          "clients_queued_count": {
-            "type": "long",
-            "value": 0
           },
           "clients_with_results_count": {
             "type": "long",
@@ -6732,6 +7442,10 @@
               }
             }
           },
+          "hunt_type": {
+            "type": "EnumNamedValue",
+            "value": "STANDARD"
+          },
           "is_robot": {
             "type": "bool",
             "value": false
@@ -6770,6 +7484,10 @@
             "type": "EnumNamedValue",
             "value": "PAUSED"
           },
+          "state_comment": {
+            "type": "unicode",
+            "value": ""
+          },
           "total_cpu_usage": {
             "type": "long",
             "value": 0
@@ -6800,7 +7518,6 @@
             }
           ]
         },
-        "clients_queued_count": 0,
         "clients_with_results_count": 0,
         "completed_clients_count": 0,
         "crash_limit": 100,
@@ -6843,6 +7560,7 @@
             "object_type": "HUNT_REFERENCE"
           }
         },
+        "hunt_type": "STANDARD",
         "is_robot": false,
         "name": "GenericHunt",
         "original_object": {
@@ -6854,6 +7572,7 @@
         "remaining_clients_count": 0,
         "results_count": 0,
         "state": "PAUSED",
+        "state_comment": "",
         "total_cpu_usage": 0,
         "total_net_usage": 0,
         "urn": "aff4:/hunts/H:123456"
@@ -6906,10 +7625,6 @@
                 }
               ]
             }
-          },
-          "clients_queued_count": {
-            "type": "long",
-            "value": 0
           },
           "clients_with_results_count": {
             "type": "long",
@@ -7035,6 +7750,10 @@
               }
             }
           },
+          "hunt_type": {
+            "type": "EnumNamedValue",
+            "value": "STANDARD"
+          },
           "is_robot": {
             "type": "bool",
             "value": false
@@ -7054,6 +7773,10 @@
           "state": {
             "type": "EnumNamedValue",
             "value": "PAUSED"
+          },
+          "state_comment": {
+            "type": "unicode",
+            "value": ""
           },
           "total_cpu_usage": {
             "type": "long",
@@ -7085,7 +7808,6 @@
             }
           ]
         },
-        "clients_queued_count": 0,
         "clients_with_results_count": 0,
         "completed_clients_count": 0,
         "crash_limit": 100,
@@ -7123,11 +7845,13 @@
           "hunt_name": "GenericHunt",
           "original_object": {}
         },
+        "hunt_type": "STANDARD",
         "is_robot": false,
         "name": "GenericHunt",
         "remaining_clients_count": 0,
         "results_count": 0,
         "state": "PAUSED",
+        "state_comment": "",
         "total_cpu_usage": 0,
         "total_net_usage": 0,
         "urn": "aff4:/hunts/H:123456"
@@ -8061,6 +8785,10 @@
                 "type": "bool",
                 "value": true
               },
+              "hunt_approval_required": {
+                "type": "bool",
+                "value": false
+              },
               "hunt_manager_nav_item_enabled": {
                 "type": "bool",
                 "value": true
@@ -8138,6 +8866,7 @@
           "create_cron_job_action_enabled": true,
           "create_hunt_action_enabled": true,
           "cron_jobs_nav_item_enabled": true,
+          "hunt_approval_required": false,
           "hunt_manager_nav_item_enabled": true,
           "manage_binaries_nav_item_enabled": true,
           "manage_client_flows_nav_item_enabled": true,
@@ -8187,6 +8916,10 @@
               "cron_jobs_nav_item_enabled": {
                 "type": "bool",
                 "value": true
+              },
+              "hunt_approval_required": {
+                "type": "bool",
+                "value": false
               },
               "hunt_manager_nav_item_enabled": {
                 "type": "bool",
@@ -8265,6 +8998,7 @@
           "create_cron_job_action_enabled": true,
           "create_hunt_action_enabled": true,
           "cron_jobs_nav_item_enabled": true,
+          "hunt_approval_required": false,
           "hunt_manager_nav_item_enabled": true,
           "manage_binaries_nav_item_enabled": true,
           "manage_client_flows_nav_item_enabled": true,
@@ -8401,6 +9135,15 @@
             "repeated": false
           },
           {
+            "doc": "Metadata about results returned by the flow.",
+            "dynamic": false,
+            "friendly_name": "Result metadata",
+            "index": 17,
+            "name": "result_metadata",
+            "repeated": false,
+            "type": "FlowResultMetadata"
+          },
+          {
             "doc": "Flow runner arguments.",
             "dynamic": false,
             "friendly_name": "Runner args",
@@ -8449,6 +9192,19 @@
             "type": "EnumNamedValue"
           },
           {
+            "default": {
+              "type": "RDFString",
+              "value": ""
+            },
+            "doc": "Describes the error that happened while executing the flow, truncated if over 4 KB.",
+            "dynamic": false,
+            "friendly_name": "Error description",
+            "index": 18,
+            "name": "error_description",
+            "repeated": false,
+            "type": "RDFString"
+          },
+          {
             "doc": "When flow was created.",
             "dynamic": false,
             "friendly_name": "Started at",
@@ -8478,6 +9234,19 @@
             "name": "creator",
             "repeated": false,
             "type": "RDFString"
+          },
+          {
+            "default": {
+              "type": "bool",
+              "value": false
+            },
+            "doc": "Whether the flow was created by a GRRWorker.",
+            "dynamic": false,
+            "friendly_name": "Is robot",
+            "index": 19,
+            "name": "is_robot",
+            "repeated": false,
+            "type": "bool"
           },
           {
             "doc": "Current flow state data.",
@@ -8601,6 +9370,15 @@
             "repeated": false
           },
           {
+            "doc": "Metadata about results returned by the flow.",
+            "dynamic": false,
+            "friendly_name": "Result metadata",
+            "index": 17,
+            "name": "result_metadata",
+            "repeated": false,
+            "type": "FlowResultMetadata"
+          },
+          {
             "doc": "Flow runner arguments.",
             "dynamic": false,
             "friendly_name": "Runner args",
@@ -8646,6 +9424,16 @@
             "type": "EnumNamedValue"
           },
           {
+            "default": "",
+            "doc": "Describes the error that happened while executing the flow, truncated if over 4 KB.",
+            "dynamic": false,
+            "friendly_name": "Error description",
+            "index": 18,
+            "name": "error_description",
+            "repeated": false,
+            "type": "RDFString"
+          },
+          {
             "doc": "When flow was created.",
             "dynamic": false,
             "friendly_name": "Started at",
@@ -8672,6 +9460,16 @@
             "name": "creator",
             "repeated": false,
             "type": "RDFString"
+          },
+          {
+            "default": false,
+            "doc": "Whether the flow was created by a GRRWorker.",
+            "dynamic": false,
+            "friendly_name": "Is robot",
+            "index": 19,
+            "name": "is_robot",
+            "repeated": false,
+            "type": "bool"
           },
           {
             "doc": "Current flow state data.",
@@ -8895,7 +9693,7 @@
         "state": "RUNNING"
       },
       "test_class": "ApiGetVfsFileContentUpdateStateHandlerRegressionTest_http_v1",
-      "url": "/api/clients/C.1000000000000000/vfs-update/W:ABCDEF"
+      "url": "/api/clients/C.1000000000000000/vfs-update/ABCDEF"
     },
     {
       "api_method": "GetVfsFileContentUpdateState",
@@ -8904,25 +9702,25 @@
         "state": "FINISHED"
       },
       "test_class": "ApiGetVfsFileContentUpdateStateHandlerRegressionTest_http_v1",
-      "url": "/api/clients/C.1000000000000000/vfs-update/W:ABCDEF"
+      "url": "/api/clients/C.1000000000000000/vfs-update/ABCDEF"
     },
     {
       "api_method": "GetVfsFileContentUpdateState",
       "method": "GET",
       "response": {
-        "message": "Operation with id W:ABCDEF not found"
+        "message": "Operation with id ABCDEF not found"
       },
       "test_class": "ApiGetVfsFileContentUpdateStateHandlerRegressionTest_http_v1",
-      "url": "/api/clients/C.1000000000000000/vfs-update/W:ABCDEF"
+      "url": "/api/clients/C.1000000000000000/vfs-update/ABCDEF"
     },
     {
       "api_method": "GetVfsFileContentUpdateState",
       "method": "GET",
       "response": {
-        "message": "Operation with id W:ABCDEF not found"
+        "message": "Flow id has incorrect format: `ABCDEF`"
       },
       "test_class": "ApiGetVfsFileContentUpdateStateHandlerRegressionTest_http_v1",
-      "url": "/api/clients/C.1000000000000000/vfs-update/W:ABCDEF"
+      "url": "/api/clients/C.1000000000000000/vfs-update/ABCDEF"
     }
   ],
   "ApiGetVfsRefreshOperationStateHandler": [
@@ -8933,7 +9731,7 @@
         "state": "RUNNING"
       },
       "test_class": "ApiGetVfsRefreshOperationStateHandlerRegressionTest_http_v1",
-      "url": "/api/clients/C.1000000000000000/vfs-refresh-operations/W:ABCDEF"
+      "url": "/api/clients/C.1000000000000000/vfs-refresh-operations/ABCDEF"
     },
     {
       "api_method": "GetVfsRefreshOperationState",
@@ -8942,25 +9740,25 @@
         "state": "FINISHED"
       },
       "test_class": "ApiGetVfsRefreshOperationStateHandlerRegressionTest_http_v1",
-      "url": "/api/clients/C.1000000000000000/vfs-refresh-operations/W:ABCDEF"
+      "url": "/api/clients/C.1000000000000000/vfs-refresh-operations/ABCDEF"
     },
     {
       "api_method": "GetVfsRefreshOperationState",
       "method": "GET",
       "response": {
-        "message": "Operation with id W:ABCDEF not found"
+        "message": "Operation with id ABCDEF not found"
       },
       "test_class": "ApiGetVfsRefreshOperationStateHandlerRegressionTest_http_v1",
-      "url": "/api/clients/C.1000000000000000/vfs-refresh-operations/W:ABCDEF"
+      "url": "/api/clients/C.1000000000000000/vfs-refresh-operations/ABCDEF"
     },
     {
       "api_method": "GetVfsRefreshOperationState",
       "method": "GET",
       "response": {
-        "message": "Operation with id W:ABCDEF not found"
+        "message": "Operation with id ABCDEF not found"
       },
       "test_class": "ApiGetVfsRefreshOperationStateHandlerRegressionTest_http_v1",
-      "url": "/api/clients/C.1000000000000000/vfs-refresh-operations/W:ABCDEF"
+      "url": "/api/clients/C.1000000000000000/vfs-refresh-operations/ABCDEF"
     }
   ],
   "ApiGetVfsTimelineHandler": [
@@ -9111,6 +9909,10 @@
             "type": "unicode",
             "value": "<message id stub>"
           },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419244000000
+          },
           "id": {
             "type": "unicode",
             "value": "approval:111111"
@@ -9219,12 +10021,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4A"
@@ -9234,6 +10044,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8A"
@@ -9340,6 +10154,7 @@
         ],
         "email_cc_addresses": [],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419244000000,
         "id": "approval:111111",
         "is_valid": true,
         "notified_users": [
@@ -9375,12 +10190,15 @@
                   "address_type": "INET6",
                   "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                 }
-              ]
+              ],
+              "ifname": "if0"
             },
             {
+              "ifname": "if1",
               "mac_address": "qrvM3e4A"
             },
             {
+              "ifname": "if2",
               "mac_address": "u8zd7v8A"
             }
           ],
@@ -9480,9 +10298,13 @@
                   "hunt_cron_action": {
                     "type": "HuntCronAction",
                     "value": {
+                      "flow_args": {
+                        "type": "InterrogateArgs",
+                        "value": {}
+                      },
                       "flow_name": {
                         "type": "unicode",
-                        "value": ""
+                        "value": "Interrogate"
                       },
                       "hunt_runner_args": {
                         "type": "HuntRunnerArgs",
@@ -9498,6 +10320,10 @@
                           "avg_results_per_client_limit": {
                             "type": "long",
                             "value": 1000
+                          },
+                          "client_rate": {
+                            "type": "float",
+                            "value": 20.0
                           },
                           "crash_limit": {
                             "type": "long",
@@ -9553,11 +10379,13 @@
           "args": {
             "action_type": "HUNT_CRON_ACTION",
             "hunt_cron_action": {
-              "flow_name": "",
+              "flow_args": {},
+              "flow_name": "Interrogate",
               "hunt_runner_args": {
                 "avg_cpu_seconds_per_client_limit": 60,
                 "avg_network_bytes_per_client_limit": 10485760,
                 "avg_results_per_client_limit": 1000,
+                "client_rate": 20.0,
                 "crash_limit": 100
               }
             }
@@ -9593,6 +10421,10 @@
           "email_message_id": {
             "type": "unicode",
             "value": "<message id stub>"
+          },
+          "expiration_time_us": {
+            "type": "RDFDatetime",
+            "value": 2419244000000
           },
           "id": {
             "type": "unicode",
@@ -9659,10 +10491,6 @@
                     }
                   ]
                 }
-              },
-              "clients_queued_count": {
-                "type": "long",
-                "value": 0
               },
               "clients_with_results_count": {
                 "type": "long",
@@ -9788,6 +10616,10 @@
                   }
                 }
               },
+              "hunt_type": {
+                "type": "EnumNamedValue",
+                "value": "STANDARD"
+              },
               "is_robot": {
                 "type": "bool",
                 "value": false
@@ -9807,6 +10639,10 @@
               "state": {
                 "type": "EnumNamedValue",
                 "value": "PAUSED"
+              },
+              "state_comment": {
+                "type": "unicode",
+                "value": ""
               },
               "total_cpu_usage": {
                 "type": "long",
@@ -9832,6 +10668,7 @@
         ],
         "email_cc_addresses": [],
         "email_message_id": "<message id stub>",
+        "expiration_time_us": 2419244000000,
         "id": "approval:111111",
         "is_valid": true,
         "notified_users": [
@@ -9854,7 +10691,6 @@
               }
             ]
           },
-          "clients_queued_count": 0,
           "clients_with_results_count": 0,
           "completed_clients_count": 0,
           "crash_limit": 100,
@@ -9892,11 +10728,13 @@
             "hunt_name": "GenericHunt",
             "original_object": {}
           },
+          "hunt_type": "STANDARD",
           "is_robot": false,
           "name": "GenericHunt",
           "remaining_clients_count": 0,
           "results_count": 0,
           "state": "PAUSED",
+          "state_comment": "",
           "total_cpu_usage": 0,
           "total_net_usage": 0,
           "urn": "aff4:/hunts/H:123456"
@@ -10259,12 +11097,6 @@
                     "type": "unicode",
                     "value": "Extract the installed drivers on Windows via WMI."
                   },
-                  "labels": [
-                    {
-                      "type": "unicode",
-                      "value": "Software"
-                    }
-                  ],
                   "name": {
                     "type": "ArtifactName",
                     "value": "TestDrivers"
@@ -10330,9 +11162,6 @@
                 "os_major_version >= 6"
               ],
               "doc": "Extract the installed drivers on Windows via WMI.",
-              "labels": [
-                "Software"
-              ],
               "name": "TestDrivers",
               "provides": [],
               "sources": [
@@ -10563,6 +11392,10 @@
                 "type": "unicode",
                 "value": "<message id stub>"
               },
+              "expiration_time_us": {
+                "type": "RDFDatetime",
+                "value": 2419245000000
+              },
               "id": {
                 "type": "unicode",
                 "value": "approval:222222"
@@ -10671,12 +11504,20 @@
                               }
                             }
                           }
-                        ]
+                        ],
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if0"
+                        }
                       }
                     },
                     {
                       "type": "Interface",
                       "value": {
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if1"
+                        },
                         "mac_address": {
                           "type": "MacAddress",
                           "value": "qrvM3e4B"
@@ -10686,6 +11527,10 @@
                     {
                       "type": "Interface",
                       "value": {
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if2"
+                        },
                         "mac_address": {
                           "type": "MacAddress",
                           "value": "u8zd7v8B"
@@ -10798,6 +11643,10 @@
                 "type": "unicode",
                 "value": "<message id stub>"
               },
+              "expiration_time_us": {
+                "type": "RDFDatetime",
+                "value": 2419244000000
+              },
               "id": {
                 "type": "unicode",
                 "value": "approval:111111"
@@ -10910,12 +11759,20 @@
                               }
                             }
                           }
-                        ]
+                        ],
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if0"
+                        }
                       }
                     },
                     {
                       "type": "Interface",
                       "value": {
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if1"
+                        },
                         "mac_address": {
                           "type": "MacAddress",
                           "value": "qrvM3e4A"
@@ -10925,6 +11782,10 @@
                     {
                       "type": "Interface",
                       "value": {
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if2"
+                        },
                         "mac_address": {
                           "type": "MacAddress",
                           "value": "u8zd7v8A"
@@ -11035,6 +11896,7 @@
             ],
             "email_cc_addresses": [],
             "email_message_id": "<message id stub>",
+            "expiration_time_us": 2419245000000,
             "id": "approval:222222",
             "is_valid": true,
             "notified_users": [
@@ -11070,12 +11932,15 @@
                       "address_type": "INET6",
                       "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAQ=="
                     }
-                  ]
+                  ],
+                  "ifname": "if0"
                 },
                 {
+                  "ifname": "if1",
                   "mac_address": "qrvM3e4B"
                 },
                 {
+                  "ifname": "if2",
                   "mac_address": "u8zd7v8B"
                 }
               ],
@@ -11117,6 +11982,7 @@
             ],
             "email_cc_addresses": [],
             "email_message_id": "<message id stub>",
+            "expiration_time_us": 2419244000000,
             "id": "approval:111111",
             "is_valid": false,
             "is_valid_message": "Need at least 1 additional approver for access.",
@@ -11153,12 +12019,15 @@
                       "address_type": "INET6",
                       "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                     }
-                  ]
+                  ],
+                  "ifname": "if0"
                 },
                 {
+                  "ifname": "if1",
                   "mac_address": "qrvM3e4A"
                 },
                 {
+                  "ifname": "if2",
                   "mac_address": "u8zd7v8A"
                 }
               ],
@@ -11216,6 +12085,10 @@
               "email_message_id": {
                 "type": "unicode",
                 "value": "<message id stub>"
+              },
+              "expiration_time_us": {
+                "type": "RDFDatetime",
+                "value": 2419244000000
               },
               "id": {
                 "type": "unicode",
@@ -11329,12 +12202,20 @@
                               }
                             }
                           }
-                        ]
+                        ],
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if0"
+                        }
                       }
                     },
                     {
                       "type": "Interface",
                       "value": {
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if1"
+                        },
                         "mac_address": {
                           "type": "MacAddress",
                           "value": "qrvM3e4A"
@@ -11344,6 +12225,10 @@
                     {
                       "type": "Interface",
                       "value": {
+                        "ifname": {
+                          "type": "unicode",
+                          "value": "if2"
+                        },
                         "mac_address": {
                           "type": "MacAddress",
                           "value": "u8zd7v8A"
@@ -11453,6 +12338,7 @@
             ],
             "email_cc_addresses": [],
             "email_message_id": "<message id stub>",
+            "expiration_time_us": 2419244000000,
             "id": "approval:111111",
             "is_valid": false,
             "is_valid_message": "Need at least 1 additional approver for access.",
@@ -11489,12 +12375,15 @@
                       "address_type": "INET6",
                       "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                     }
-                  ]
+                  ],
+                  "ifname": "if0"
                 },
                 {
+                  "ifname": "if1",
                   "mac_address": "qrvM3e4A"
                 },
                 {
+                  "ifname": "if2",
                   "mac_address": "u8zd7v8A"
                 }
               ],
@@ -11849,6 +12738,10 @@
                             "type": "long",
                             "value": 1000
                           },
+                          "client_rate": {
+                            "type": "float",
+                            "value": 20.0
+                          },
                           "crash_limit": {
                             "type": "long",
                             "value": 100
@@ -11924,6 +12817,10 @@
                           "avg_results_per_client_limit": {
                             "type": "long",
                             "value": 1000
+                          },
+                          "client_rate": {
+                            "type": "float",
+                            "value": 20.0
                           },
                           "crash_limit": {
                             "type": "long",
@@ -12001,6 +12898,10 @@
                             "type": "long",
                             "value": 1000
                           },
+                          "client_rate": {
+                            "type": "float",
+                            "value": 20.0
+                          },
                           "crash_limit": {
                             "type": "long",
                             "value": 100
@@ -12062,6 +12963,7 @@
                   "avg_cpu_seconds_per_client_limit": 60,
                   "avg_network_bytes_per_client_limit": 10485760,
                   "avg_results_per_client_limit": 1000,
+                  "client_rate": 20.0,
                   "crash_limit": 100
                 }
               }
@@ -12084,6 +12986,7 @@
                   "avg_cpu_seconds_per_client_limit": 60,
                   "avg_network_bytes_per_client_limit": 10485760,
                   "avg_results_per_client_limit": 1000,
+                  "client_rate": 20.0,
                   "crash_limit": 100
                 }
               }
@@ -12106,6 +13009,7 @@
                   "avg_cpu_seconds_per_client_limit": 60,
                   "avg_network_bytes_per_client_limit": 10485760,
                   "avg_results_per_client_limit": 1000,
+                  "client_rate": 20.0,
                   "crash_limit": 100
                 }
               }
@@ -12336,7 +13240,7 @@
               },
               "doc": {
                 "type": "unicode",
-                "value": "This flow looks for files matching given criteria and acts on them.\n\n  FileFinder searches for files that match glob expressions.  The \"action\"\n  (e.g. Download) is applied to files that match all given \"conditions\".\n  Matches are then written to the results collection. If there are no\n  \"conditions\" specified, \"action\" is just applied to all found files.\n  \n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=file_finder.FileFinder, paths=paths, pathtype=pathtype, conditions=conditions, action=action, process_non_regular_files=process_non_regular_files, follow_links=follow_links, xdev=xdev)\n\n  Args:\n    action\n      description: \n      type: FileFinderAction\n      default: None\n\n    conditions\n      description: These conditions will be applied to all files that match the path arguments.\n      type: \n      default: None\n\n    follow_links\n      description: Should symbolic links be followed in recursive directory listings.\n      type: bool\n      default: False\n\n    paths\n      description: A path to glob that can contain %% expansions.\n      type: \n      default: None\n\n    pathtype\n      description: Path type to glob in.\n      type: EnumNamedValue\n      default: OS\n\n    process_non_regular_files\n      description: Look both into regular files and non-regular files (devices, named pipes, sockets). NOTE: This is very dangerous and should be used with care.\n      type: bool\n      default: 0\n\n    xdev\n      description: Behavior when ecountering device boundaries while doing recursive searches.\n      type: EnumNamedValue\n      default: LOCAL\n"
+                "value": "This flow looks for files matching given criteria and acts on them.\n\n  FileFinder searches for files that match glob expressions.  The \"action\"\n  (e.g. Download) is applied to files that match all given \"conditions\".\n  Matches are then written to the results collection. If there are no\n  \"conditions\" specified, \"action\" is just applied to all found files.\n  \n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=file_finder.FileFinder, paths=paths, pathtype=pathtype, conditions=conditions, action=action, process_non_regular_files=process_non_regular_files, follow_links=follow_links, xdev=xdev, implementation_type=implementation_type)\n\n  Args:\n    action\n      description: \n      type: FileFinderAction\n      default: None\n\n    conditions\n      description: These conditions will be applied to all files that match the path arguments.\n      type: \n      default: None\n\n    follow_links\n      description: Should symbolic links be followed in recursive directory listings.\n      type: bool\n      default: False\n\n    implementation_type\n      description: Force use of an implementation.\n      type: EnumNamedValue\n      default: 0\n\n    paths\n      description: A path to glob that can contain %% expansions.\n      type: \n      default: None\n\n    pathtype\n      description: Path type to glob in.\n      type: EnumNamedValue\n      default: OS\n\n    process_non_regular_files\n      description: Look both into regular files and non-regular files (devices, named pipes, sockets). NOTE: This is very dangerous and should be used with care.\n      type: bool\n      default: 0\n\n    xdev\n      description: Behavior when ecountering device boundaries while doing recursive searches.\n      type: EnumNamedValue\n      default: LOCAL\n"
               },
               "friendly_name": {
                 "type": "unicode",
@@ -12375,7 +13279,7 @@
               },
               "doc": {
                 "type": "unicode",
-                "value": "List running processes on a system.\n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=processes.ListProcesses, filename_regex=filename_regex, fetch_binaries=fetch_binaries, connection_states=connection_states)\n\n  Args:\n    connection_states\n      description: Network connection states to match. If a process has any network connections in any status listed here, it will be considered a match\n      type: \n      default: None\n\n    fetch_binaries\n      description: \n      type: bool\n      default: False\n\n    filename_regex\n      description: Regex used to filter the list of processes. The regex is applied to the full path and not only to the filename.\n      type: RegularExpression\n      default: .\n"
+                "value": "List running processes on a system.\n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=processes.ListProcesses, filename_regex=filename_regex, fetch_binaries=fetch_binaries, connection_states=connection_states, pids=pids)\n\n  Args:\n    connection_states\n      description: Network connection states to match. If a process has any network connections in any status listed here, it will be considered a match\n      type: \n      default: None\n\n    fetch_binaries\n      description: \n      type: bool\n      default: False\n\n    filename_regex\n      description: Regex used to filter the list of processes. The regex is applied to the full path and not only to the filename.\n      type: RegularExpression\n      default: .\n\n    pids\n      description: \n      type: \n      default: None\n"
               },
               "name": {
                 "type": "unicode",
@@ -12396,7 +13300,7 @@
             ],
             "category": "Filesystem",
             "default_args": {},
-            "doc": "This flow looks for files matching given criteria and acts on them.\n\n  FileFinder searches for files that match glob expressions.  The \"action\"\n  (e.g. Download) is applied to files that match all given \"conditions\".\n  Matches are then written to the results collection. If there are no\n  \"conditions\" specified, \"action\" is just applied to all found files.\n  \n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=file_finder.FileFinder, paths=paths, pathtype=pathtype, conditions=conditions, action=action, process_non_regular_files=process_non_regular_files, follow_links=follow_links, xdev=xdev)\n\n  Args:\n    action\n      description: \n      type: FileFinderAction\n      default: None\n\n    conditions\n      description: These conditions will be applied to all files that match the path arguments.\n      type: \n      default: None\n\n    follow_links\n      description: Should symbolic links be followed in recursive directory listings.\n      type: bool\n      default: False\n\n    paths\n      description: A path to glob that can contain %% expansions.\n      type: \n      default: None\n\n    pathtype\n      description: Path type to glob in.\n      type: EnumNamedValue\n      default: OS\n\n    process_non_regular_files\n      description: Look both into regular files and non-regular files (devices, named pipes, sockets). NOTE: This is very dangerous and should be used with care.\n      type: bool\n      default: 0\n\n    xdev\n      description: Behavior when ecountering device boundaries while doing recursive searches.\n      type: EnumNamedValue\n      default: LOCAL\n",
+            "doc": "This flow looks for files matching given criteria and acts on them.\n\n  FileFinder searches for files that match glob expressions.  The \"action\"\n  (e.g. Download) is applied to files that match all given \"conditions\".\n  Matches are then written to the results collection. If there are no\n  \"conditions\" specified, \"action\" is just applied to all found files.\n  \n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=file_finder.FileFinder, paths=paths, pathtype=pathtype, conditions=conditions, action=action, process_non_regular_files=process_non_regular_files, follow_links=follow_links, xdev=xdev, implementation_type=implementation_type)\n\n  Args:\n    action\n      description: \n      type: FileFinderAction\n      default: None\n\n    conditions\n      description: These conditions will be applied to all files that match the path arguments.\n      type: \n      default: None\n\n    follow_links\n      description: Should symbolic links be followed in recursive directory listings.\n      type: bool\n      default: False\n\n    implementation_type\n      description: Force use of an implementation.\n      type: EnumNamedValue\n      default: 0\n\n    paths\n      description: A path to glob that can contain %% expansions.\n      type: \n      default: None\n\n    pathtype\n      description: Path type to glob in.\n      type: EnumNamedValue\n      default: OS\n\n    process_non_regular_files\n      description: Look both into regular files and non-regular files (devices, named pipes, sockets). NOTE: This is very dangerous and should be used with care.\n      type: bool\n      default: 0\n\n    xdev\n      description: Behavior when ecountering device boundaries while doing recursive searches.\n      type: EnumNamedValue\n      default: LOCAL\n",
             "friendly_name": "File Finder",
             "name": "FileFinder"
           },
@@ -12408,7 +13312,7 @@
             ],
             "category": "Processes",
             "default_args": {},
-            "doc": "List running processes on a system.\n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=processes.ListProcesses, filename_regex=filename_regex, fetch_binaries=fetch_binaries, connection_states=connection_states)\n\n  Args:\n    connection_states\n      description: Network connection states to match. If a process has any network connections in any status listed here, it will be considered a match\n      type: \n      default: None\n\n    fetch_binaries\n      description: \n      type: bool\n      default: False\n\n    filename_regex\n      description: Regex used to filter the list of processes. The regex is applied to the full path and not only to the filename.\n      type: RegularExpression\n      default: .\n",
+            "doc": "List running processes on a system.\n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=processes.ListProcesses, filename_regex=filename_regex, fetch_binaries=fetch_binaries, connection_states=connection_states, pids=pids)\n\n  Args:\n    connection_states\n      description: Network connection states to match. If a process has any network connections in any status listed here, it will be considered a match\n      type: \n      default: None\n\n    fetch_binaries\n      description: \n      type: bool\n      default: False\n\n    filename_regex\n      description: Regex used to filter the list of processes. The regex is applied to the full path and not only to the filename.\n      type: RegularExpression\n      default: .\n\n    pids\n      description: \n      type: \n      default: None\n",
             "name": "ListProcesses"
           }
         ]
@@ -12660,7 +13564,7 @@
               "plugin_descriptor": {
                 "type": "OutputPluginDescriptor",
                 "value": {
-                  "plugin_args": {
+                  "args": {
                     "type": "EmailOutputPluginArgs",
                     "value": {
                       "email_address": {
@@ -12713,7 +13617,7 @@
           {
             "id": "EmailOutputPlugin_0",
             "plugin_descriptor": {
-              "plugin_args": {
+              "args": {
                 "email_address": "test@localhost",
                 "emails_limit": 42
               },
@@ -12934,8 +13838,7 @@
               }
             }
           }
-        ],
-        "total_count": 1
+        ]
       },
       "test_class": "ApiListFlowResultsHandlerRegressionTest_http_v1",
       "type_stripped_response": {
@@ -12960,8 +13863,7 @@
             "payload_type": "StatEntry",
             "timestamp": 42000000
           }
-        ],
-        "total_count": 1
+        ]
       },
       "url": "/api/clients/C.1000000000000000/flows/W:ABCDEF/results?filter=evil"
     },
@@ -12969,8 +13871,7 @@
       "api_method": "ListFlowResults",
       "method": "GET",
       "response": {
-        "items": [],
-        "total_count": 1
+        "items": []
       },
       "test_class": "ApiListFlowResultsHandlerRegressionTest_http_v1",
       "url": "/api/clients/C.1000000000000000/flows/W:ABCDEF/results?filter=benign"
@@ -12991,11 +13892,15 @@
               },
               "creator": {
                 "type": "unicode",
-                "value": "api_test_user"
+                "value": "GRRWorker"
               },
               "flow_id": {
                 "type": "ApiFlowId",
                 "value": "F:ABCDEF11"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": true
               },
               "last_active_at": {
                 "type": "RDFDatetime",
@@ -13019,7 +13924,7 @@
                   },
                   "notify_to_user": {
                     "type": "bool",
-                    "value": true
+                    "value": false
                   }
                 }
               },
@@ -13051,6 +13956,10 @@
               "flow_id": {
                 "type": "ApiFlowId",
                 "value": "F:ABCDEF10"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": false
               },
               "last_active_at": {
                 "type": "RDFDatetime",
@@ -13099,15 +14008,16 @@
         "items": [
           {
             "client_id": "C.1000000000000000",
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "flow_id": "F:ABCDEF11",
+            "is_robot": true,
             "last_active_at": 44000000,
             "name": "ListProcesses",
             "nested_flows": [],
             "runner_args": {
               "client_id": "aff4:/C.1000000000000000",
               "flow_name": "ListProcesses",
-              "notify_to_user": true
+              "notify_to_user": false
             },
             "started_at": 44000000,
             "state": "RUNNING",
@@ -13117,6 +14027,7 @@
             "client_id": "C.1000000000000000",
             "creator": "api_test_user",
             "flow_id": "F:ABCDEF10",
+            "is_robot": false,
             "last_active_at": 43000000,
             "name": "Interrogate",
             "nested_flows": [],
@@ -13151,11 +14062,15 @@
               },
               "creator": {
                 "type": "unicode",
-                "value": "api_test_user"
+                "value": "GRRWorker"
               },
               "flow_id": {
                 "type": "ApiFlowId",
                 "value": "F:ABCDEF11"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": true
               },
               "last_active_at": {
                 "type": "RDFDatetime",
@@ -13164,6 +14079,19 @@
               "name": {
                 "type": "unicode",
                 "value": "ListProcesses"
+              },
+              "progress": {
+                "type": "DefaultFlowProgress",
+                "value": {}
+              },
+              "result_metadata": {
+                "type": "FlowResultMetadata",
+                "value": {
+                  "is_metadata_set": {
+                    "type": "bool",
+                    "value": true
+                  }
+                }
               },
               "runner_args": {
                 "type": "FlowRunnerArgs",
@@ -13178,7 +14106,7 @@
                   },
                   "notify_to_user": {
                     "type": "bool",
-                    "value": true
+                    "value": false
                   }
                 }
               },
@@ -13215,6 +14143,10 @@
                 "type": "ApiFlowId",
                 "value": "F:ABCDEF10"
               },
+              "is_robot": {
+                "type": "bool",
+                "value": false
+              },
               "last_active_at": {
                 "type": "RDFDatetime",
                 "value": 43000000
@@ -13222,6 +14154,19 @@
               "name": {
                 "type": "unicode",
                 "value": "Interrogate"
+              },
+              "progress": {
+                "type": "DefaultFlowProgress",
+                "value": {}
+              },
+              "result_metadata": {
+                "type": "FlowResultMetadata",
+                "value": {
+                  "is_metadata_set": {
+                    "type": "bool",
+                    "value": true
+                  }
+                }
               },
               "runner_args": {
                 "type": "FlowRunnerArgs",
@@ -13262,14 +14207,19 @@
           {
             "args": {},
             "client_id": "C.1000000000000000",
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "flow_id": "F:ABCDEF11",
+            "is_robot": true,
             "last_active_at": 44000000,
             "name": "ListProcesses",
+            "progress": {},
+            "result_metadata": {
+              "is_metadata_set": true
+            },
             "runner_args": {
               "client_id": "aff4:/C.1000000000000000",
               "flow_name": "ListProcesses",
-              "notify_to_user": true
+              "notify_to_user": false
             },
             "started_at": 44000000,
             "state": "RUNNING",
@@ -13280,8 +14230,13 @@
             "client_id": "C.1000000000000000",
             "creator": "api_test_user",
             "flow_id": "F:ABCDEF10",
+            "is_robot": false,
             "last_active_at": 43000000,
             "name": "Interrogate",
+            "progress": {},
+            "result_metadata": {
+              "is_metadata_set": true
+            },
             "runner_args": {
               "client_id": "aff4:/C.1000000000000000",
               "flow_name": "Interrogate",
@@ -13313,11 +14268,15 @@
               },
               "creator": {
                 "type": "unicode",
-                "value": "api_test_user"
+                "value": "GRRWorker"
               },
               "flow_id": {
                 "type": "ApiFlowId",
                 "value": "F:ABCDEF11"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": true
               },
               "last_active_at": {
                 "type": "RDFDatetime",
@@ -13326,6 +14285,19 @@
               "name": {
                 "type": "unicode",
                 "value": "ListProcesses"
+              },
+              "progress": {
+                "type": "DefaultFlowProgress",
+                "value": {}
+              },
+              "result_metadata": {
+                "type": "FlowResultMetadata",
+                "value": {
+                  "is_metadata_set": {
+                    "type": "bool",
+                    "value": true
+                  }
+                }
               },
               "runner_args": {
                 "type": "FlowRunnerArgs",
@@ -13340,7 +14312,7 @@
                   },
                   "notify_to_user": {
                     "type": "bool",
-                    "value": true
+                    "value": false
                   }
                 }
               },
@@ -13366,14 +14338,19 @@
           {
             "args": {},
             "client_id": "C.1000000000000000",
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "flow_id": "F:ABCDEF11",
+            "is_robot": true,
             "last_active_at": 44000000,
             "name": "ListProcesses",
+            "progress": {},
+            "result_metadata": {
+              "is_metadata_set": true
+            },
             "runner_args": {
               "client_id": "aff4:/C.1000000000000000",
               "flow_name": "ListProcesses",
-              "notify_to_user": true
+              "notify_to_user": false
             },
             "started_at": 44000000,
             "state": "RUNNING",
@@ -13407,6 +14384,10 @@
                 "type": "ApiFlowId",
                 "value": "F:ABCDEF10"
               },
+              "is_robot": {
+                "type": "bool",
+                "value": false
+              },
               "last_active_at": {
                 "type": "RDFDatetime",
                 "value": 43000000
@@ -13414,6 +14395,19 @@
               "name": {
                 "type": "unicode",
                 "value": "Interrogate"
+              },
+              "progress": {
+                "type": "DefaultFlowProgress",
+                "value": {}
+              },
+              "result_metadata": {
+                "type": "FlowResultMetadata",
+                "value": {
+                  "is_metadata_set": {
+                    "type": "bool",
+                    "value": true
+                  }
+                }
               },
               "runner_args": {
                 "type": "FlowRunnerArgs",
@@ -13456,8 +14450,13 @@
             "client_id": "C.1000000000000000",
             "creator": "api_test_user",
             "flow_id": "F:ABCDEF10",
+            "is_robot": false,
             "last_active_at": 43000000,
             "name": "Interrogate",
+            "progress": {},
+            "result_metadata": {
+              "is_metadata_set": true
+            },
             "runner_args": {
               "client_id": "aff4:/C.1000000000000000",
               "flow_name": "Interrogate",
@@ -13470,6 +14469,96 @@
         ]
       },
       "url": "/api/clients/C.1000000000000000/flows?max_started_at=43000000&top_flows_only=1"
+    },
+    {
+      "api_method": "ListFlows",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "type": "ApiFlow",
+            "value": {
+              "client_id": {
+                "type": "ApiClientId",
+                "value": "C.1000000000000000"
+              },
+              "creator": {
+                "type": "unicode",
+                "value": "api_test_user"
+              },
+              "flow_id": {
+                "type": "ApiFlowId",
+                "value": "F:ABCDEF10"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": false
+              },
+              "last_active_at": {
+                "type": "RDFDatetime",
+                "value": 43000000
+              },
+              "name": {
+                "type": "unicode",
+                "value": "Interrogate"
+              },
+              "nested_flows": [],
+              "runner_args": {
+                "type": "FlowRunnerArgs",
+                "value": {
+                  "client_id": {
+                    "type": "ClientURN",
+                    "value": "aff4:/C.1000000000000000"
+                  },
+                  "flow_name": {
+                    "type": "unicode",
+                    "value": "Interrogate"
+                  },
+                  "notify_to_user": {
+                    "type": "bool",
+                    "value": true
+                  }
+                }
+              },
+              "started_at": {
+                "type": "RDFDatetime",
+                "value": 43000000
+              },
+              "state": {
+                "type": "EnumNamedValue",
+                "value": "RUNNING"
+              },
+              "urn": {
+                "type": "SessionID",
+                "value": "aff4:/C.1000000000000000/flows/F:ABCDEF10"
+              }
+            }
+          }
+        ]
+      },
+      "test_class": "ApiListFlowsHandlerRegressionTest_http_v1",
+      "type_stripped_response": {
+        "items": [
+          {
+            "client_id": "C.1000000000000000",
+            "creator": "api_test_user",
+            "flow_id": "F:ABCDEF10",
+            "is_robot": false,
+            "last_active_at": 43000000,
+            "name": "Interrogate",
+            "nested_flows": [],
+            "runner_args": {
+              "client_id": "aff4:/C.1000000000000000",
+              "flow_name": "Interrogate",
+              "notify_to_user": true
+            },
+            "started_at": 43000000,
+            "state": "RUNNING",
+            "urn": "aff4:/C.1000000000000000/flows/F:ABCDEF10"
+          }
+        ]
+      },
+      "url": "/api/clients/C.1000000000000000/flows?human_flows_only=1"
     }
   ],
   "ApiListGrrBinariesHandler": [
@@ -13572,6 +14661,10 @@
                 "type": "unicode",
                 "value": "<message id stub>"
               },
+              "expiration_time_us": {
+                "type": "RDFDatetime",
+                "value": 2419243000000
+              },
               "id": {
                 "type": "unicode",
                 "value": "approval:112233"
@@ -13641,10 +14734,6 @@
                         }
                       ]
                     }
-                  },
-                  "clients_queued_count": {
-                    "type": "long",
-                    "value": 0
                   },
                   "clients_with_results_count": {
                     "type": "long",
@@ -13770,6 +14859,10 @@
                       }
                     }
                   },
+                  "hunt_type": {
+                    "type": "EnumNamedValue",
+                    "value": "STANDARD"
+                  },
                   "is_robot": {
                     "type": "bool",
                     "value": false
@@ -13789,6 +14882,10 @@
                   "state": {
                     "type": "EnumNamedValue",
                     "value": "PAUSED"
+                  },
+                  "state_comment": {
+                    "type": "unicode",
+                    "value": ""
                   },
                   "total_cpu_usage": {
                     "type": "long",
@@ -13817,6 +14914,7 @@
             ],
             "email_cc_addresses": [],
             "email_message_id": "<message id stub>",
+            "expiration_time_us": 2419243000000,
             "id": "approval:112233",
             "is_valid": false,
             "is_valid_message": "Need at least 1 additional approver for access.",
@@ -13840,7 +14938,6 @@
                   }
                 ]
               },
-              "clients_queued_count": 0,
               "clients_with_results_count": 0,
               "completed_clients_count": 0,
               "crash_limit": 100,
@@ -13878,11 +14975,13 @@
                 "hunt_name": "GenericHunt",
                 "original_object": {}
               },
+              "hunt_type": "STANDARD",
               "is_robot": false,
               "name": "GenericHunt",
               "remaining_clients_count": 0,
               "results_count": 0,
               "state": "PAUSED",
+              "state_comment": "",
               "total_cpu_usage": 0,
               "total_net_usage": 0,
               "urn": "aff4:/hunts/H:123456"
@@ -14779,7 +15878,7 @@
               "plugin_descriptor": {
                 "type": "OutputPluginDescriptor",
                 "value": {
-                  "plugin_args": {
+                  "args": {
                     "type": "ListProcessesArgs",
                     "value": {
                       "fetch_binaries": {
@@ -14827,7 +15926,7 @@
           {
             "id": "DummyHuntTestOutputPlugin_0",
             "plugin_descriptor": {
-              "plugin_args": {
+              "args": {
                 "fetch_binaries": true,
                 "filename_regex": "blah!"
               },
@@ -15115,7 +16214,7 @@
               },
               "creator": {
                 "type": "unicode",
-                "value": "api_test_user"
+                "value": "GRRWorker"
               },
               "description": {
                 "type": "unicode",
@@ -15131,7 +16230,7 @@
               },
               "is_robot": {
                 "type": "bool",
-                "value": false
+                "value": true
               },
               "state": {
                 "type": "EnumNamedValue",
@@ -15164,11 +16263,11 @@
             "client_limit": 100,
             "client_rate": 0.0,
             "created": 1000000000,
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "description": "hunt_0",
             "duration": 1209600,
             "hunt_id": "H:000000",
-            "is_robot": false,
+            "is_robot": true,
             "state": "PAUSED",
             "urn": "aff4:/hunts/H:000000"
           }
@@ -15269,7 +16368,7 @@
               },
               "creator": {
                 "type": "unicode",
-                "value": "api_test_user"
+                "value": "GRRWorker"
               },
               "description": {
                 "type": "unicode",
@@ -15285,7 +16384,7 @@
               },
               "is_robot": {
                 "type": "bool",
-                "value": false
+                "value": true
               },
               "state": {
                 "type": "EnumNamedValue",
@@ -15306,17 +16405,287 @@
             "client_limit": 100,
             "client_rate": 0.0,
             "created": 1000000000,
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "description": "hunt_0",
             "duration": 1209600,
             "hunt_id": "H:000000",
-            "is_robot": false,
+            "is_robot": true,
             "state": "PAUSED",
             "urn": "aff4:/hunts/H:000000"
           }
         ]
       },
       "url": "/api/hunts?count=1&offset=1"
+    },
+    {
+      "api_method": "ListHunts",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "type": "ApiHunt",
+            "value": {
+              "client_limit": {
+                "type": "long",
+                "value": 100
+              },
+              "client_rate": {
+                "type": "float",
+                "value": 0.0
+              },
+              "created": {
+                "type": "RDFDatetime",
+                "value": 2000000000
+              },
+              "creator": {
+                "type": "unicode",
+                "value": "api_test_user"
+              },
+              "description": {
+                "type": "unicode",
+                "value": "hunt_1"
+              },
+              "duration": {
+                "type": "DurationSeconds",
+                "value": 1209600
+              },
+              "hunt_id": {
+                "type": "ApiHuntId",
+                "value": "H:000001"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": false
+              },
+              "state": {
+                "type": "EnumNamedValue",
+                "value": "STOPPED"
+              },
+              "urn": {
+                "type": "SessionID",
+                "value": "aff4:/hunts/H:000001"
+              }
+            }
+          }
+        ]
+      },
+      "test_class": "ApiListHuntsHandlerRegressionTest_http_v1",
+      "type_stripped_response": {
+        "items": [
+          {
+            "client_limit": 100,
+            "client_rate": 0.0,
+            "created": 2000000000,
+            "creator": "api_test_user",
+            "description": "hunt_1",
+            "duration": 1209600,
+            "hunt_id": "H:000001",
+            "is_robot": false,
+            "state": "STOPPED",
+            "urn": "aff4:/hunts/H:000001"
+          }
+        ]
+      },
+      "url": "/api/hunts?count=2&offset=0&robot_filter=no_robots"
+    },
+    {
+      "api_method": "ListHunts",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "type": "ApiHunt",
+            "value": {
+              "client_limit": {
+                "type": "long",
+                "value": 100
+              },
+              "client_rate": {
+                "type": "float",
+                "value": 0.0
+              },
+              "created": {
+                "type": "RDFDatetime",
+                "value": 1000000000
+              },
+              "creator": {
+                "type": "unicode",
+                "value": "GRRWorker"
+              },
+              "description": {
+                "type": "unicode",
+                "value": "hunt_0"
+              },
+              "duration": {
+                "type": "DurationSeconds",
+                "value": 1209600
+              },
+              "hunt_id": {
+                "type": "ApiHuntId",
+                "value": "H:000000"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": true
+              },
+              "state": {
+                "type": "EnumNamedValue",
+                "value": "PAUSED"
+              },
+              "urn": {
+                "type": "SessionID",
+                "value": "aff4:/hunts/H:000000"
+              }
+            }
+          }
+        ]
+      },
+      "test_class": "ApiListHuntsHandlerRegressionTest_http_v1",
+      "type_stripped_response": {
+        "items": [
+          {
+            "client_limit": 100,
+            "client_rate": 0.0,
+            "created": 1000000000,
+            "creator": "GRRWorker",
+            "description": "hunt_0",
+            "duration": 1209600,
+            "hunt_id": "H:000000",
+            "is_robot": true,
+            "state": "PAUSED",
+            "urn": "aff4:/hunts/H:000000"
+          }
+        ]
+      },
+      "url": "/api/hunts?count=2&offset=0&robot_filter=only_robots"
+    },
+    {
+      "api_method": "ListHunts",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "type": "ApiHunt",
+            "value": {
+              "client_limit": {
+                "type": "long",
+                "value": 100
+              },
+              "client_rate": {
+                "type": "float",
+                "value": 0.0
+              },
+              "created": {
+                "type": "RDFDatetime",
+                "value": 2000000000
+              },
+              "creator": {
+                "type": "unicode",
+                "value": "api_test_user"
+              },
+              "description": {
+                "type": "unicode",
+                "value": "hunt_1"
+              },
+              "duration": {
+                "type": "DurationSeconds",
+                "value": 1209600
+              },
+              "hunt_id": {
+                "type": "ApiHuntId",
+                "value": "H:000001"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": false
+              },
+              "state": {
+                "type": "EnumNamedValue",
+                "value": "STOPPED"
+              },
+              "urn": {
+                "type": "SessionID",
+                "value": "aff4:/hunts/H:000001"
+              }
+            }
+          },
+          {
+            "type": "ApiHunt",
+            "value": {
+              "client_limit": {
+                "type": "long",
+                "value": 100
+              },
+              "client_rate": {
+                "type": "float",
+                "value": 0.0
+              },
+              "created": {
+                "type": "RDFDatetime",
+                "value": 1000000000
+              },
+              "creator": {
+                "type": "unicode",
+                "value": "GRRWorker"
+              },
+              "description": {
+                "type": "unicode",
+                "value": "hunt_0"
+              },
+              "duration": {
+                "type": "DurationSeconds",
+                "value": 1209600
+              },
+              "hunt_id": {
+                "type": "ApiHuntId",
+                "value": "H:000000"
+              },
+              "is_robot": {
+                "type": "bool",
+                "value": true
+              },
+              "state": {
+                "type": "EnumNamedValue",
+                "value": "PAUSED"
+              },
+              "urn": {
+                "type": "SessionID",
+                "value": "aff4:/hunts/H:000000"
+              }
+            }
+          }
+        ]
+      },
+      "test_class": "ApiListHuntsHandlerRegressionTest_http_v1",
+      "type_stripped_response": {
+        "items": [
+          {
+            "client_limit": 100,
+            "client_rate": 0.0,
+            "created": 2000000000,
+            "creator": "api_test_user",
+            "description": "hunt_1",
+            "duration": 1209600,
+            "hunt_id": "H:000001",
+            "is_robot": false,
+            "state": "STOPPED",
+            "urn": "aff4:/hunts/H:000001"
+          },
+          {
+            "client_limit": 100,
+            "client_rate": 0.0,
+            "created": 1000000000,
+            "creator": "GRRWorker",
+            "description": "hunt_0",
+            "duration": 1209600,
+            "hunt_id": "H:000000",
+            "is_robot": true,
+            "state": "PAUSED",
+            "urn": "aff4:/hunts/H:000000"
+          }
+        ]
+      },
+      "url": "/api/hunts?count=2&offset=0&robot_filter=unknown"
     }
   ],
   "ApiListKbFieldsHandler": [
@@ -16213,6 +17582,10 @@
                         "type": "long",
                         "value": 1000
                       },
+                      "client_rate": {
+                        "type": "float",
+                        "value": 20.0
+                      },
                       "crash_limit": {
                         "type": "long",
                         "value": 100
@@ -16261,6 +17634,7 @@
               "avg_cpu_seconds_per_client_limit": 60,
               "avg_network_bytes_per_client_limit": 10485760,
               "avg_results_per_client_limit": 1000,
+              "client_rate": 20.0,
               "crash_limit": 100
             }
           }
@@ -16320,6 +17694,10 @@
                         "type": "long",
                         "value": 1000
                       },
+                      "client_rate": {
+                        "type": "float",
+                        "value": 20.0
+                      },
                       "crash_limit": {
                         "type": "long",
                         "value": 100
@@ -16368,6 +17746,7 @@
               "avg_cpu_seconds_per_client_limit": 60,
               "avg_network_bytes_per_client_limit": 10485760,
               "avg_results_per_client_limit": 1000,
+              "client_rate": 20.0,
               "crash_limit": 100
             }
           }
@@ -16433,10 +17812,6 @@
               ]
             }
           },
-          "clients_queued_count": {
-            "type": "long",
-            "value": 0
-          },
           "clients_with_results_count": {
             "type": "long",
             "value": 0
@@ -16565,6 +17940,10 @@
               }
             }
           },
+          "hunt_type": {
+            "type": "EnumNamedValue",
+            "value": "STANDARD"
+          },
           "is_robot": {
             "type": "bool",
             "value": false
@@ -16584,6 +17963,10 @@
           "state": {
             "type": "EnumNamedValue",
             "value": "PAUSED"
+          },
+          "state_comment": {
+            "type": "unicode",
+            "value": ""
           },
           "total_cpu_usage": {
             "type": "long",
@@ -16615,7 +17998,6 @@
             }
           ]
         },
-        "clients_queued_count": 0,
         "clients_with_results_count": 0,
         "completed_clients_count": 0,
         "crash_limit": 100,
@@ -16654,11 +18036,13 @@
           "hunt_name": "GenericHunt",
           "original_object": {}
         },
+        "hunt_type": "STANDARD",
         "is_robot": false,
         "name": "GenericHunt",
         "remaining_clients_count": 0,
         "results_count": 0,
         "state": "PAUSED",
+        "state_comment": "",
         "total_cpu_usage": 0,
         "total_net_usage": 0,
         "urn": "aff4:/hunts/H:123456"
@@ -16715,10 +18099,6 @@
               ]
             }
           },
-          "clients_queued_count": {
-            "type": "long",
-            "value": 0
-          },
           "clients_with_results_count": {
             "type": "long",
             "value": 0
@@ -16847,6 +18227,10 @@
               }
             }
           },
+          "hunt_type": {
+            "type": "EnumNamedValue",
+            "value": "STANDARD"
+          },
           "is_robot": {
             "type": "bool",
             "value": false
@@ -16866,6 +18250,10 @@
           "state": {
             "type": "EnumNamedValue",
             "value": "STOPPED"
+          },
+          "state_comment": {
+            "type": "unicode",
+            "value": "Cancelled by user"
           },
           "total_cpu_usage": {
             "type": "long",
@@ -16897,7 +18285,6 @@
             }
           ]
         },
-        "clients_queued_count": 0,
         "clients_with_results_count": 0,
         "completed_clients_count": 0,
         "crash_limit": 100,
@@ -16936,11 +18323,13 @@
           "hunt_name": "GenericHunt",
           "original_object": {}
         },
+        "hunt_type": "STANDARD",
         "is_robot": false,
         "name": "GenericHunt",
         "remaining_clients_count": 0,
         "results_count": 0,
         "state": "STOPPED",
+        "state_comment": "Cancelled by user",
         "total_cpu_usage": 0,
         "total_net_usage": 0,
         "urn": "aff4:/hunts/H:123456"
@@ -17040,12 +18429,20 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if0"
+                    }
                   }
                 },
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if1"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "qrvM3e4A"
@@ -17055,6 +18452,10 @@
                 {
                   "type": "Interface",
                   "value": {
+                    "ifname": {
+                      "type": "unicode",
+                      "value": "if2"
+                    },
                     "mac_address": {
                       "type": "MacAddress",
                       "value": "u8zd7v8A"
@@ -17184,12 +18585,15 @@
                     "address_type": "INET6",
                     "packed_bytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "mac_address": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "mac_address": "u8zd7v8A"
               }
             ],
@@ -17237,7 +18641,7 @@
         "file_path": "fs/os/c/bin/bash"
       },
       "response": {
-        "operation_id": "W:ABCDEF"
+        "operation_id": "ABCDEF"
       },
       "test_class": "ApiUpdateVfsFileContentHandlerRegressionTest_http_v1",
       "url": "/api/clients/C.1000000000000000/vfs-update"

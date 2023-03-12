@@ -1,37 +1,36 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests client actions related to administrating the client."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import os
+import tempfile
+from unittest import mock
 
 from absl import app
-import mock
+from absl.testing import absltest
 import psutil
 import requests
 
 from grr_response_client import client_stats
 from grr_response_client import comms
+from grr_response_client import communicator
 from grr_response_client.client_actions import admin
+from grr_response_client.unprivileged import sandbox
 from grr_response_core import config
-from grr_response_core.lib import communicator
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client_action as rdf_client_action
 from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr.test_lib import client_test_lib
 from grr.test_lib import test_lib
+from grr.test_lib import worker_mocks
 
 
 class ConfigActionTest(client_test_lib.EmptyActionTest):
   """Tests the client actions UpdateConfiguration and GetConfiguration."""
 
   def setUp(self):
-    super(ConfigActionTest, self).setUp()
+    super().setUp()
     # These tests change the config so we preserve state.
     config_stubber = test_lib.PreserveConfig()
     config_stubber.Start()
@@ -81,15 +80,14 @@ Client.server_urls:
       response._content = data
       return response
 
-    with utils.Stubber(requests, "request", FakeUrlOpen):
+    with mock.patch.object(requests, "request", FakeUrlOpen):
       client_context = comms.GRRHTTPClient(worker_cls=MockClientWorker)
       client_context.MakeRequest("")
 
     # Since the request is successful we only connect to one location.
     self.assertIn(location[0], self.urls[0])
 
-  def testUpdateConfigBlacklist(self):
-    """Tests that disallowed fields are not getting updated."""
+  def testOnlyUpdatableFieldsAreUpdated(self):
     with test_lib.ConfigOverrider({
         "Client.server_urls": [u"http://something.com/"],
         "Client.server_serial_number": 1
@@ -180,7 +178,7 @@ class GetClientStatsActionTest(client_test_lib.EmptyActionTest):
   """Test GetClientStats client action."""
 
   def setUp(self):
-    super(GetClientStatsActionTest, self).setUp()
+    super().setUp()
     stubber = mock.patch.object(psutil, "boot_time", return_value=100)
     stubber.start()
     self.addCleanup(stubber.stop)
@@ -266,6 +264,89 @@ class GetClientStatsActionTest(client_test_lib.EmptyActionTest):
     self.assertLen(response.io_samples, 1)
     self.assertEqual(response.io_samples[0].timestamp,
                      rdfvalue.RDFDatetime.FromSecondsSinceEpoch(110))
+
+
+class GetClientInformationTest(absltest.TestCase):
+
+  def testTimelineBtimeSupport(self):
+    client_info = admin.GetClientInformation()
+
+    # We cannot assume anything about the support being there or not, so we just
+    # check that some information is set. This should be enough to guarantee
+    # line coverage.
+    self.assertTrue(client_info.HasField("timeline_btime_support"))
+
+  def testSandboxSupport(self):
+    with mock.patch.object(sandbox, "IsSandboxInitialized", return_value=True):
+      client_info = admin.GetClientInformation()
+      self.assertTrue(client_info.sandbox_support)
+    with mock.patch.object(sandbox, "IsSandboxInitialized", return_value=False):
+      client_info = admin.GetClientInformation()
+      self.assertFalse(client_info.sandbox_support)
+
+
+class SendStartupInfoTest(client_test_lib.EmptyActionTest):
+
+  def _RunAction(self):
+    fake_worker = worker_mocks.FakeClientWorker()
+    self.RunAction(admin.SendStartupInfo, grr_worker=fake_worker)
+    return [m.payload for m in fake_worker.responses]
+
+  def testDoesNotSendInterrogateRequestWhenConfigOptionNotSet(self):
+    results = self._RunAction()
+
+    self.assertLen(results, 1)
+    self.assertFalse(results[0].interrogate_requested)
+
+  def testDoesNotSendInterrogateRequestWhenTriggerFileIsMissing(self):
+    with test_lib.ConfigOverrider(
+        {"Client.interrogate_trigger_path": "/none/existingpath"}):
+      results = self._RunAction()
+
+    self.assertLen(results, 1)
+    self.assertFalse(results[0].interrogate_requested)
+
+  def testSendsInterrogateRequestWhenTriggerFileIsPresent(self):
+    with tempfile.NamedTemporaryFile(delete=False) as fd:
+      trigger_path = fd.name
+
+    with test_lib.ConfigOverrider(
+        {"Client.interrogate_trigger_path": trigger_path}):
+      results = self._RunAction()
+
+    # Check that the trigger file got removed.
+    self.assertFalse(os.path.exists(trigger_path))
+
+    self.assertLen(results, 1)
+    self.assertTrue(results[0].interrogate_requested)
+
+  def testInterrogateIsTriggeredOnlyOnceForOneTriggerFile(self):
+    with tempfile.NamedTemporaryFile(delete=False) as fd:
+      trigger_path = fd.name
+
+    with test_lib.ConfigOverrider(
+        {"Client.interrogate_trigger_path": trigger_path}):
+      results = self._RunAction()
+
+      self.assertLen(results, 1)
+      self.assertTrue(results[0].interrogate_requested)
+
+      results = self._RunAction()
+
+      self.assertLen(results, 1)
+      self.assertFalse(results[0].interrogate_requested)
+
+  @mock.patch.object(os, "remove", side_effect=OSError("some error"))
+  def testInterrogateNotRequestedIfTriggerFileCanNotBeRemoved(self, _):
+    with tempfile.NamedTemporaryFile() as fd:
+      trigger_path = fd.name
+
+    with test_lib.ConfigOverrider(
+        {"Client.interrogate_trigger_path": trigger_path}):
+      results = self._RunAction()
+
+    self.assertLen(results, 1)
+    self.assertFalse(results[0].interrogate_requested)
 
 
 def main(argv):

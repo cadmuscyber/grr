@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for ApiCallRobotRouter."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -13,6 +9,7 @@ from grr_response_server import access_control
 from grr_response_server import flow_base
 from grr_response_server.flows.general import collectors
 from grr_response_server.flows.general import file_finder
+from grr_response_server.gui import api_call_context
 from grr_response_server.gui import api_call_robot_router as rr
 from grr_response_server.gui.api_plugins import flow as api_flow
 
@@ -33,8 +30,9 @@ class ApiRobotCreateFlowHandlerTest(test_lib.GRRBaseTest):
   """Tests for ApiRobotCreateFlowHandler."""
 
   def setUp(self):
-    super(ApiRobotCreateFlowHandlerTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
+    self.context = api_call_context.ApiCallContext("test")
 
   def testPassesFlowArgsThroughIfNoOverridesSpecified(self):
     h = rr.ApiRobotCreateFlowHandler()
@@ -43,7 +41,7 @@ class ApiRobotCreateFlowHandlerTest(test_lib.GRRBaseTest):
     args.flow.name = file_finder.FileFinder.__name__
     args.flow.args = rdf_file_finder.FileFinderArgs(paths=["foo"])
 
-    f = h.Handle(args=args, token=self.token)
+    f = h.Handle(args=args, context=self.context)
     self.assertEqual(f.args.paths, ["foo"])
 
   def testOverridesFlowNameIfOverrideArgIsSpecified(self):
@@ -54,7 +52,7 @@ class ApiRobotCreateFlowHandlerTest(test_lib.GRRBaseTest):
     args.flow.name = file_finder.FileFinder.__name__
     args.flow.args = rdf_file_finder.FileFinderArgs(paths=["foo"])
 
-    f = h.Handle(args=args, token=self.token)
+    f = h.Handle(args=args, context=self.context)
     self.assertEqual(f.name, AnotherFileFinder.__name__)  # pylint: disable=undefined-variable
 
   def testOverridesFlowArgsThroughIfOverridesSpecified(self):
@@ -65,7 +63,7 @@ class ApiRobotCreateFlowHandlerTest(test_lib.GRRBaseTest):
     args.flow.name = file_finder.FileFinder.__name__
     args.flow.args = rdf_file_finder.FileFinderArgs(paths=["foo"])
 
-    f = h.Handle(args=args, token=self.token)
+    f = h.Handle(args=args, context=self.context)
     self.assertEqual(f.args.paths, ["bar"])
 
 
@@ -77,32 +75,33 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
     return rr.ApiCallRobotRouter(params=params, delegate=delegate)
 
   def setUp(self):
-    super(ApiCallRobotRouterTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
+    self.context = api_call_context.ApiCallContext("test")
     self.another_username = "someotherguy"
     self.CreateUser(self.another_username)
 
   def testSearchClientsIsDisabledByDefault(self):
     router = self._CreateRouter()
     with self.assertRaises(access_control.UnauthorizedAccess):
-      router.SearchClients(None, token=self.token)
+      router.SearchClients(None, context=self.context)
 
   def testSearchClientsWorksWhenExplicitlyEnabled(self):
     router = self._CreateRouter(
         search_clients=rr.RobotRouterSearchClientsParams(enabled=True))
-    router.SearchClients(None, token=self.token)
+    router.SearchClients(None, context=self.context)
 
   def testCreateFlowRaisesIfClientIdNotSpecified(self):
     router = self._CreateRouter()
     with self.assertRaises(ValueError):
-      router.CreateFlow(api_flow.ApiCreateFlowArgs(), token=self.token)
+      router.CreateFlow(api_flow.ApiCreateFlowArgs(), context=self.context)
 
   def testCreateFlowIsDisabledByDefault(self):
     router = self._CreateRouter()
     with self.assertRaises(access_control.UnauthorizedAccess):
       router.CreateFlow(
           api_flow.ApiCreateFlowArgs(client_id=self.client_id),
-          token=self.token)
+          context=self.context)
 
   def testFileFinderWorksWhenEnabledAndArgumentsAreCorrect(self):
     router = None
@@ -114,7 +113,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
                   name=file_finder.FileFinder.__name__,
                   args=rdf_file_finder.FileFinderArgs(paths=[path])),
               client_id=self.client_id),
-          token=self.token)
+          context=self.context)
 
     router = self._CreateRouter(
         file_finder_flow=rr.RobotRouterFileFinderFlowParams(enabled=True))
@@ -146,7 +145,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
                     name=file_finder.FileFinder.__name__,
                     args=rdf_file_finder.FileFinderArgs(paths=[path])),
                 client_id=self.client_id),
-            token=self.token)
+            context=self.context)
 
     router = self._CreateRouter(
         file_finder_flow=rr.RobotRouterFileFinderFlowParams(enabled=True))
@@ -165,7 +164,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
         api_flow.ApiCreateFlowArgs(
             flow=api_flow.ApiFlow(name=AnotherFileFinder.__name__),  # pylint: disable=undefined-variable
             client_id=self.client_id),
-        token=self.token)
+        context=self.context)
 
     self.assertEqual(handler.override_flow_name, AnotherFileFinder.__name__)  # pylint: disable=undefined-variable
 
@@ -178,7 +177,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
         api_flow.ApiCreateFlowArgs(
             flow=api_flow.ApiFlow(name=file_finder.FileFinder.__name__),
             client_id=self.client_id),
-        token=self.token)
+        context=self.context)
 
     self.assertEqual(handler.override_flow_name, AnotherFileFinder.__name__)  # pylint: disable=undefined-variable
 
@@ -201,7 +200,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
                     action=rdf_file_finder.FileFinderAction(
                         action_type="HASH", hash=ha))),
             client_id=self.client_id),
-        token=self.token)
+        context=self.context)
 
     ha = handler.override_flow_args.action.hash
     self.assertEqual(ha.oversized_file_policy, ha.OversizedFilePolicy.SKIP)
@@ -226,7 +225,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
                     action=rdf_file_finder.FileFinderAction(
                         action_type="DOWNLOAD", download=da))),
             client_id=self.client_id),
-        token=self.token)
+        context=self.context)
 
     da = handler.override_flow_args.action.download
     self.assertEqual(da.oversized_file_policy, da.OversizedFilePolicy.SKIP)
@@ -243,7 +242,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
                   args=rdf_artifacts.ArtifactCollectorFlowArgs(
                       artifact_list=artifacts)),
               client_id=self.client_id),
-          token=self.token)
+          context=self.context)
 
     router = self._CreateRouter(
         artifact_collector_flow=rr.RobotRouterArtifactCollectorFlowParams(
@@ -252,12 +251,12 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
 
     router = self._CreateRouter(
         artifact_collector_flow=rr.RobotRouterArtifactCollectorFlowParams(
-            enabled=True, artifacts_whitelist=["foo"]))
+            enabled=True, allow_artifacts=["foo"]))
     Check(["foo"])
 
     router = self._CreateRouter(
         artifact_collector_flow=rr.RobotRouterArtifactCollectorFlowParams(
-            enabled=True, artifacts_whitelist=["foo", "bar", "blah"]))
+            enabled=True, allow_artifacts=["foo", "bar", "blah"]))
     Check(["foo", "blah"])
 
   def testArtifactCollectorRaisesWhenEnabledButArgumentsNotCorrect(self):
@@ -272,7 +271,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
                     args=rdf_artifacts.ArtifactCollectorFlowArgs(
                         artifact_list=artifacts)),
                 client_id=self.client_id),
-            token=self.token)
+            context=self.context)
 
     router = self._CreateRouter(
         artifact_collector_flow=rr.RobotRouterArtifactCollectorFlowParams(
@@ -281,7 +280,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
 
     router = self._CreateRouter(
         artifact_collector_flow=rr.RobotRouterArtifactCollectorFlowParams(
-            enabled=True, artifacts_whitelist=["bar", "blah"]))
+            enabled=True, allow_artifacts=["bar", "blah"]))
     Check(["foo", "bar"])
 
   def testArtifactCollectorFlowNameCanBeOverridden(self):
@@ -294,7 +293,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
         api_flow.ApiCreateFlowArgs(
             flow=api_flow.ApiFlow(name=AnotherArtifactCollector.__name__),  # pylint: disable=undefined-variable
             client_id=self.client_id),
-        token=self.token)
+        context=self.context)
 
     self.assertEqual(handler.override_flow_name,
                      AnotherArtifactCollector.__name__)  # pylint: disable=undefined-variable
@@ -310,7 +309,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
             flow=api_flow.ApiFlow(
                 name=collectors.ArtifactCollectorFlow.__name__),
             client_id=self.client_id),
-        token=self.token)
+        context=self.context)
 
     self.assertEqual(handler.override_flow_name,
                      AnotherArtifactCollector.__name__)  # pylint: disable=undefined-variable
@@ -326,7 +325,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
           api_flow.ApiCreateFlowArgs(
               flow=api_flow.ApiFlow(name=flow_test_lib.BrokenFlow.__name__),
               client_id=self.client_id),
-          token=self.token)
+          context=self.context)
 
   def _CreateFlowWithRobotId(self, flow_name=None, flow_args=None):
     flow_name = flow_name or file_finder.FileFinder.__name__
@@ -336,13 +335,13 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
         api_flow.ApiCreateFlowArgs(
             client_id=self.client_id,
             flow=api_flow.ApiFlow(name=flow_name, args=flow_args)),
-        token=self.token)
+        context=self.context)
     return flow_result.flow_id
 
   def testGetFlowIsDisabledByDefault(self):
     router = self._CreateRouter()
     with self.assertRaises(access_control.UnauthorizedAccess):
-      router.GetFlow(None, token=self.token)
+      router.GetFlow(None, context=self.context)
 
   def testGetFlowRaisesIfFlowWasNotCreatedBySameUser(self):
     flow_id = flow_test_lib.StartFlow(
@@ -353,7 +352,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
     with self.assertRaises(access_control.UnauthorizedAccess):
       router.GetFlow(
           api_flow.ApiGetFlowArgs(client_id=self.client_id, flow_id=flow_id),
-          token=self.token)
+          context=self.context)
 
   def testGetFlowWorksIfFlowWasCreatedBySameUser(self):
     flow_id = self._CreateFlowWithRobotId()
@@ -361,12 +360,12 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
         get_flow=rr.RobotRouterGetFlowParams(enabled=True))
     router.GetFlow(
         api_flow.ApiGetFlowArgs(client_id=self.client_id, flow_id=flow_id),
-        token=self.token)
+        context=self.context)
 
   def testListFlowResultsIsDisabledByDefault(self):
     router = self._CreateRouter()
     with self.assertRaises(access_control.UnauthorizedAccess):
-      router.ListFlowResults(None, token=self.token)
+      router.ListFlowResults(None, context=self.context)
 
   def testListFlowResultsRaisesIfFlowWasNotCreatedBySameUser(self):
     flow_id = flow_test_lib.StartFlow(
@@ -378,7 +377,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
       router.ListFlowResults(
           api_flow.ApiListFlowResultsArgs(
               client_id=self.client_id, flow_id=flow_id),
-          token=self.token)
+          context=self.context)
 
   def testListFlowResultsWorksIfFlowWasCreatedBySameUser(self):
     flow_id = self._CreateFlowWithRobotId()
@@ -387,12 +386,12 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
     router.ListFlowResults(
         api_flow.ApiListFlowResultsArgs(
             client_id=self.client_id, flow_id=flow_id),
-        token=self.token)
+        context=self.context)
 
   def testListFlowLogsIsDisabledByDefault(self):
     router = self._CreateRouter()
     with self.assertRaises(access_control.UnauthorizedAccess):
-      router.ListFlowLogs(None, token=self.token)
+      router.ListFlowLogs(None, context=self.context)
 
   def testListFlowLogsRaisesIfFlowWasNotCreatedBySameUser(self):
     flow_id = flow_test_lib.StartFlow(
@@ -404,7 +403,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
       router.ListFlowLogs(
           api_flow.ApiListFlowLogsArgs(
               client_id=self.client_id, flow_id=flow_id),
-          token=self.token)
+          context=self.context)
 
   def testListFlowLogsWorksIfFlowWasCreatedBySameUser(self):
     flow_id = self._CreateFlowWithRobotId()
@@ -412,12 +411,12 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
         list_flow_logs=rr.RobotRouterListFlowLogsParams(enabled=True))
     router.ListFlowLogs(
         api_flow.ApiListFlowLogsArgs(client_id=self.client_id, flow_id=flow_id),
-        token=self.token)
+        context=self.context)
 
   def testGetFlowFilesArchiveIsDisabledByDefault(self):
     router = self._CreateRouter()
     with self.assertRaises(access_control.UnauthorizedAccess):
-      router.GetFlowFilesArchive(None, token=self.token)
+      router.GetFlowFilesArchive(None, context=self.context)
 
   def testFlowFilesArchiveRaisesIfFlowWasNotCreatedBySameUser(self):
     flow_id = flow_test_lib.StartFlow(
@@ -428,7 +427,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
       router.GetFlowFilesArchive(
           api_flow.ApiGetFlowFilesArchiveArgs(
               client_id=self.client_id, flow_id=flow_id),
-          token=self.token)
+          context=self.context)
 
   def testGetFlowFilesArchiveWorksIfFlowWasCreatedBySameUser(self):
     flow_id = self._CreateFlowWithRobotId()
@@ -438,21 +437,21 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
     router.GetFlowFilesArchive(
         api_flow.ApiGetFlowFilesArchiveArgs(
             client_id=self.client_id, flow_id=flow_id),
-        token=self.token)
+        context=self.context)
 
   def testGetFlowFilesArchiveReturnsLimitedHandler(self):
     flow_id = self._CreateFlowWithRobotId()
     router = self._CreateRouter(
         get_flow_files_archive=rr.RobotRouterGetFlowFilesArchiveParams(
             enabled=True,
-            path_globs_blacklist=["**/*.txt"],
-            path_globs_whitelist=["foo/*", "bar/*"]))
+            exclude_path_globs=["**/*.txt"],
+            include_only_path_globs=["foo/*", "bar/*"]))
     handler = router.GetFlowFilesArchive(
         api_flow.ApiGetFlowFilesArchiveArgs(
             client_id=self.client_id, flow_id=flow_id),
-        token=self.token)
-    self.assertEqual(handler.path_globs_blacklist, ["**/*.txt"])
-    self.assertEqual(handler.path_globs_whitelist, ["foo/*", "bar/*"])
+        context=self.context)
+    self.assertEqual(handler.exclude_path_globs, ["**/*.txt"])
+    self.assertEqual(handler.include_only_path_globs, ["foo/*", "bar/*"])
 
   def testGetFlowFilesArchiveReturnsNonLimitedHandlerForArtifactsWhenNeeded(
       self):
@@ -462,16 +461,16 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
         get_flow_files_archive=rr.RobotRouterGetFlowFilesArchiveParams(
             enabled=True,
             skip_glob_checks_for_artifact_collector=True,
-            path_globs_blacklist=["**/*.txt"],
-            path_globs_whitelist=["foo/*", "bar/*"]))
+            exclude_path_globs=["**/*.txt"],
+            include_only_path_globs=["foo/*", "bar/*"]))
 
     flow_id = self._CreateFlowWithRobotId()
     handler = router.GetFlowFilesArchive(
         api_flow.ApiGetFlowFilesArchiveArgs(
             client_id=self.client_id, flow_id=flow_id),
-        token=self.token)
-    self.assertEqual(handler.path_globs_blacklist, ["**/*.txt"])
-    self.assertEqual(handler.path_globs_whitelist, ["foo/*", "bar/*"])
+        context=self.context)
+    self.assertEqual(handler.exclude_path_globs, ["**/*.txt"])
+    self.assertEqual(handler.include_only_path_globs, ["foo/*", "bar/*"])
 
     flow_id = self._CreateFlowWithRobotId(
         flow_name=AnotherArtifactCollector.__name__,  # pylint: disable=undefined-variable
@@ -480,12 +479,13 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
     handler = router.GetFlowFilesArchive(
         api_flow.ApiGetFlowFilesArchiveArgs(
             client_id=self.client_id, flow_id=flow_id),
-        token=self.token)
-    self.assertIsNone(handler.path_globs_blacklist)
-    self.assertIsNone(handler.path_globs_whitelist)
+        context=self.context)
+    self.assertIsNone(handler.exclude_path_globs)
+    self.assertIsNone(handler.include_only_path_globs)
 
   IMPLEMENTED_METHODS = [
       "SearchClients",
+      "StructuredSearchClients",
       "CreateFlow",
       "GetFlow",
       "ListFlowResults",
@@ -494,6 +494,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
       # This single reflection method is needed for API libraries to work
       # correctly.
       "ListApiMethods",
+      "GetOpenApiDescription",
       # TODO(user): Remove methods below as soon as they are deprecated
       # in favor of the methods above.
       "StartRobotGetFilesOperation",
@@ -510,7 +511,7 @@ class ApiCallRobotRouterTest(acl_test_lib.AclTestMixin, test_lib.GRRBaseTest):
 
     for method_name in unchecked_methods:
       with self.assertRaises(NotImplementedError):
-        getattr(router, method_name)(None, token=self.token)
+        getattr(router, method_name)(None, context=self.context)
 
 
 def main(argv):

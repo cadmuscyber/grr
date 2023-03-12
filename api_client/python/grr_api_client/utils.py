@@ -1,14 +1,20 @@
 #!/usr/bin/env python
 """Utility functions and classes for GRR API client library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
 import time
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import IO
+from typing import Iterator
+from typing import Tuple
+from typing import TypeVar
+from typing import Union
 
-
+from google.protobuf import any_pb2
 from google.protobuf import wrappers_pb2
 
+from google.protobuf import descriptor
+from google.protobuf import message
 from google.protobuf import symbol_database
 
 from grr_api_client import errors
@@ -18,7 +24,10 @@ from grr_response_proto import checks_pb2
 from grr_response_proto import deprecated_pb2
 from grr_response_proto import flows_pb2
 from grr_response_proto import jobs_pb2
+from grr_response_proto import large_file_pb2
 from grr_response_proto import osquery_pb2
+from grr_response_proto import pipes_pb2
+from grr_response_proto import read_low_level_pb2
 from grr_response_proto import timeline_pb2
 
 from grr_response_proto.api import artifact_pb2
@@ -27,6 +36,7 @@ from grr_response_proto.api import config_pb2
 from grr_response_proto.api import cron_pb2
 from grr_response_proto.api import flow_pb2
 from grr_response_proto.api import hunt_pb2
+from grr_response_proto.api import metadata_pb2
 from grr_response_proto.api import output_plugin_pb2
 from grr_response_proto.api import reflection_pb2
 from grr_response_proto.api import stats_pb2
@@ -39,28 +49,38 @@ class ProtobufTypeNotFound(errors.Error):
   pass
 
 
-class ItemsIterator(object):
+_T = TypeVar("_T")
+
+
+class ItemsIterator(Iterator[_T]):
   """Iterator object with a total_count property."""
 
-  def __init__(self, items=None, total_count=None):
-    super(ItemsIterator, self).__init__()
+  def __init__(
+      self,
+      items: Iterator[_T],
+      total_count: int,
+  ) -> None:
+    super().__init__()
 
     self.items = items
     self.total_count = total_count
 
-  def __iter__(self):
+  def __iter__(self) -> Iterator[_T]:
     for i in self.items:
       yield i
 
-  def __next__(self):
+  def __next__(self) -> _T:
     return next(self.items)
 
-  # TODO: Compatibility method for Python 2.
-  def next(self):
-    return self.__next__()
+
+_T1 = TypeVar("_T1")
+_T2 = TypeVar("_T2")
 
 
-def MapItemsIterator(function, items):
+def MapItemsIterator(
+    function: Callable[[_T1], _T2],
+    items: ItemsIterator[_T1],
+) -> ItemsIterator[_T2]:
   """Maps ItemsIterator via given function."""
   return ItemsIterator(
       items=map(function, items), total_count=items.total_count)
@@ -69,69 +89,41 @@ def MapItemsIterator(function, items):
 class BinaryChunkIterator(object):
   """Iterator object for binary streams."""
 
-  def __init__(self, chunks=None, total_size=None, on_close=None):
-    super(BinaryChunkIterator, self).__init__()
+  def __init__(self, chunks: Iterator[bytes]) -> None:
+    super().__init__()
 
-    self.chunks = chunks
-    self.total_size = total_size
-    self.on_close = on_close
+    self.chunks = chunks  # type: Iterator[bytes]
 
-  def Close(self):
-    if self.on_close:
-      self.on_close()
-      self.on_close = None
-
-  def __exit__(self, unused_type, unused_value, unused_traceback):
-    self.Close()
-
-  def __iter__(self):
+  def __iter__(self) -> Iterator[bytes]:
     for c in self.chunks:
       yield c
-    self.Close()
 
-  def __next__(self):
-    try:
-      return next(self.chunks)
-    except StopIteration:
-      self.Close()
-      raise
+  def __next__(self) -> bytes:
+    return next(self.chunks)
 
-  # TODO: Compatibility method for Python 2.
-  def next(self):
-    return self.__next__()
-
-  def WriteToStream(self, out):
-    for c in self.chunks:
+  def WriteToStream(self, out: IO[bytes]) -> None:
+    for c in self:
       out.write(c)
-    self.Close()
 
-  def WriteToFile(self, file_name):
+  def WriteToFile(self, file_name: str) -> None:
     with open(file_name, "wb") as fd:
       self.WriteToStream(fd)
 
 
 # Default poll interval in seconds.
-DEFAULT_POLL_INTERVAL = 15
+DEFAULT_POLL_INTERVAL: int = 15
 
 # Default poll timeout in seconds.
-DEFAULT_POLL_TIMEOUT = 3600
+DEFAULT_POLL_TIMEOUT: int = 3600
 
 
-def Poll(generator=None, condition=None, interval=None, timeout=None):
+def Poll(
+    generator: Callable[[], _T],
+    condition: Callable[[_T], bool],
+    interval: int = DEFAULT_POLL_INTERVAL,
+    timeout: int = DEFAULT_POLL_TIMEOUT,
+) -> _T:
   """Periodically calls generator function until a condition is satisfied."""
-
-  if not generator:
-    raise ValueError("generator has to be a lambda")
-
-  if not condition:
-    raise ValueError("condition has to be a lambda")
-
-  if interval is None:
-    interval = DEFAULT_POLL_INTERVAL
-
-  if timeout is None:
-    timeout = DEFAULT_POLL_TIMEOUT
-
   started = time.time()
   while True:
     obj = generator()
@@ -148,7 +140,7 @@ def Poll(generator=None, condition=None, interval=None, timeout=None):
 AFF4_PREFIX = "aff4:/"
 
 
-def UrnStringToClientId(urn):
+def UrnStringToClientId(urn: str) -> str:
   """Converts given URN string to a client id string."""
   if urn.startswith(AFF4_PREFIX):
     urn = urn[len(AFF4_PREFIX):]
@@ -157,7 +149,7 @@ def UrnStringToClientId(urn):
   return components[0]
 
 
-def UrnStringToHuntId(urn):
+def UrnStringToHuntId(urn: str) -> str:
   """Converts given URN string to a flow id string."""
   if urn.startswith(AFF4_PREFIX):
     urn = urn[len(AFF4_PREFIX):]
@@ -169,16 +161,17 @@ def UrnStringToHuntId(urn):
   return components[-1]
 
 
-TYPE_URL_PREFIX = "type.googleapis.com/"
+TYPE_URL_PREFIX: str = "type.googleapis.com/"
+GRR_PACKAGE_NAME: str = metadata_pb2.DESCRIPTOR.package
 
 
-def GetTypeUrl(proto):
+def GetTypeUrl(proto: message.Message) -> str:
   """Returns type URL for a given proto."""
 
   return TYPE_URL_PREFIX + proto.DESCRIPTOR.full_name
 
 
-def TypeUrlToMessage(type_url):
+def TypeUrlToMessage(type_url: str) -> message.Message:
   """Returns a message instance corresponding to a given type URL."""
 
   if not type_url.startswith(TYPE_URL_PREFIX):
@@ -186,28 +179,46 @@ def TypeUrlToMessage(type_url):
                      (TYPE_URL_PREFIX, type_url))
 
   full_name = type_url[len(TYPE_URL_PREFIX):]
+
+  # In open-source, proto files used not to have a package specified. Because
+  # the API can be used with some legacy flows and hunts as well, we need to
+  # make sure that we are still able to work with the old data.
+  #
+  # After some grace period, this code should be removed.
+  if not full_name.startswith(GRR_PACKAGE_NAME):
+    full_name = f"{GRR_PACKAGE_NAME}.{full_name}"
+
   try:
     return symbol_database.Default().GetSymbol(full_name)()
   except KeyError as e:
     raise ProtobufTypeNotFound(str(e))
 
 
-def CopyProto(proto):
+_M = TypeVar("_M", bound=message.Message)
+
+
+def CopyProto(proto: _M) -> _M:
   new_proto = proto.__class__()
   new_proto.ParseFromString(proto.SerializeToString())
   return new_proto
 
 
 class UnknownProtobuf(object):
+  """An unknown protobuf message."""
 
-  def __init__(self, proto_type, proto_any):
-    super(UnknownProtobuf, self).__init__()
+  def __init__(
+      self,
+      proto_type: str,
+      proto_any: any_pb2.Any,
+  ) -> None:
+    super().__init__()
 
-    self.type = proto_type
-    self.original_value = proto_any
+    self.type = proto_type  # type: str
+    self.original_value = proto_any  # type: any_pb2.Any
 
 
-def UnpackAny(proto_any):
+def UnpackAny(
+    proto_any: any_pb2.Any) -> Union[UnknownProtobuf, message.Message]:
   try:
     proto = TypeUrlToMessage(proto_any.type_url)
   except ProtobufTypeNotFound as e:
@@ -217,7 +228,54 @@ def UnpackAny(proto_any):
   return proto
 
 
-def RegisterProtoDescriptors(db, *additional_descriptors):
+def MessageToFlatDict(
+    msg: message.Message,
+    transform: Callable[[descriptor.FieldDescriptor, Any], Any],
+) -> Dict[str, Any]:
+  """Converts the given Protocol Buffers message to a flat dictionary.
+
+  Fields of nested messages will be represented through keys of a path with
+  dots. Consider the following Protocol Buffers message:
+
+      foo {
+          bar: 42
+          baz {
+              quux: "thud"
+          }
+      }
+
+  Its representation as a flat Python dictionary is the following:
+
+      { "foo.bar": 42, "foo.baz.quux": "thud" }
+
+  Args:
+    msg: A message to convert.
+    transform: A transformation to apply to primitive values.
+
+  Returns:
+    A flat dictionary corresponding to the given message.
+  """
+  # Using ordered dictionary guarantees stable order of fields in the result.
+  result = dict()
+
+  def Recurse(msg: message.Message, prev: Tuple[str, ...]) -> None:
+    fields = sorted(msg.ListFields(), key=lambda field: field[0].name)
+    for field, value in fields:
+      curr = prev + (field.name,)
+      if field.type == descriptor.FieldDescriptor.TYPE_MESSAGE:
+        Recurse(value, curr)
+      else:
+        result[".".join(curr)] = transform(field, value)
+
+  Recurse(msg, ())
+
+  return result
+
+
+def RegisterProtoDescriptors(
+    db: symbol_database.SymbolDatabase,
+    *additional_descriptors: descriptor.FileDescriptor,
+) -> None:
   """Registers all API-releated descriptors in a given symbol DB."""
   db.RegisterFileDescriptor(apple_firmware_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(artifact_pb2.DESCRIPTOR)
@@ -226,7 +284,9 @@ def RegisterProtoDescriptors(db, *additional_descriptors):
   db.RegisterFileDescriptor(cron_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(flow_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(hunt_pb2.DESCRIPTOR)
+  db.RegisterFileDescriptor(metadata_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(output_plugin_pb2.DESCRIPTOR)
+  db.RegisterFileDescriptor(read_low_level_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(reflection_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(stats_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(user_pb2.DESCRIPTOR)
@@ -237,9 +297,13 @@ def RegisterProtoDescriptors(db, *additional_descriptors):
   db.RegisterFileDescriptor(deprecated_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(flows_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(jobs_pb2.DESCRIPTOR)
+  db.RegisterFileDescriptor(large_file_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(osquery_pb2.DESCRIPTOR)
+  db.RegisterFileDescriptor(pipes_pb2.DESCRIPTOR)
   db.RegisterFileDescriptor(timeline_pb2.DESCRIPTOR)
-  db.RegisterFileDescriptor(wrappers_pb2.DESCRIPTOR)
+
+  db.RegisterFileDescriptor(
+      wrappers_pb2.DESCRIPTOR)  # type: ignore[attr-defined]
 
   for d in additional_descriptors:
     db.RegisterFileDescriptor(d)

@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """The path detection interface (base) class definitions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import abc
 import shlex

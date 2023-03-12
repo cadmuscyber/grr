@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Instant output plugins used by the API for on-the-fly conversion."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import functools
 import re
@@ -13,6 +9,8 @@ from grr_response_core.lib.registry import MetaclassRegistry
 from grr_response_core.lib.util import collection
 from grr_response_server import data_store
 from grr_response_server import export
+from grr_response_server import export_converters_registry
+from grr_response_server.export_converters import base
 
 
 class InstantOutputPlugin(metaclass=MetaclassRegistry):
@@ -36,12 +34,11 @@ class InstantOutputPlugin(metaclass=MetaclassRegistry):
 
     raise KeyError("No plugin with name attribute '%s'." % name)
 
-  def __init__(self, source_urn=None, token=None):
+  def __init__(self, source_urn=None):
     """OutputPlugin constructor.
 
     Args:
       source_urn: URN identifying source of the data (hunt or flow).
-      token: Security token.
 
     Raises:
       ValueError: If one of the keyword arguments is empty.
@@ -51,11 +48,7 @@ class InstantOutputPlugin(metaclass=MetaclassRegistry):
     if not source_urn:
       raise ValueError("source_urn can't be empty.")
 
-    if not token:
-      raise ValueError("token can't be empty.")
-
     self.source_urn = source_urn
-    self.token = token
 
   @property
   def output_file_name(self):
@@ -135,7 +128,7 @@ class InstantOutputPluginWithExportConversion(InstantOutputPlugin):
         metadata_to_fetch.remove(metadata.client_urn)
 
       for urn in metadata_to_fetch:
-        default_mdata = export.ExportedMetadata(source_urn=self.source_urn)
+        default_mdata = base.ExportedMetadata(source_urn=self.source_urn)
         result[urn] = default_mdata
         self._cached_metadata[urn] = default_mdata
 
@@ -143,7 +136,7 @@ class InstantOutputPluginWithExportConversion(InstantOutputPlugin):
 
   def GetExportOptions(self):
     """Rerturns export options to be used by export converter."""
-    return export.ExportOptions()
+    return base.ExportOptions()
 
   def ProcessSingleTypeExportedValues(self, original_type, exported_values):
     """Processes exported values of the same type.
@@ -233,12 +226,12 @@ class InstantOutputPluginWithExportConversion(InstantOutputPlugin):
       metadata_items = self._GetMetadataForClients([gm.source for gm in batch])
       batch_with_metadata = zip(metadata_items, [gm.payload for gm in batch])
 
-      for result in converter.BatchConvert(
-          batch_with_metadata, token=self.token):
+      for result in converter.BatchConvert(batch_with_metadata):
         yield result
 
   def ProcessValues(self, value_type, values_generator_fn):
-    converter_classes = export.ExportConverter.GetConvertersByClass(value_type)
+    converter_classes = export_converters_registry.GetConvertersByClass(
+        value_type)
     if not converter_classes:
       return
     converters = [cls(self.GetExportOptions()) for cls in converter_classes]
@@ -260,7 +253,8 @@ class InstantOutputPluginWithExportConversion(InstantOutputPlugin):
         break
 
 
-def ApplyPluginToMultiTypeCollection(plugin, output_collection,
+def ApplyPluginToMultiTypeCollection(plugin,
+                                     output_collection,
                                      source_urn=None):
   """Applies instant output plugin to a multi-type collection.
 

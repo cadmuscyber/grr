@@ -1,12 +1,7 @@
 #!/usr/bin/env python
-# Lint as: python3
 """API handlers for accessing config."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
-
 
 from grr_response_core import config
 from grr_response_core.lib import config_lib
@@ -19,6 +14,7 @@ from grr_response_proto.api import config_pb2
 from grr_response_server import signed_binary_utils
 from grr_response_server.gui import api_call_handler_base
 from grr_response_server.gui import api_call_handler_utils
+from grr_response_server.rdfvalues import hunts as rdf_hunts
 
 # TODO(user): sensitivity of config options and sections should
 # probably be defined together with the options themselves. Keeping
@@ -98,7 +94,7 @@ class ApiGetConfigHandler(api_call_handler_base.ApiCallHandler):
       if descriptor.section == section:
         yield descriptor.name
 
-  def Handle(self, unused_args, token=None):
+  def Handle(self, unused_args, context=None):
     """Build the data structure representing the config."""
 
     sections = {}
@@ -136,7 +132,7 @@ class ApiGetConfigOptionHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiGetConfigOptionArgs
   result_type = ApiConfigOption
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     """Renders specified config option."""
 
     if not args.name:
@@ -210,7 +206,7 @@ class ApiListGrrBinariesHandler(api_call_handler_base.ApiCallHandler):
 
   result_type = ApiListGrrBinariesResult
 
-  def _ListSignedBlobs(self, token=None):
+  def _ListSignedBlobs(self, context=None):
     roots = _GetSignedBlobsRoots()
     binary_urns = signed_binary_utils.FetchURNsForAllSignedBinaries()
     api_binaries = []
@@ -222,8 +218,9 @@ class ApiListGrrBinariesHandler(api_call_handler_base.ApiCallHandler):
           api_binaries.append(api_binary)
     return api_binaries
 
-  def Handle(self, unused_args, token=None):
-    return ApiListGrrBinariesResult(items=self._ListSignedBlobs(token=token))
+  def Handle(self, unused_args, context=None):
+    return ApiListGrrBinariesResult(
+        items=self._ListSignedBlobs(context=context))
 
 
 class ApiGetGrrBinaryArgs(rdf_structs.RDFProtoStruct):
@@ -236,7 +233,7 @@ class ApiGetGrrBinaryHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiGetGrrBinaryArgs
   result_type = ApiGrrBinary
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     return _GetSignedBinaryMetadata(
         binary_type=args.type, relative_path=args.path)
 
@@ -252,7 +249,7 @@ class ApiGetGrrBinaryBlobHandler(api_call_handler_base.ApiCallHandler):
 
   CHUNK_SIZE = 1024 * 1024 * 4
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     root_urn = _GetSignedBlobsRoots()[args.type]
     binary_urn = root_urn.Add(args.path)
     binary_size = signed_binary_utils.FetchSizeOfSignedBinary(binary_urn)
@@ -264,3 +261,28 @@ class ApiGetGrrBinaryBlobHandler(api_call_handler_base.ApiCallHandler):
         filename=binary_urn.Basename(),
         content_generator=chunk_iterator,
         content_length=binary_size)
+
+
+class ApiUiConfig(rdf_structs.RDFProtoStruct):
+  protobuf = config_pb2.ApiUiConfig
+  rdf_deps = [
+      rdf_hunts.HuntRunnerArgs,
+  ]
+
+
+class ApiGetUiConfigHandler(api_call_handler_base.ApiCallHandler):
+  """Returns config values for AdminUI (e.g. heading name, help url)."""
+
+  result_type = ApiUiConfig
+
+  def Handle(self, args, context=None):
+    del args, context  # Unused.
+
+    return ApiUiConfig(
+        heading=config.CONFIG["AdminUI.heading"],
+        report_url=config.CONFIG["AdminUI.report_url"],
+        help_url=config.CONFIG["AdminUI.help_url"],
+        grr_version=config.CONFIG["Source.version_string"],
+        profile_image_url=config.CONFIG["AdminUI.profile_image_url"],
+        default_hunt_runner_args=rdf_hunts.HuntRunnerArgs(),
+    )

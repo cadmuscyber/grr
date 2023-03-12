@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """This file defines the entry points for the client."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -23,3 +19,8 @@ def FleetspeakClient():
 def PoolClient():
   from grr_response_client import poolclient
   app.run(poolclient.main)
+
+
+def FleetspeakClientWrapper():
+  from grr_response_client import fleetspeak_client_wrapper
+  app.run(fleetspeak_client_wrapper.main)

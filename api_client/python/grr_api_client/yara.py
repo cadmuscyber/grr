@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 """A module with YARA convenience wrappers for the GRR API."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from typing import Text
 
@@ -26,4 +23,7 @@ def UploadYaraSignature(
   args = yara_pb2.ApiUploadYaraSignatureArgs(signature=signature)
 
   response = context.SendRequest("UploadYaraSignature", args)
+  if not isinstance(response, yara_pb2.ApiUploadYaraSignatureResult):
+    raise TypeError(f"Unexpected response type: {type(response)}")
+
   return response.blob_id

@@ -120,6 +120,11 @@ exports.appControllerModule.config(function(
 
 exports.appControllerModule.run(function(
     $injector, $http, $cookies, grrFirebaseService, grrReflectionService) {
+  if (!$http.defaults.headers.common) {
+    $http.defaults.headers.common = {};
+  }
+  $http.defaults.headers.common['X-User-Agent'] = 'GRR-UI/1.0';
+
   // Ensure CSRF token is in place for Angular-initiated HTTP requests.
   $http.defaults.headers.post['X-CSRFToken'] = $cookies.get('csrftoken');
   $http.defaults.headers.delete = $http.defaults.headers.patch = {
@@ -129,10 +134,10 @@ exports.appControllerModule.run(function(
   grrFirebaseService.setupIfNeeded();
 
   // Call reflection service as soon as possible in the app lifetime to cache
-  // the values. "ACLToken" is picked up here as an arbitrary name.
+  // the values. "ClientSnapshot" is picked up here as an arbitrary name.
   // grrReflectionService loads all RDFValues definitions on first request
   // and then caches them.
-  grrReflectionService.getRDFValueDescriptor('ACLToken');
+  grrReflectionService.getRDFValueDescriptor('ClientSnapshot');
 });
 
 
@@ -148,5 +153,14 @@ $['jstree']['_themes'] = '/static/third-party/jstree/themes/';
  */
 jQuery['migrateMute'] = true;
 
+// This is necessary since otherwise jstree doesn't work with jQuery 3.5.1.
+// See https://jquery.com/upgrade-guide/3.5/
+(
+    /** @suppress {missingProperties} JSC_INEXISTENT_PROPERTY */
+    function() {
+      if ('UNSAFE_restoreLegacyHtmlPrefilter' in jQuery) {
+        jQuery.UNSAFE_restoreLegacyHtmlPrefilter();
+      }
+    })();
 
 exports.appControllerModule.controller('GrrUiAppController', function() {});

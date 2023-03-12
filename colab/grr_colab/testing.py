@@ -1,13 +1,8 @@
 #!/usr/bin/env python
 """A module with utilities for testing GRR's Colab library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import functools
+from unittest import mock
 
-import mock
 import portpicker
 
 from grr_api_client import api
@@ -15,7 +10,6 @@ from grr_api_client import flow as api_flow
 from grr_api_client import vfs as api_vfs
 from grr_response_client import client_actions
 from grr_colab import _api
-from grr_response_core.lib.util import compatibility
 from grr_response_server.gui import api_auth_manager
 from grr_response_server.gui import api_call_router_with_approval_checks
 from grr_response_server.gui import api_integration_test_lib
@@ -80,7 +74,7 @@ class ColabE2ETest(client_action_test_lib.WithAllClientActionsMixin,
     super(ColabE2ETest, cls).setUpClass()
 
   def setUp(self) -> None:
-    super(ColabE2ETest, self).setUp()
+    super().setUp()
 
     # We override original `WaitUntilDone` with a one that executes all flows
     # on all clients. An alternative approach would be to use a background task,
@@ -128,7 +122,7 @@ def with_approval_checks(func):
     cls.ClearCache()
 
     config_overrider = test_lib.ConfigOverrider(
-        {"API.DefaultRouter": compatibility.GetName(cls)})
+        {"API.DefaultRouter": cls.__name__})
     with config_overrider:
       api_auth_manager.InitializeApiAuthManager()
       func(*args, **kwargs)

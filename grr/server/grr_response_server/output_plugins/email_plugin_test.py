@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for email output plugin."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from unittest import mock
 
 from absl import app
 
 from grr_response_core import config
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_server import email_alerts
@@ -21,7 +17,7 @@ class EmailOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
   """Tests email output plugin."""
 
   def setUp(self):
-    super(EmailOutputPluginTest, self).setUp()
+    super().setUp()
 
     self.hostname = "somehostname"
     self.client_id = self.SetupClient(0, fqdn=self.hostname)
@@ -35,7 +31,7 @@ class EmailOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
                        process_responses_separately=False):
     plugin_cls = email_plugin.EmailOutputPlugin
     plugin, plugin_state = plugin_cls.CreatePluginAndDefaultState(
-        source_urn=self.results_urn, args=plugin_args, token=self.token)
+        source_urn=self.results_urn, args=plugin_args)
 
     messages = []
     for response in responses:
@@ -46,7 +42,7 @@ class EmailOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
       self.email_messages.append(
           dict(address=address, sender=sender, title=title, message=message))
 
-    with utils.Stubber(email_alerts.EMAIL_ALERTER, "SendEmail", SendEmail):
+    with mock.patch.object(email_alerts.EMAIL_ALERTER, "SendEmail", SendEmail):
       if process_responses_separately:
         for message in messages:
           plugin.ProcessResponses(plugin_state, [message])

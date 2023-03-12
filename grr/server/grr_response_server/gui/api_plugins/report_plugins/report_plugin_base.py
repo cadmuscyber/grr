@@ -1,12 +1,8 @@
 #!/usr/bin/env python
-# Lint as: python3
 """UI report plugins base class.
 
 Each report plugin is a subclass of ReportPluginBase.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_server.gui.api_plugins.report_plugins import rdf_report_plugins
 
@@ -32,13 +28,13 @@ class ReportPluginBase(object):
   def GetReportDescriptor(cls):
     """Returns plugins' metadata in ApiReportDescriptor."""
     if cls.TYPE is None:
-      raise ValueError("%s.TYPE is unintialized." % cls)
+      raise ValueError("%s.TYPE is uninitialized." % cls)
 
     if cls.TITLE is None:
-      raise ValueError("%s.TITLE is unintialized." % cls)
+      raise ValueError("%s.TITLE is uninitialized." % cls)
 
     if cls.SUMMARY is None:
-      raise ValueError("%s.SUMMARY is unintialized." % cls)
+      raise ValueError("%s.SUMMARY is uninitialized." % cls)
 
     return rdf_report_plugins.ApiReportDescriptor(
         type=cls.TYPE,
@@ -47,16 +43,14 @@ class ReportPluginBase(object):
         summary=cls.SUMMARY,
         requires_time_range=cls.REQUIRES_TIME_RANGE)
 
-  def GetReportData(self, get_report_args, token):
+  def GetReportData(self, get_report_args):
     """Generates the data to be displayed in the report.
 
     Args:
       get_report_args: ApiGetReportArgs passed from
                        ApiListReportsHandler.
-      token: The authorization token, also passed from ApiListReportsHandler.
-
     Raises:
-      NotImplementedError: If not overriden.
+      NotImplementedError: If not overridden.
 
     Returns:
       ApiReportData

@@ -1,16 +1,11 @@
 #!/usr/bin/env python
 """Grr Colab flags definitions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
 import sys
 
 from absl import flags
 
 FLAGS = flags.FLAGS
-
 
 flags.DEFINE_string(
     name='grr_http_api_endpoint',

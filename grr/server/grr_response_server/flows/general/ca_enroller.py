@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """A flow to enrol new clients."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 from grr_response_core.lib import rdfvalue
@@ -72,7 +68,7 @@ class CAEnroler(flow_base.FlowBase):
 
     # Publish the client enrollment message.
     events.Events.PublishEvent(
-        "ClientEnrollment", self.client_urn, token=self.token)
+        "ClientEnrollment", self.client_urn, username=self.creator)
 
     self.Log("Enrolled %s successfully", self.client_id)
 

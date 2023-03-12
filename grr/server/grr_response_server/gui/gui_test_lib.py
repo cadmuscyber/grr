@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Helper functionality for gui testing."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import atexit
 import binascii
@@ -31,7 +27,6 @@ from grr_response_core.lib.rdfvalues import client_network as rdf_client_network
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_core.lib.util import compatibility
 from grr_response_proto import tests_pb2
 from grr_response_server import data_store
 from grr_response_server import flow_base
@@ -54,22 +49,22 @@ from grr.test_lib import hunt_test_lib
 from grr.test_lib import test_lib
 from grr.test_lib import vfs_test_lib
 
-flags.DEFINE_string(
+_CHROME_DRIVER_PATH = flags.DEFINE_string(
     "chrome_driver_path", None,
     "Path to the chrome driver binary. If not set, webdriver "
     "will search on PATH for the binary.")
 
-flags.DEFINE_string(
+_CHROME_BINARY_PATH = flags.DEFINE_string(
     "chrome_binary_path", None,
     "Path to the Chrome binary. If not set, webdriver will search for "
     "Chrome on PATH.")
 
-flags.DEFINE_bool(
+_USE_HEADLESS_CHROME = flags.DEFINE_bool(
     "use_headless_chrome", False, "If set, run Chrome driver in "
     "headless mode. Useful when running tests in a window-manager-less "
     "environment.")
 
-flags.DEFINE_bool(
+_DISABLE_CHROME_SANDBOXING = flags.DEFINE_bool(
     "disable_chrome_sandboxing", False,
     "Whether to disable chrome sandboxing (e.g when running in a Docker "
     "container).")
@@ -193,26 +188,34 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
     atexit.register(GRRSeleniumTest._TearDownSelenium)
     GRRSeleniumTest.base_url = ("http://localhost:%s" % port)
 
-
-    # pylint: disable=unreachable
-    os.environ.pop("http_proxy", None)
     options = webdriver.ChromeOptions()
+    prefs = {
+        "profile.content_settings.exceptions.clipboard": {
+            f"{GRRSeleniumTest.base_url},*": {
+                "setting": 1,
+            },
+        },
+    }
+    options.add_experimental_option("prefs", prefs)
 
-    if flags.FLAGS.chrome_binary_path:
-      options.binary_location = flags.FLAGS.chrome_binary_path
+    if _CHROME_BINARY_PATH.value:
+      options.binary_location = _CHROME_BINARY_PATH.value
 
     options.add_argument("--disable-notifications")
 
-    if flags.FLAGS.use_headless_chrome:
+    if _USE_HEADLESS_CHROME.value:
       options.add_argument("--headless")
       options.add_argument("--window-size=1400,1080")
 
-    if flags.FLAGS.disable_chrome_sandboxing:
+    if _DISABLE_CHROME_SANDBOXING.value:
       options.add_argument("--no-sandbox")
 
-    if flags.FLAGS.chrome_driver_path:
+    # pylint: disable=unreachable
+    os.environ.pop("http_proxy", None)
+
+    if _CHROME_DRIVER_PATH.value:
       GRRSeleniumTest.driver = webdriver.Chrome(
-          flags.FLAGS.chrome_driver_path, chrome_options=options)
+          _CHROME_DRIVER_PATH.value, chrome_options=options)
     else:
       GRRSeleniumTest.driver = webdriver.Chrome(chrome_options=options)
 
@@ -266,7 +269,7 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
     # Clear the cache of the approvals-based router.
     acrwac.ApiCallRouterWithApprovalChecks.ClearCache()
 
-    name = compatibility.GetName(acrwac.ApiCallRouterWithApprovalChecks)
+    name = acrwac.ApiCallRouterWithApprovalChecks.__name__
     config_overrider = test_lib.ConfigOverrider({"API.DefaultRouter": name})
     config_overrider.Start()
     self.addCleanup(config_overrider.Stop)
@@ -338,9 +341,9 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
       self.CheckBrowserErrors()
       time.sleep(self.sleep_time)
 
-    self.fail(
-        "condition %s %s not met, body is: %s" %
-        (condition_cb, args, self.driver.find_element_by_tag_name("body").text))
+    self.fail("condition %s%s not met, body is: %s" %
+              (condition_cb.__name__, args,
+               self.driver.find_element_by_tag_name("body").text))
 
   def _FindElements(self, selector):
     selector_type, effective_selector = selector.split("=", 1)
@@ -421,7 +424,12 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
     self.driver.forward()
 
   def WaitUntilNot(self, condition_cb, *args):
-    self.WaitUntil(lambda: not condition_cb(*args))
+
+    def _Func(*args):
+      return not condition_cb(*args)
+
+    _Func.__name__ = f"<Not {condition_cb.__name__}>"
+    return self.WaitUntil(_Func, *args)
 
   def GetPageTitle(self):
     return self.driver.title
@@ -483,6 +491,10 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
     element = self.WaitUntil(self.GetVisibleElement, target)
     return element.get_attribute(attribute)
 
+  def GetClipboard(self):
+    return self.GetJavaScriptValue(
+        "return await navigator.clipboard.readText();")
+
   def IsUserNotificationPresent(self, contains_string):
     self.Click("css=#notification_button")
     self.WaitUntil(self.IsElementPresent, "css=grr-user-notification-dialog")
@@ -515,8 +527,11 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
     # We experienced that Selenium sometimes swallows the last character of the
     # text sent. Raising an exception here will just retry in that case.
     if not end_with_enter:
-      if text != self.GetValue(target):
-        raise exceptions.WebDriverException("Send_keys did not work correctly.")
+      actual = self.GetValue(target)
+      if text != actual:
+        raise exceptions.WebDriverException(
+            f"Send_keys did not work correctly: Got '{actual}' but expected " +
+            f"'{text}'.")
 
   @SeleniumAction
   def Click(self, target):
@@ -532,13 +547,36 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
     self._WaitForAjaxCompleted()
 
     element = self.WaitUntil(self.GetVisibleElement, target)
-    element.click()
+
+    try:
+      element.click()
+    except exceptions.ElementNotInteractableException:
+      self.driver.execute_script("arguments[0].scrollIntoView();", element)
+      element.click()
+
+  @SeleniumAction
+  def ScrollIntoView(self, target):
+    """Scrolls any container to get the target into view."""
+    self._WaitForAjaxCompleted()
+    element = self.WaitUntil(self.GetVisibleElement, target)
+    self.driver.execute_script("arguments[0].scrollIntoView();", element)
 
   @SeleniumAction
   def MoveMouseTo(self, target):
     self._WaitForAjaxCompleted()
     element = self.WaitUntil(self.GetVisibleElement, target)
     action_chains.ActionChains(self.driver).move_to_element(element).perform()
+
+  @SeleniumAction
+  def ScrollToBottom(self):
+    """Scrolls the main window scrollbar to the bottom.
+
+    This might not always bring the desired element into the view, e.g.
+    if the container that requires to be scrolled is not the window, but an
+    element on the page. Use ScrollIntoView() in this case.
+    """
+    self.driver.execute_script(
+        "window.scrollTo(0, document.body.scrollHeight);")
 
   @SeleniumAction
   def DoubleClick(self, target):
@@ -565,6 +603,23 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
   def GetSelectedLabel(self, target):
     element = self.WaitUntil(self.GetVisibleElement, target)
     return select.Select(element).first_selected_option.text.strip()
+
+  def MatSelect(self, target, label):
+    """Selects the option that displays text matching the argument.
+
+    Args:
+      target: CSS selector for the mat-select element.
+      label: Text representation for the option to be selected.
+
+    Raises:
+      ValueError: An invalid selector was provided - must be CSS.
+    """
+    selector_type, effective_selector = target.split("=", 1)
+    if selector_type != "css":
+      raise ValueError("Only CSS selector is supported for material select.")
+    self.WaitUntil(self.GetVisibleElement, target)
+    self.driver.execute_script(f"$('{effective_selector}').click()")
+    self.Click(f"css=.mat-option-text:contains('{label}')")
 
   def IsChecked(self, target):
     return self.WaitUntil(self.GetVisibleElement, target).is_selected()
@@ -615,21 +670,21 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
 
       time.sleep(self.sleep_time)
 
-    self.fail("condition not met. got: %r, does not contain: %s" %
-              (data, target))
+    self.fail("condition not met. got: {!r}, does not contain: {!r}".format(
+        data, target))
 
   def setUp(self):
-    super(GRRSeleniumTest, self).setUp()
+    super().setUp()
 
     # Used by CheckHttpErrors
     self.ignore_http_errors = False
 
-    self.token.username = u"gui_user"
-    webauth.WEBAUTH_MANAGER.SetUserName(self.token.username)
+    self.test_username = u"gui_user"
+    webauth.WEBAUTH_MANAGER.SetUserName(self.test_username)
 
     # Make the user use the advanced gui so we can test it.
     data_store.REL_DB.WriteGRRUser(
-        self.token.username, ui_mode=api_user.GUISettings.UIMode.ADVANCED)
+        self.test_username, ui_mode=api_user.GUISettings.UIMode.ADVANCED)
 
     artifact_patcher = ar_test_lib.PatchDatastoreOnlyArtifactRegistry()
     artifact_patcher.start()
@@ -637,7 +692,7 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
 
     self.InstallACLChecks()
 
-    if flags.FLAGS.use_headless_chrome:
+    if _USE_HEADLESS_CHROME.value:
       params = {
           "cmd": "Page.setDownloadBehavior",
           "params": {
@@ -651,7 +706,7 @@ class GRRSeleniumTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
 
   def tearDown(self):
     self.CheckBrowserErrors()
-    super(GRRSeleniumTest, self).tearDown()
+    super().tearDown()
 
   def WaitForNotification(self, username):
     sleep_time = 0.2
@@ -703,7 +758,7 @@ class GRRSeleniumHuntTest(hunt_test_lib.StandardHuntTestMixin, GRRSeleniumTest):
 
     self.hunt_urn = self.StartHunt(
         flow_runner_args=rdf_flow_runner.FlowRunnerArgs(
-            flow_name=compatibility.GetName(transfer.GetFile)),
+            flow_name=transfer.GetFile.__name__),
         flow_args=transfer.GetFileArgs(
             pathspec=rdf_paths.PathSpec(
                 path=path or "/tmp/evil.txt",
@@ -713,7 +768,7 @@ class GRRSeleniumHuntTest(hunt_test_lib.StandardHuntTestMixin, GRRSeleniumTest):
         output_plugins=output_plugins or [],
         client_rate=0,
         client_limit=client_limit,
-        creator=creator or self.token.username,
+        creator=creator or self.test_username,
         paused=stopped)
 
     return self.hunt_urn
@@ -733,7 +788,7 @@ class GRRSeleniumHuntTest(hunt_test_lib.StandardHuntTestMixin, GRRSeleniumTest):
     hunt_urn = self.StartHunt(
         client_rule_set=self._CreateForemanClientRuleSet(),
         output_plugins=[],
-        creator=self.token.username)
+        creator=self.test_username)
 
     self.AddResultsToHunt(hunt_urn, self.client_ids[0], values)
 
@@ -764,7 +819,7 @@ class RecursiveTestFlow(flow_base.FlowBase):
       for i in range(2):
         self.Log("Subflow call %d", i)
         self.CallFlow(
-            compatibility.GetName(self.__class__),
+            self.__class__.__name__,
             depth=self.args.depth + 1,
             next_state="End")
 

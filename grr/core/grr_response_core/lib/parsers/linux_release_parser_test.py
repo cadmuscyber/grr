@@ -1,11 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Unit test for the linux distribution parser."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import os
@@ -23,7 +18,7 @@ class LinuxReleaseParserTest(test_lib.GRRBaseTest):
   """Test parsing of linux distribution collection."""
 
   def setUp(self):
-    super(LinuxReleaseParserTest, self).setUp()
+    super().setUp()
     self.parser_test_dir = os.path.join(self.base_path, "parser_test")
 
   def testMalformedLsbReleaseFile(self):

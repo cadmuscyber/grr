@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Action to fingerprint files on the client."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import hashlib
 
@@ -22,7 +18,7 @@ class Fingerprinter(fingerprint.Fingerprinter):
 
   def _GetNextInterval(self):
     self.progress_cb()
-    return super(Fingerprinter, self)._GetNextInterval()
+    return super()._GetNextInterval()
 
 
 class FingerprintFile(standard.ReadBuffer):
@@ -71,7 +67,7 @@ class FingerprintFile(standard.ReadBuffer):
 
       # Structure of the results is a list of dicts, each containing the
       # name of the hashing method, hashes for enabled hash algorithms,
-      # and auxilliary data where present (e.g. signature blobs).
+      # and auxiliary data where present (e.g. signature blobs).
       # Also see Fingerprint:HashIt()
       response.results = fingerprinter.HashIt()
 

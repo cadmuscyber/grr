@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Semantic protocol buffers can be created from proto2 .proto files.
 
 For maintaining inter-operatibility with primitive protocol buffer
@@ -10,9 +9,6 @@ This file contains interoperability code with the Google protocol buffer
 library.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import inspect
 import logging
@@ -194,13 +190,16 @@ def DefineFromWireFormat(cls, protobuf):
           type_descriptor = classes_dict["ProtoDynamicEmbedded"](
               dynamic_cb=dynamic_cb, **kwargs)
         else:
-          logging.warning("Dynamic type specifies a non existant callback %s",
+          logging.warning("Dynamic type specifies a non existent callback %s",
                           options.dynamic_type)
 
     elif (field.type == TYPE_MESSAGE and field.message_type.name == "Any"):
-      dynamic_cb = getattr(cls, options.dynamic_type, None)
-      type_descriptor = classes_dict["ProtoDynamicAnyValueEmbedded"](
-          dynamic_cb=dynamic_cb, **kwargs)
+      if options.no_dynamic_type_lookup:
+        type_descriptor = classes_dict["ProtoAnyValue"](**kwargs)
+      else:
+        dynamic_cb = getattr(cls, options.dynamic_type, None)
+        type_descriptor = classes_dict["ProtoDynamicAnyValueEmbedded"](
+            dynamic_cb=dynamic_cb, **kwargs)
 
     elif field.type == TYPE_INT64 or field.type == TYPE_INT32:
       type_descriptor = classes_dict["ProtoSignedInteger"](**kwargs)

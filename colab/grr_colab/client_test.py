@@ -1,17 +1,12 @@
 #!/usr/bin/env python
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import os
 import platform
 import socket
 import threading
 import time
+from unittest import mock
 
 from absl.testing import absltest
-import mock
 
 import grr_colab
 from grr_colab import errors
@@ -250,6 +245,9 @@ class ClientTest(testing.ColabE2ETest):
     system = 'test-os'
     users = ['test-user1', 'test-user2']
 
+    data_store.REL_DB.WriteGRRUser(users[0])
+    data_store.REL_DB.WriteGRRUser(users[1])
+
     data_store.REL_DB.WriteClientMetadata(
         client_id=ClientTest.FAKE_CLIENT_ID, fleetspeak_enabled=False)
 
@@ -314,6 +312,8 @@ class ClientTest(testing.ColabE2ETest):
   def testLabels(self):
     labels = ['label1', 'label2']
     owner = 'test-user'
+
+    data_store.REL_DB.WriteGRRUser('test-user')
     data_store.REL_DB.WriteClientMetadata(
         client_id=ClientTest.FAKE_CLIENT_ID, fleetspeak_enabled=False)
     data_store.REL_DB.AddClientLabels(ClientTest.FAKE_CLIENT_ID, owner, labels)
@@ -350,11 +350,11 @@ class ClientTest(testing.ColabE2ETest):
     client.request_approval(reason='test', approvers=['foo'])
 
     approvals = data_store.REL_DB.ReadApprovalRequests(
-        self.token.username, objects_pb2.ApprovalRequest.APPROVAL_TYPE_CLIENT,
+        self.test_username, objects_pb2.ApprovalRequest.APPROVAL_TYPE_CLIENT,
         ClientTest.FAKE_CLIENT_ID)
 
     self.assertLen(approvals, 1)
-    self.assertEqual(approvals[0].requestor_username, self.token.username)
+    self.assertEqual(approvals[0].requestor_username, self.test_username)
     self.assertEqual(approvals[0].notified_users, ['foo'])
     self.assertEqual(approvals[0].reason, 'test')
 
@@ -368,7 +368,7 @@ class ClientTest(testing.ColabE2ETest):
     def ProcessApproval():
       while True:
         approvals = data_store.REL_DB.ReadApprovalRequests(
-            self.token.username,
+            self.test_username,
             objects_pb2.ApprovalRequest.APPROVAL_TYPE_CLIENT,
             ClientTest.FAKE_CLIENT_ID)
         if not approvals:
@@ -376,7 +376,7 @@ class ClientTest(testing.ColabE2ETest):
           continue
 
         approval_id = approvals[0].approval_id
-        data_store.REL_DB.GrantApproval(self.token.username, approval_id, 'foo')
+        data_store.REL_DB.GrantApproval(self.test_username, approval_id, 'foo')
         break
 
     thread = threading.Thread(name='ProcessApprover', target=ProcessApproval)
@@ -385,11 +385,11 @@ class ClientTest(testing.ColabE2ETest):
     try:
       client.request_approval_and_wait(reason='test', approvers=['foo'])
       approvals = data_store.REL_DB.ReadApprovalRequests(
-          self.token.username, objects_pb2.ApprovalRequest.APPROVAL_TYPE_CLIENT,
+          self.test_username, objects_pb2.ApprovalRequest.APPROVAL_TYPE_CLIENT,
           ClientTest.FAKE_CLIENT_ID)
       self.assertLen(approvals, 1)
 
-      approval = client._client.Approval(self.token.username,
+      approval = client._client.Approval(self.test_username,
                                          approvals[0].approval_id).Get()
       self.assertTrue(approval.data.is_valid)
     finally:

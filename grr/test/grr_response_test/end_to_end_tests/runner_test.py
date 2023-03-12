@@ -1,14 +1,11 @@
 #!/usr/bin/env python
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
 import sys
 import unittest
+from unittest import mock
 
 from absl import app
-import mock
 import requests
 
 from grr_api_client import api
@@ -47,7 +44,8 @@ class FakeApi(object):
     linux_binary.path = runner.E2ETestRunner.LINUX_TEST_BINARY_PATH
     windows_binary = mock.Mock(spec=api_config.GrrBinary)
     windows_binary.path = runner.E2ETestRunner.WINDOWS_TEST_BINARY_PATH
-    return api_utils.ItemsIterator(items=[linux_binary, windows_binary])
+    return api_utils.ItemsIterator(
+        items=[linux_binary, windows_binary], total_count=2)
 
   def Client(self, client_id):
     self.request_count += 1
@@ -107,7 +105,7 @@ FAKE_E2E_TESTS = [
 class E2ETestRunnerTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super(E2ETestRunnerTest, self).setUp()
+    super().setUp()
     api_init_http_patcher = mock.patch.object(api, "InitHttp")
     requests_post_patcher = mock.patch.object(requests, "post")
     unittest_runner_patcher = mock.patch.object(unittest, "TextTestRunner")
@@ -189,7 +187,7 @@ class E2ETestRunnerTest(test_lib.GRRBaseTest):
     self.api_init_http.return_value = grr_api
     self.unittest_runner.return_value = unittest_runner
     e2e_runner = self._CreateE2ETestRunner(
-        blacklisted_tests=["FakeE2ETestLinux"], max_test_attempts=4)
+        skip_tests=["FakeE2ETestLinux"], max_test_attempts=4)
     e2e_runner.Initialize()
     actual_results, actual_report = e2e_runner.RunTestsAgainstClient(
         api_client.client_id)
@@ -248,15 +246,14 @@ class E2ETestRunnerTest(test_lib.GRRBaseTest):
   @mock.patch.dict(
       test_base.REGISTRY, {tc.__name__: tc for tc in FAKE_E2E_TESTS},
       clear=True)
-  def testWhitelisting(self):
+  def testRunOnlyTestsFiltering(self):
     api_client = self._CreateApiClient("Linux")
     grr_api = FakeApi(client_data=api_client)
     self.api_init_http.return_value = grr_api
     self.unittest_runner.return_value = FakeUnittestRunner(
         tests_to_fail={fake_tests.FakeE2ETestDarwinLinux})
-    e2e_runner = self._CreateE2ETestRunner(whitelisted_tests=[
-        "FakeE2ETestLinux.testLinux", "FakeE2ETestDarwinLinux"
-    ])
+    e2e_runner = self._CreateE2ETestRunner(
+        run_only_tests=["FakeE2ETestLinux.testLinux", "FakeE2ETestDarwinLinux"])
     e2e_runner.Initialize()
     actual_results, actual_report = e2e_runner.RunTestsAgainstClient(
         api_client.client_id)

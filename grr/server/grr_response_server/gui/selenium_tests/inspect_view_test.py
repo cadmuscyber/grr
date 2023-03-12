@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test the inspect interface."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -26,10 +21,10 @@ class TestClientLoadView(TestInspectViewBase):
   """Tests for ClientLoadView."""
 
   def setUp(self):
-    super(TestClientLoadView, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
 
-  def CreateLeasedClientRequest(self, client_id=None, token=None):
+  def CreateLeasedClientRequest(self, client_id=None):
     flow.StartFlow(client_id=client_id, flow_cls=processes.ListProcesses)
     client_messages = data_store.REL_DB.LeaseClientActionRequests(
         client_id, lease_time=rdfvalue.Duration.From(10000, rdfvalue.SECONDS))
@@ -43,7 +38,7 @@ class TestClientLoadView(TestInspectViewBase):
 
   def testClientActionIsDisplayedWhenItReceiveByTheClient(self):
     self.RequestAndGrantClientApproval(self.client_id)
-    self.CreateLeasedClientRequest(client_id=self.client_id, token=self.token)
+    self.CreateLeasedClientRequest(client_id=self.client_id)
 
     self.Open("/#/clients/%s/load-stats" % self.client_id)
     self.WaitUntil(self.IsTextPresent, processes.ListProcesses.__name__)

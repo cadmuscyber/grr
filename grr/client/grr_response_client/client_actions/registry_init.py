@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Register all available client actions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import platform
 import sys
@@ -14,15 +10,18 @@ from grr_response_client.client_actions import artifact_collector
 from grr_response_client.client_actions import cloud
 from grr_response_client.client_actions import file_finder
 from grr_response_client.client_actions import file_fingerprint
+from grr_response_client.client_actions import large_file
 from grr_response_client.client_actions import memory
 from grr_response_client.client_actions import network
 from grr_response_client.client_actions import osquery
 from grr_response_client.client_actions import plist
+from grr_response_client.client_actions import read_low_level
 from grr_response_client.client_actions import searching
 from grr_response_client.client_actions import standard
 from grr_response_client.client_actions import tempfiles
 from grr_response_client.client_actions import timeline
 from grr_response_client.client_actions import vfs_file_finder
+from grr_response_client.client_actions.windows import pipes
 
 
 def RegisterClientActions():
@@ -32,6 +31,7 @@ def RegisterClientActions():
                           artifact_collector.ArtifactCollector)
   client_actions.Register("CheckFreeGRRTempSpace",
                           tempfiles.CheckFreeGRRTempSpace)
+  client_actions.Register("CollectLargeFile", large_file.CollectLargeFileAction)
   client_actions.Register("DeleteGRRTempFiles", tempfiles.DeleteGRRTempFiles)
   client_actions.Register("Echo", admin.Echo)
   client_actions.Register("ExecuteBinaryCommand", standard.ExecuteBinaryCommand)
@@ -60,6 +60,7 @@ def RegisterClientActions():
   client_actions.Register("Osquery", osquery.Osquery)
   client_actions.Register("PlistQuery", plist.PlistQuery)
   client_actions.Register("ReadBuffer", standard.ReadBuffer)
+  client_actions.Register("ReadLowLevel", read_low_level.ReadLowLevel)
   client_actions.Register("Segfault", standard.Segfault)
   client_actions.Register("SendFile", standard.SendFile)
   client_actions.Register("SendStartupInfo", admin.SendStartupInfo)
@@ -96,6 +97,7 @@ def RegisterClientActions():
     client_actions.Register("WmiQuery", windows.WmiQuery)
     client_actions.Register("Uninstall", windows.Uninstall)
     client_actions.Register("UpdateAgent", windows.UpdateAgent)
+    client_actions.Register("ListNamedPipes", pipes.ListNamedPipesAction)
 
   elif platform.system() == "Darwin":
     from grr_response_client.client_actions.osx import osx  # pylint: disable=g-import-not-at-top

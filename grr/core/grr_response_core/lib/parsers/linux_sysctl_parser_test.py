@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Unit test for the linux sysctl parser."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 
@@ -35,7 +31,7 @@ class ProcSysParserTest(test_lib.GRRBaseTest):
     paths = ["/proc/sys/net/ipv4/ip_forward", "/proc/sys/kernel/printk"]
     vals = ["0", "3 4 1 3"]
     pathspecs, files = self._GenTestData(paths, vals)
-    results = parser.ParseFiles(None, pathspecs, files)
+    results = list(parser.ParseFiles(None, pathspecs, files))
     self.assertLen(results, 1)
     self.assertIsInstance(results[0], rdf_protodict.AttributedDict)
     self.assertEqual("0", results[0].net_ipv4_ip_forward)

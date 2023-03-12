@@ -1,14 +1,8 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests Cronjob ACLs."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
-from grr_response_core.lib.util import compatibility
 from grr_response_server import cronjobs
 from grr_response_server.flows.cron import system as cron_system
 from grr_response_server.gui import gui_test_lib
@@ -20,7 +14,7 @@ class TestCronACLWorkflow(gui_test_lib.GRRSeleniumTest):
   reason = u"Cóż, po prostu taką miałem zachciankę."
 
   def _ScheduleCronJob(self):
-    cron_job_id = compatibility.GetName(cron_system.OSBreakDownCronJob)
+    cron_job_id = cron_system.OSBreakDownCronJob.__name__
     cronjobs.ScheduleSystemCronJobs(names=[cron_job_id])
     cronjobs.CronManager().DisableJob(cron_job_id)
     return cron_job_id
@@ -49,7 +43,7 @@ class TestCronACLWorkflow(gui_test_lib.GRRSeleniumTest):
 
     # This asks the our user to approve the request.
     self.Type("css=grr-request-approval-dialog input[name=acl_approver]",
-              self.token.username)
+              self.test_username)
     self.Type("css=grr-request-approval-dialog input[name=acl_reason]",
               self.reason)
     self.Click(
@@ -69,7 +63,7 @@ class TestCronACLWorkflow(gui_test_lib.GRRSeleniumTest):
     self.WaitUntilContains("Grant access", self.GetText,
                            "css=h2:contains('Grant')")
     self.WaitUntil(self.IsTextPresent,
-                   "The user %s has requested" % self.token.username)
+                   "The user %s has requested" % self.test_username)
 
     # Cron job overview should be visible
     self.WaitUntil(self.IsTextPresent, cron_system.OSBreakDownCronJob.__name__)
@@ -103,12 +97,12 @@ class TestCronACLWorkflow(gui_test_lib.GRRSeleniumTest):
                            self.GetText, "css=grr-request-approval-dialog")
 
     # Lets add another approver.
-    approval_id = self.ListCronJobApprovals(requestor=self.token.username)[0].id
+    approval_id = self.ListCronJobApprovals(requestor=self.test_username)[0].id
     self.GrantCronJobApproval(
         cron_job_id,
         approval_id=approval_id,
         approver=u"approver",
-        requestor=self.token.username,
+        requestor=self.test_username,
         admin=False)
 
     # Now test starts up

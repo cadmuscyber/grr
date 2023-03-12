@@ -1,14 +1,11 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Server startup routines."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 import os
 import platform
 
+from absl import flags
 import prometheus_client
 
 from grr_response_core import config
@@ -18,7 +15,6 @@ from grr_response_core.lib import utils
 from grr_response_core.lib.local import plugins  # pylint: disable=unused-import
 from grr_response_core.lib.parsers import all as all_parsers
 from grr_response_core.stats import stats_collector_instance
-
 from grr_response_server import artifact
 from grr_response_server import cronjobs
 from grr_response_server import data_store
@@ -32,9 +28,11 @@ from grr_response_server.authorization import client_approval_auth
 from grr_response_server.blob_stores import registry_init as bs_registry_init
 from grr_response_server.check_lib import checks
 from grr_response_server.decoders import all as all_decoders
+from grr_response_server.export_converters import registry_init as ec_registry_init
 from grr_response_server.gui import api_auth_manager
 from grr_response_server.gui import gui_plugins  # pylint: disable=unused-import
 from grr_response_server.gui import http_api
+from grr_response_server.gui import registry_init as gui_api_registry_init
 from grr_response_server.gui import webauth
 
 # pylint: disable=g-import-not-at-top
@@ -68,6 +66,10 @@ def Init():
     handler = logging.handlers.SysLogHandler()
   syslog_logger.addHandler(handler)
 
+  # The default behavior of server components is to raise errors when
+  # encountering unknown config options.
+  flags.FLAGS.disallow_missing_config_definitions = True
+
   try:
     config_lib.SetPlatformArchContext()
     config_lib.ParseConfigCommandLine(rename_invalid_writeback=False)
@@ -84,6 +86,8 @@ def Init():
   bs_registry_init.RegisterBlobStores()
   all_decoders.Register()
   all_parsers.Register()
+  ec_registry_init.RegisterExportConverters()
+  gui_api_registry_init.RegisterApiCallRouters()
 
   data_store.InitializeDataStore()
 

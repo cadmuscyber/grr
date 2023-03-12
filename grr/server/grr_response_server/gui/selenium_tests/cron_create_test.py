@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test the cron creation UI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -48,7 +43,7 @@ class TestCronCreation(gui_test_lib.GRRSeleniumTest):
     self.Select(
         "css=grr-new-cron-job-wizard-form "
         "grr-form-proto-single-field:has(label:contains('Pathtype')) "
-        "select", "TSK")
+        "select", "NTFS")
 
     # Click on "Next" button. Expect "Hunt parameters" page.
     self.Click("css=grr-new-cron-job-wizard-form button.Next")

@@ -1,12 +1,7 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 # pyformat: disable
 
 """This is a test fixture for client objects.."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 
@@ -3890,12 +3885,10 @@ registry_data {
 }
 """
     })),
-    # TODO: Raw unicode strings are problematic because of the
-    # differences in handling `\u` escape sequence in Python 2 and Python 3.
     ("/registry/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows "
      "NT/CurrentVersion/ProfileList/ProfilesDirectory", ("File", {
         "stat":
-            """
+            r"""
 st_mode: 32768
 st_size: 12
 st_mtime: 0
@@ -3905,14 +3898,14 @@ pathspec {
   path: "/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows NT/CurrentVersion/ProfileList/ProfilesDirectory"
 }
 registry_data {
-  string: "%%SystemDrive%%\\\\Users"
+  string: "%%SystemDrive%%\\Users"
 }
 """
     })),
     (r"/registry/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows "
      r"NT/CurrentVersion/SystemRoot", ("File", {
         "stat":
-            """
+            r"""
 st_mode: 32768
 st_size: 12
 st_mtime: 0
@@ -3927,13 +3920,11 @@ registry_data {
 """
     })),
 
-    # TODO: Raw unicode strings are problematic because of the
-    # differences in handling `\u` escape sequence in Python 2 and Python 3.
     (
      "/registry/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows "
      "NT/CurrentVersion/ProfileList/S-1-5-21-702227068-2140022151-3110739409-1000/ProfileImagePath", ("File", {
         "stat":
-            """
+            r"""
 st_mode: 32768
 st_size: 12
 st_mtime: 0
@@ -3943,18 +3934,16 @@ pathspec {
   path: "/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows NT/CurrentVersion/ProfileList/S-1-5-21-702227068-2140022151-3110739409-1000/ProfileImagePath"
 }
 registry_data {
-  string: "C:\\\\Users\\\\jim"
+  string: "C:\\Users\\jim"
 }
 """
     })),
 
-    # TODO: Raw unicode strings are problematic because of the
-    # differences in handling `\u` escape sequence in Python 2 and Python 3.
     (
      "/registry/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows "
      "NT/CurrentVersion/ProfileList/S-1-5-21-702227000-2140022111-3110739999-1990/ProfileImagePath", ("File", {
         "stat":
-            """
+            r"""
 st_mode: 32768
 st_size: 21
 st_mtime: 0
@@ -3964,7 +3953,7 @@ pathspec {
   path: "/HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Windows NT/CurrentVersion/ProfileList/S-1-5-21-702227000-2140022111-3110739999-1990/ProfileImagePath"
 }
 registry_data {
-  string: "C:\\\\Users\\\\kovacs"
+  string: "C:\\Users\\kovacs"
 }
 """
     })),

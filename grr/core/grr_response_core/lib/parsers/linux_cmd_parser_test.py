@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Unit test for the linux cmd parser."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
 from typing import Sequence
@@ -190,7 +186,7 @@ class LinuxCmdParserTest(test_lib.GRRBaseTest):
     parser = linux_cmd_parser.YumListCmdParser()
     content = open(os.path.join(self.base_path, "yum.out"), "rb").read()
     out = list(
-        parser.Parse("/usr/bin/yum", ["list installed -q"], content, "", 0,
+        parser.Parse("/usr/bin/yum", ["list installed -q"], content, b"", 0,
                      None))
     self.assertLen(out, 1)
     self.assertLen(out[0].packages, 2)
@@ -205,7 +201,7 @@ class LinuxCmdParserTest(test_lib.GRRBaseTest):
     parser = linux_cmd_parser.YumRepolistCmdParser()
     content = open(os.path.join(self.base_path, "repolist.out"), "rb").read()
     repolist = list(
-        parser.Parse("/usr/bin/yum", ["repolist", "-v", "-q"], content, "", 0,
+        parser.Parse("/usr/bin/yum", ["repolist", "-v", "-q"], content, b"", 0,
                      None))
     self.assertIsInstance(repolist[0], rdf_client.PackageRepository)
 
@@ -223,7 +219,7 @@ class LinuxCmdParserTest(test_lib.GRRBaseTest):
   def testRpmCmdParser(self):
     """Ensure we can extract packages from rpm output."""
     parser = linux_cmd_parser.RpmCmdParser()
-    content = """
+    content = b"""
       glib2-2.12.3-4.el5_3.1
       elfutils-libelf-0.137-3.el5
       libgpg-error-1.4-2
@@ -233,7 +229,7 @@ class LinuxCmdParserTest(test_lib.GRRBaseTest):
       gcc-c++-4.1.2-55.el5
       -not-valid.123.el5
     """
-    stderr = "error: rpmdbNextIterator: skipping h#"
+    stderr = b"error: rpmdbNextIterator: skipping h#"
     out = list(parser.Parse("/bin/rpm", ["-qa"], content, stderr, 0, None))
     # A package list and an Anomaly.
     self.assertLen(out, 2)
@@ -267,7 +263,7 @@ class LinuxCmdParserTest(test_lib.GRRBaseTest):
     parser = linux_cmd_parser.DpkgCmdParser()
     content = open(os.path.join(self.base_path, "checks/data/dpkg.out"),
                    "rb").read()
-    out = list(parser.Parse("/usr/bin/dpkg", ["--list"], content, "", 0, None))
+    out = list(parser.Parse("/usr/bin/dpkg", ["--list"], content, b"", 0, None))
     self.assertLen(out, 1)
     package_list = out[0]
     self.assertLen(package_list.packages, 181)
@@ -294,7 +290,7 @@ class LinuxCmdParserTest(test_lib.GRRBaseTest):
     content = open(
         os.path.join(self.base_path, "checks/data/dpkg.precise.out"),
         "rb").read()
-    out = list(parser.Parse("/usr/bin/dpkg", ["--list"], content, "", 0, None))
+    out = list(parser.Parse("/usr/bin/dpkg", ["--list"], content, b"", 0, None))
     self.assertLen(out, 1)
     package_list = out[0]
     self.assertLen(package_list.packages, 30)
@@ -320,7 +316,7 @@ class LinuxCmdParserTest(test_lib.GRRBaseTest):
     parser = linux_cmd_parser.DmidecodeCmdParser()
     content = open(os.path.join(self.base_path, "dmidecode.out"), "rb").read()
     parse_result = list(
-        parser.Parse("/usr/sbin/dmidecode", ["-q"], content, "", 0, None))
+        parser.Parse("/usr/sbin/dmidecode", ["-q"], content, b"", 0, None))
     self.assertLen(parse_result, 1)
     hardware = parse_result[0]
 
@@ -344,7 +340,7 @@ class LinuxCmdParserTest(test_lib.GRRBaseTest):
 class PsCmdParserTest(absltest.TestCase):
 
   def testRealOutput(self):
-    stdout = """\
+    stdout = b"""\
 UID         PID   PPID  C STIME TTY          TIME CMD
 root          1      0  0 Oct02 ?        00:01:35 /sbin/init splash
 root          2      0  0 Oct02 ?        00:00:00 [kthreadd]
@@ -354,7 +350,7 @@ foobar    69081  69080  1 Oct02 ?        02:08:49 cinnamon --replace
 """
 
     parser = linux_cmd_parser.PsCmdParser()
-    processes = list(parser.Parse("/bin/ps", "-ef", stdout, "", 0, None))
+    processes = list(parser.Parse("/bin/ps", "-ef", stdout, b"", 0, None))
 
     self.assertLen(processes, 5)
 
@@ -394,7 +390,7 @@ foobar    69081  69080  1 Oct02 ?        02:08:49 cinnamon --replace
     self.assertEqual(processes[4].cmdline, ["cinnamon", "--replace"])
 
   def testDoesNotFailOnIncorrectInput(self):
-    stdout = """\
+    stdout = b"""\
 UID     PID   PPID  C STIME TTY          TIME CMD
 foo       1      0  0 Sep01 ?        00:01:23 /baz/norf
 bar       2      1  0 Sep02 ?        00:00:00 /baz/norf --thud --quux
@@ -405,7 +401,7 @@ foo       4      2  0 Sep05 ?        00:00:00 /foo/bar/baz --quux=1337
 """
 
     parser = linux_cmd_parser.PsCmdParser()
-    processes = list(parser.Parse("/bin/ps", "-ef", stdout, "", 0, None))
+    processes = list(parser.Parse("/bin/ps", "-ef", stdout, b"", 0, None))
 
     self.assertLen(processes, 4)
 

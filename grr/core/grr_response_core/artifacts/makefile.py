@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Update the artifacts directory from upstream."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
 import fnmatch
 import glob
@@ -19,7 +14,7 @@ def main():
   # The future direction is to depend on code in the artifact repo to replace
   # the artifact registry and validation inside GRR. We will then move to
   # depending on pypi releases rather than just importing the yaml as we do now.
-  url = "https://github.com/ForensicArtifacts/artifacts/archive/20200118.zip"
+  url = "https://github.com/ForensicArtifacts/artifacts/archive/refs/tags/20220615.zip"
   data = urlrequest.urlopen(url).read()
 
   zip_obj = zipfile.ZipFile(io.BytesIO(data))

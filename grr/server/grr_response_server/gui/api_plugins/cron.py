@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """API handlers for dealing with cron jobs."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import registry
@@ -198,14 +193,14 @@ class ApiListCronJobsHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiListCronJobsArgs
   result_type = ApiListCronJobsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     if not args.count:
       stop = None
     else:
       stop = args.offset + args.count
 
     cron_manager = cronjobs.CronManager()
-    all_jobs = list(cron_manager.ReadJobs(token=token))
+    all_jobs = list(cron_manager.ReadJobs())
     all_jobs.sort(
         key=lambda job: (getattr(job, "cron_job_id", None) or job.urn))
     cron_jobs = all_jobs[args.offset:stop]
@@ -228,10 +223,9 @@ class ApiGetCronJobHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiGetCronJobArgs
   result_type = ApiCronJob
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     try:
-      cron_job = cronjobs.CronManager().ReadJob(
-          str(args.cron_job_id), token=token)
+      cron_job = cronjobs.CronManager().ReadJob(str(args.cron_job_id))
 
       return ApiCronJob.InitFromObject(cron_job)
     except db.UnknownCronJobError:
@@ -259,7 +253,7 @@ class ApiListCronJobRunsHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiListCronJobRunsArgs
   result_type = ApiListCronJobRunsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     runs = cronjobs.CronManager().ReadJobRuns(str(args.cron_job_id))
     start = args.offset
     if args.count:
@@ -285,7 +279,7 @@ class ApiGetCronJobRunHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiGetCronJobRunArgs
   result_type = ApiCronJobRun
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     run = cronjobs.CronManager().ReadJobRun(
         str(args.cron_job_id), str(args.run_id))
     if not run:
@@ -318,7 +312,7 @@ class ApiCreateCronJobHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiCreateCronJobArgs
   result_type = ApiCronJob
 
-  def Handle(self, source_args, token=None):
+  def Handle(self, source_args, context=None):
     # Make sure we don't modify source arguments.
     args = source_args.Copy()
 
@@ -337,8 +331,7 @@ class ApiCreateCronJobHandler(api_call_handler_base.ApiCallHandler):
     cron_manager = cronjobs.CronManager()
 
     cron_args = rdf_cronjobs.CreateCronJobArgs.FromApiCreateCronJobArgs(args)
-    cron_job_id = cron_manager.CreateJob(
-        cron_args=cron_args, enabled=False, token=token)
+    cron_job_id = cron_manager.CreateJob(cron_args=cron_args, enabled=False)
 
     cron_obj = cron_manager.ReadJob(cron_job_id)
 
@@ -357,7 +350,7 @@ class ApiForceRunCronJobHandler(api_call_handler_base.ApiCallHandler):
 
   args_type = ApiForceRunCronJobArgs
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     job_id = str(args.cron_job_id)
     cronjobs.CronManager().RequestForcedRun(job_id)
 
@@ -375,14 +368,14 @@ class ApiModifyCronJobHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiModifyCronJobArgs
   result_type = ApiCronJob
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     cron_id = str(args.cron_job_id)
     if args.enabled:
-      cronjobs.CronManager().EnableJob(cron_id, token=token)
+      cronjobs.CronManager().EnableJob(cron_id)
     else:
-      cronjobs.CronManager().DisableJob(cron_id, token=token)
+      cronjobs.CronManager().DisableJob(cron_id)
 
-    cron_job_obj = cronjobs.CronManager().ReadJob(cron_id, token=token)
+    cron_job_obj = cronjobs.CronManager().ReadJob(cron_id)
     return ApiCronJob.InitFromObject(cron_job_obj)
 
 
@@ -398,5 +391,5 @@ class ApiDeleteCronJobHandler(api_call_handler_base.ApiCallHandler):
 
   args_type = ApiDeleteCronJobArgs
 
-  def Handle(self, args, token=None):
-    cronjobs.CronManager().DeleteJob(str(args.cron_job_id), token=token)
+  def Handle(self, args, context=None):
+    cronjobs.CronManager().DeleteJob(str(args.cron_job_id))

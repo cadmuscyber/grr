@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for service state checks."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -100,10 +95,10 @@ class SysVInitStateTests(checks_test_lib.HostCheckTest):
     super(SysVInitStateTests, cls).setUpClass()
 
     cls.LoadCheck("services.yaml")
-    cls.parser = linux_service_parser.LinuxSysVInitParser().ParseMultiple
+    cls.parser = linux_service_parser.LinuxSysVInitParser().ParseFiles
 
   def setUp(self, *args, **kwargs):
-    super(SysVInitStateTests, self).setUp(*args, **kwargs)
+    super().setUp(*args, **kwargs)
     self.RunSysVChecks()
 
   def RunSysVChecks(self):
@@ -113,7 +108,8 @@ class SysVInitStateTests(checks_test_lib.HostCheckTest):
     ]
     stats, files = parsers_test_lib.GenTestData(
         links, [""] * len(links), st_mode=41471)
-    parsed = list(self.parser(stats, files, None))
+    pathspecs = [stat_entry.pathspec for stat_entry in stats]
+    parsed = list(self.parser(rdf_client.KnowledgeBase(), pathspecs, files))
     host_data["LinuxServices"] = self.SetArtifactData(parsed=parsed)
     self.results = self.RunChecks(host_data)
 

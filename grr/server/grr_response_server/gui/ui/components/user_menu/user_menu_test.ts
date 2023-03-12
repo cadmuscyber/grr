@@ -1,10 +1,12 @@
-import {async, TestBed} from '@angular/core/testing';
+import {TestBed, waitForAsync} from '@angular/core/testing';
+import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
-import {GrrUser} from '@app/lib/models/user';
-import {UserFacade} from '@app/store/user_facade';
-import {initTestEnvironment} from '@app/testing';
-import {Subject} from 'rxjs';
 
+import {injectMockStore, STORE_PROVIDERS} from '../../store/store_test_providers';
+import {UserGlobalStore} from '../../store/user_global_store';
+import {initTestEnvironment} from '../../testing';
+
+import {UserMenuModule} from './module';
 import {UserMenu} from './user_menu';
 
 
@@ -12,38 +14,32 @@ initTestEnvironment();
 
 
 describe('UserMenu Component', () => {
-  let currentUser$: Subject<GrrUser>;
-  let userFacade: Partial<UserFacade>;
-
-  beforeEach(async(() => {
-    currentUser$ = new Subject();
-    userFacade = {
-      currentUser$,
-      fetchCurrentUser: jasmine.createSpy('listFlowDescriptors'),
-    };
-
+  beforeEach(waitForAsync(() => {
     TestBed
         .configureTestingModule({
           imports: [
             NoopAnimationsModule,
+            UserMenuModule,
           ],
-
-          providers: [{provide: UserFacade, useValue: userFacade}]
+          providers: [
+            ...STORE_PROVIDERS,
+          ],
+          teardown: {destroyAfterEach: false}
         })
         .compileComponents();
   }));
 
-  it('displays the current user name', () => {
+  it('displays the current user image', () => {
     const fixture = TestBed.createComponent(UserMenu);
-    fixture.detectChanges();
-
-    expect(userFacade.fetchCurrentUser).toHaveBeenCalled();
-    currentUser$.next({
+    injectMockStore(UserGlobalStore).mockedObservables.currentUser$.next({
       name: 'test',
+      canaryMode: false,
+      huntApprovalRequired: false,
     });
     fixture.detectChanges();
 
-    const text = fixture.debugElement.nativeElement.textContent;
-    expect(text).toContain('test');
+    const el = fixture.debugElement.query(By.css('user-image'));
+    expect(el).toBeDefined();
+    expect(el.componentInstance.username).toBe('test');
   });
 });

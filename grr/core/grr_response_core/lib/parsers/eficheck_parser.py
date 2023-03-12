@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Parser for eficheck output."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core.lib import parser
 from grr_response_core.lib.rdfvalues import apple_firmware as rdf_apple_firmware

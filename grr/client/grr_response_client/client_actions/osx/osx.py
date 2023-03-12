@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """OSX specific actions.
 
 Most of these actions share an interface (in/out rdfvalues) with linux actions
 of the same name. OSX-only actions are registered with the server via
 libs/server_stubs.py
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import ctypes
 import logging
@@ -25,8 +21,7 @@ from grr_response_client import actions
 from grr_response_client import client_utils_common
 from grr_response_client import client_utils_osx
 from grr_response_client.client_actions import standard
-from grr_response_client.osx.objc import ServiceManagement
-
+from grr_response_client.osx import objc
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.parsers import osx_launchd
@@ -267,7 +262,7 @@ def EnumerateInterfacesFromClient(args):
   """Enumerate all MAC addresses."""
   del args  # Unused
 
-  libc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("c"))
+  libc = objc.LoadLibrary("c")
   ifa = Ifaddrs()
   p_ifa = ctypes.pointer(ifa)
   libc.getifaddrs(ctypes.pointer(p_ifa))
@@ -386,7 +381,7 @@ def CreateServiceProto(job):
 def GetRunningLaunchDaemons():
   """Get running launchd jobs from objc ServiceManagement framework."""
 
-  sm = ServiceManagement()
+  sm = objc.ServiceManagement()
   return sm.SMGetJobDictionaries("kSMDomainSystemLaunchd")
 
 
@@ -476,7 +471,7 @@ class UpdateAgent(standard.ExecuteBinaryCommand):
     time_limit = args.time_limit
 
     res = client_utils_common.Execute(
-        cmd, cmd_args, time_limit=time_limit, bypass_whitelist=True)
+        cmd, cmd_args, time_limit=time_limit, bypass_allowlist=True)
     (stdout, stderr, status, time_used) = res
 
     # Limit output to 10MB so our response doesn't get too big.

@@ -1,13 +1,8 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Mixin class to be used in tests for DB implementations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import abc
-import mock
+from unittest import mock
 
 from grr_response_server import data_store
 from grr_response_server.databases import db
@@ -43,7 +38,7 @@ class DatabaseSetupMixin(DatabaseProvider):
     # In case a test registers a message handler, unregister it.
     self.addCleanup(self.db.UnregisterMessageHandler)
 
-    super(DatabaseSetupMixin, self).setUp()
+    super().setUp()
 
 
 class DatabaseTestMixin(DatabaseSetupMixin, metaclass=abc.ABCMeta):
@@ -91,4 +86,4 @@ class GlobalDatabaseTestMixin(DatabaseProvider):
     # In case a test registers a message handler, unregister it.
     self.addCleanup(data_store.REL_DB.UnregisterMessageHandler)
 
-    super(GlobalDatabaseTestMixin, self).setUp()
+    super().setUp()

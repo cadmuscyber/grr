@@ -1,19 +1,16 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for grr_response_client.client_actions.cloud."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import os
 import platform
 import subprocess
 import unittest
+from unittest import mock
 
 from absl import app
-import mock
 import requests
+import responses
 
 from grr_response_client.client_actions import cloud
 from grr_response_core import config
@@ -89,10 +86,10 @@ class GetCloudVMMetadataTest(client_test_lib.EmptyActionTest):
           mock_requests.side_effect = [project]
           results = self.RunAction(cloud.GetCloudVMMetadata, arg=arg)
 
-    responses = list(results[0].responses)
-    self.assertLen(responses, 1)
+    result_responses = list(results[0].responses)
+    self.assertLen(result_responses, 1)
     self.assertEqual(results[0].instance_type, "GOOGLE")
-    for response in responses:
+    for response in result_responses:
       if response.label == "Google-project-id":
         self.assertEqual(response.text, project.text)
       else:
@@ -121,14 +118,18 @@ class GetCloudVMMetadataTest(client_test_lib.EmptyActionTest):
         WINDOWS_SERVICES_COMMAND=[
             "cmd.exe", "/C", "echo SERVICE_NAME: AWSLiteAgent"
         ]):
-      with mock.patch.object(requests, "request") as mock_requests:
-        mock_requests.side_effect = [ami]
-        results = self.RunAction(cloud.GetCloudVMMetadata, arg=arg)
+      with mock.patch.object(
+          cloud.GetCloudVMMetadata,
+          "GetAWSMetadataToken",
+          return_value="testtoken"):
+        with mock.patch.object(requests, "request") as mock_requests:
+          mock_requests.side_effect = [ami]
+          results = self.RunAction(cloud.GetCloudVMMetadata, arg=arg)
 
-    responses = list(results[0].responses)
-    self.assertLen(responses, 1)
+    result_responses = list(results[0].responses)
+    self.assertLen(result_responses, 1)
     self.assertEqual(results[0].instance_type, "AMAZON")
-    for response in responses:
+    for response in result_responses:
       if response.label == "amazon-ami":
         self.assertEqual(response.text, ami.text)
       else:
@@ -164,16 +165,63 @@ class GetCloudVMMetadataTest(client_test_lib.EmptyActionTest):
         mock_requests.side_effect = [zone, project]
         results = self.RunAction(cloud.GetCloudVMMetadata, arg=arg)
 
-      responses = list(results[0].responses)
-      self.assertLen(responses, 2)
+      result_responses = list(results[0].responses)
+      self.assertLen(result_responses, 2)
       self.assertEqual(results[0].instance_type, "GOOGLE")
-      for response in responses:
+      for response in result_responses:
         if response.label == "zone":
           self.assertEqual(response.text, zone.text)
         elif response.label == "project-id":
           self.assertEqual(response.text, project.text)
         else:
           self.fail("Bad response.label: %s" % response.label)
+
+  def testAWSRequestWithMetadataResponse(self):
+    instanceid = mock.Mock(text="i-001d78bb6472d9d3b")
+    arg = rdf_cloud.CloudMetadataRequests(requests=[
+        rdf_cloud.CloudMetadataRequest(
+            bios_version_regex=".*amazon",
+            service_name_regex="SERVICE_NAME: AWSLiteAgent",
+            instance_type="AMAZON",
+            url="http://169.254.169.254/latest/meta-data/instance-id",
+            label="instance-id")
+    ])
+
+    with mock.patch.multiple(
+        cloud.GetCloudVMMetadata,
+        LINUX_BIOS_VERSION_COMMAND=["/bin/echo", "4.2.amazon"],
+        WINDOWS_SERVICES_COMMAND=[
+            "cmd.exe", "/C", "echo SERVICE_NAME: AWSLiteAgent"
+        ],
+        GetAWSMetadataToken=mock.Mock(return_value="metadataaccesstoken"),
+    ):
+      with mock.patch.object(requests, "request") as mock_requests:
+        mock_requests.side_effect = [instanceid]
+        results = self.RunAction(cloud.GetCloudVMMetadata, arg=arg)
+
+    result_responses = list(results[0].responses)
+    self.assertLen(result_responses, 1)
+    self.assertEqual(results[0].instance_type, "AMAZON")
+
+  @responses.activate
+  def testNonUnicodeOutput(self):
+    responses.add(responses.GET, "https://foo.bar/quux", status=200)
+
+    request = rdf_cloud.CloudMetadataRequest()
+    request.bios_version_regex = "foo"
+    request.service_name_regex = "foo"
+    request.url = "https://foo.bar/quux"
+
+    args = rdf_cloud.CloudMetadataRequests()
+    args.requests = [request]
+
+    subprocess_check_output = lambda _: b"foo\xffbar"
+    with mock.patch.object(subprocess, "check_output", subprocess_check_output):
+      results = self.RunAction(cloud.GetCloudVMMetadata, args)
+
+    self.assertLen(results, 1)
+    self.assertLen(results[0].responses, 1)
+    self.assertEqual(results[0].responses[0].label, "https://foo.bar/quux")
 
 
 def main(argv):

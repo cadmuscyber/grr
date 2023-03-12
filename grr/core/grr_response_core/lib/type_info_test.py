@@ -1,12 +1,7 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 # Copyright 2012 Google Inc. All Rights Reserved.
 """Tests for grr.lib.type_info."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 

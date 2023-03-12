@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 """E2E tests for the osquery flow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_test.end_to_end_tests import test_base
 
@@ -32,7 +29,7 @@ class TestOsquery(test_base.EndToEndTest):
 
     os_name = table.rows[0].values[0]
     if self.platform == test_base.EndToEndTest.Platform.DARWIN:
-      self.assertEqual(os_name, "Mac OS X")
+      self.assertIn(os_name, ("macOS", "Mac OS X"))
     elif self.platform == test_base.EndToEndTest.Platform.LINUX:
       # e.g. for Debian it is 'Debian GNU/Linux'.
       self.assertIn("Linux", os_name)

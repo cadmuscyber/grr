@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """API handlers for user-related data and actions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
+import collections
 import email
 import functools
 import itertools
@@ -13,16 +9,13 @@ import logging
 import jinja2
 
 from grr_response_core import config
-
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
-
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import collection
 from grr_response_proto import user_pb2
 from grr_response_proto.api import user_pb2 as api_user_pb2
-
 from grr_response_server import access_control
 from grr_response_server import cronjobs
 from grr_response_server import data_store
@@ -381,6 +374,8 @@ def _InitApiApprovalFromDatabaseObject(api_approval, db_obj):
 
   api_approval.approvers = sorted([g.grantor_username for g in db_obj.grants])
 
+  api_approval.expiration_time_us = db_obj.expiration_time
+
   try:
     approval_checks.CheckApprovalRequest(db_obj)
     api_approval.is_valid = True
@@ -397,6 +392,7 @@ class ApiClientApproval(rdf_structs.RDFProtoStruct):
   protobuf = api_user_pb2.ApiClientApproval
   rdf_deps = [
       api_client.ApiClient,
+      rdfvalue.RDFDatetime,
   ]
 
   def InitFromDatabaseObject(self, db_obj, approval_subject_obj=None):
@@ -404,7 +400,7 @@ class ApiClientApproval(rdf_structs.RDFProtoStruct):
       approval_subject_obj = data_store.REL_DB.ReadClientFullInfo(
           db_obj.subject_id)
     self.subject = api_client.ApiClient().InitFromClientInfo(
-        approval_subject_obj)
+        db_obj.subject_id, approval_subject_obj)
 
     return _InitApiApprovalFromDatabaseObject(self, db_obj)
 
@@ -415,14 +411,21 @@ class ApiClientApproval(rdf_structs.RDFProtoStruct):
 
   @property
   def review_url_path(self):
-    return "/".join([
-        "users", self.requestor, "approvals", "client",
-        str(self.subject.client_id), self.id
-    ])
+    return (f"/v2/clients/{self.subject.client_id}/users/{self.requestor}"
+            f"/approvals/{self.id}")
+
+  @property
+  def review_url_path_legacy(self):
+    return (f"/#/users/{self.requestor}/approvals/client/"
+            f"{self.subject.client_id}/{self.id}")
 
   @property
   def subject_url_path(self):
-    return "/clients/%s" % str(self.subject.client_id)
+    return f"/v2/clients/{self.subject.client_id}"
+
+  @property
+  def subject_url_path_legacy(self):
+    return f"#/clients/{self.subject.client_id}"
 
   def ObjectReference(self):
     at = rdf_objects.ApprovalRequest.ApprovalType.APPROVAL_TYPE_CLIENT
@@ -442,6 +445,7 @@ class ApiHuntApproval(rdf_structs.RDFProtoStruct):
   rdf_deps = [
       api_flow.ApiFlow,
       api_hunt.ApiHunt,
+      rdfvalue.RDFDatetime,
   ]
 
   def InitFromDatabaseObject(self, db_obj, approval_subject_obj=None):
@@ -481,14 +485,22 @@ class ApiHuntApproval(rdf_structs.RDFProtoStruct):
 
   @property
   def review_url_path(self):
-    return "/".join([
-        "users", self.requestor, "approvals", "hunt",
-        str(self.subject.hunt_id), self.id
-    ])
+    # TODO: Set to new UI after implementing approval view for
+    # hunts.
+    return self.review_url_path_legacy
+
+  @property
+  def review_url_path_legacy(self):
+    return (f"/#/users/{self.requestor}/approvals/hunt/{self.subject.hunt_id}/"
+            f"{self.id}")
 
   @property
   def subject_url_path(self):
-    return "/hunts/%s" % str(self.subject.hunt_id)
+    return self.subject_url_path_legacy
+
+  @property
+  def subject_url_path_legacy(self):
+    return f"#/hunts/{self.subject.hunt_id}"
 
   def ObjectReference(self):
     at = rdf_objects.ApprovalRequest.ApprovalType.APPROVAL_TYPE_HUNT
@@ -526,14 +538,20 @@ class ApiCronJobApproval(rdf_structs.RDFProtoStruct):
 
   @property
   def review_url_path(self):
-    return "/".join([
-        "users", self.requestor, "approvals", "cron-job",
-        str(self.subject.cron_job_id), self.id
-    ])
+    return self.review_url_path_legacy
+
+  @property
+  def review_url_path_legacy(self):
+    return (f"/#/users/{self.requestor}/approvals/cron-job/"
+            f"{self.subject.cron_job_id}/{self.id}")
 
   @property
   def subject_url_path(self):
-    return "/crons/%s" % str(self.subject.cron_job_id)
+    return self.subject_url_path_legacy
+
+  @property
+  def subject_url_path_legacy(self):
+    return f"#/crons/{self.subject.cron_job_id}"
 
   def ObjectReference(self):
     at = rdf_objects.ApprovalRequest.ApprovalType.APPROVAL_TYPE_CRON_JOB
@@ -544,6 +562,63 @@ class ApiCronJobApproval(rdf_structs.RDFProtoStruct):
             approval_id=self.id,
             subject_id=str(self.subject.cron_job_id),
             requestor_username=self.requestor))
+
+
+_EMAIL_HEADER = """
+  <!doctype html>
+  <html>
+    <head>
+      <meta name="viewport" content="width=device-width" />
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+      <style type="test/css">
+        .button {
+          border: 1px solid;
+          border-radius: 4px;
+          display: inline-block;
+          margin-right: 1em;
+          padding: .7em 1.2em;
+          text-decoration: none;
+        }
+      </style>
+    </head>
+    <body>
+"""
+
+_EMAIL_FOOTER = """
+      <p>Thanks,</p>
+      <p>{{ text_signature }}</p>
+      <p>{{ html_signature|safe }}</p>
+    </body>
+  </html>
+"""
+
+_APPROVAL_REQUESTED_TEMPLATE = _EMAIL_HEADER + """
+  <p>
+    You have been asked to review and grant the following approval in GRR
+    Rapid Response:
+  </p>
+
+  <table>
+    <tr>
+      <td><strong>Requested by:</strong></td>
+      <td>{{ requestor }}</td>
+    </tr>
+    <tr>
+      <td><strong>Subject:</strong></td>
+      <td><a href="{{ approval_url}}">{{ subject_title }}</a></td>
+    </tr>
+    <tr>
+      <td><strong>Reason:</strong></td>
+      <td>{{ reason }}</td>
+    </tr>
+  </table>
+  <p>
+    <a href="{{ approval_url }}" class="button">Review approval request</a>
+    {% if legacy_approval_url %}
+    (or <a href="{{ legacy_approval_url }}">review in legacy UI</a>)
+    {% endif %}
+  </p>
+""" + _EMAIL_FOOTER
 
 
 class ApiCreateApprovalHandlerBase(api_call_handler_base.ApiCallHandler):
@@ -559,38 +634,29 @@ class ApiCreateApprovalHandlerBase(api_call_handler_base.ApiCallHandler):
     subject_template = jinja2.Template(
         "Approval for {{ user }} to access {{ subject }}.", autoescape=True)
     subject = subject_template.render(
-        user=utils.SmartUnicode(approval.requestor),
-        subject=utils.SmartUnicode(approval.subject_title))
+        user=approval.requestor, subject=approval.subject_title)
 
-    template = jinja2.Template(
-        """
-<html><body><h1>Approval to access
-<a href='{{ admin_ui }}/#/{{ approval_url }}'>{{ subject_title }}</a>
-requested.</h1>
+    template = jinja2.Template(_APPROVAL_REQUESTED_TEMPLATE, autoescape=True)
+    base_url = config.CONFIG["AdminUI.url"].rstrip("/") + "/"
+    legacy_approval_url = base_url + approval.review_url_path_legacy.lstrip("/")
+    approval_url = base_url + approval.review_url_path.lstrip("/")
 
-The user "{{ username }}" has requested access to
-<a href='{{ admin_ui }}/#/{{ approval_url }}'>{{ subject_title }}</a>
-for the purpose of <em>{{ reason }}</em>.
-
-Please click <a href='{{ admin_ui }}/#/{{ approval_url }}'>
-here
-</a> to review this request and then grant access.
-
-<p>Thanks,</p>
-<p>{{ signature }}</p>
-<p>{{ image|safe }}</p>
-</body></html>""",
-        autoescape=True)
+    if approval_url == legacy_approval_url:
+      # In case the new UI does not yet support approval reviews for the given
+      # subject type (client, hunt, cronjob), hide the fallback link to the
+      # old UI in the email template. Instead, clicking the main button will
+      # link the user to the old UI.
+      legacy_approval_url = None
 
     body = template.render(
-        username=utils.SmartUnicode(approval.requestor),
-        reason=utils.SmartUnicode(approval.reason),
-        admin_ui=utils.SmartUnicode(config.CONFIG["AdminUI.url"]),
-        subject_title=utils.SmartUnicode(approval.subject_title),
-        approval_url=utils.SmartUnicode(approval.review_url_path),
-        # If you feel like it, add a funny cat picture here :)
-        image=utils.SmartUnicode(config.CONFIG["Email.approval_signature"]),
-        signature=utils.SmartUnicode(config.CONFIG["Email.signature"]))
+        requestor=approval.requestor,
+        reason=approval.reason,
+        legacy_approval_url=legacy_approval_url,
+        approval_url=approval_url,
+        subject_title=approval.subject_title,
+        # If you feel like it, add a cute dog picture here :)
+        html_signature=config.CONFIG["Email.approval_signature"],
+        text_signature=config.CONFIG["Email.signature"])
 
     requestor_email = data_store.REL_DB.ReadGRRUser(
         approval.requestor).GetEmail()
@@ -600,10 +666,10 @@ here
     ]
 
     email_alerts.EMAIL_ALERTER.SendEmail(
-        ",".join(notified_emails),
-        requestor_email,
-        subject,
-        body,
+        to_addresses=",".join(notified_emails),
+        from_address=requestor_email,
+        subject=subject,
+        message=body,
         is_html=True,
         cc_addresses=",".join(approval.email_cc_addresses),
         message_id=approval.email_message_id)
@@ -620,14 +686,14 @@ here
         # don't exist. This should happen rarely but we need to catch this case.
         logging.error("Notification sent for unknown user %s!", user.strip())
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     if not args.approval.reason:
       raise ValueError("Approval reason can't be empty.")
 
     expiry = config.CONFIG["ACL.token_expiry"]
 
     request = rdf_objects.ApprovalRequest(
-        requestor_username=token.username,
+        requestor_username=context.username,
         approval_type=self.__class__.approval_type,
         reason=args.approval.reason,
         notified_users=args.approval.notified_users,
@@ -639,8 +705,8 @@ here
 
     data_store.REL_DB.GrantApproval(
         approval_id=request.approval_id,
-        requestor_username=token.username,
-        grantor_username=token.username)
+        requestor_username=context.username,
+        grantor_username=context.username)
 
     result = self.__class__.result_type().InitFromDatabaseObject(request)
 
@@ -673,7 +739,7 @@ class ApiGetApprovalHandlerBase(api_call_handler_base.ApiCallHandler):
   # objects.ApprovalRequest.ApprovalType value describing the approval type.
   approval_type = None
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     try:
       approval_obj = data_store.REL_DB.ReadApprovalRequest(
           args.username, args.approval_id)
@@ -695,6 +761,39 @@ class ApiGetApprovalHandlerBase(api_call_handler_base.ApiCallHandler):
     return self.__class__.result_type().InitFromDatabaseObject(approval_obj)
 
 
+_APPROVAL_GRANTED_TEMPLATE = _EMAIL_HEADER + """
+  <p>
+    Access has been granted:
+  </p>
+
+  <table>
+    <tr>
+      <td><strong>Requested by:</strong></td>
+      <td>{{ requestor }}</td>
+    </tr>
+    <tr>
+      <td><strong>Subject:</strong></td>
+      <td><a href="{{ subject_url}}">{{ subject_title }}</a></td>
+    </tr>
+    <tr>
+      <td><strong>Reason:</strong></td>
+      <td>{{ reason }}</td>
+    </tr>
+    <tr>
+      <td><strong>Granted by:</strong></td>
+      <td>{{ grantor }}</td>
+    </tr>
+  </table>
+
+  <p>
+    <a href="{{ subject_url }}" class="button">Go to {{ subject_title }}</a>
+    {% if legacy_subject_url %}
+    (or <a href="{{ legacy_subject_url }}">view in legacy UI</a>)
+    {% endif %}
+  </p>
+""" + _EMAIL_FOOTER
+
+
 class ApiGrantApprovalHandlerBase(api_call_handler_base.ApiCallHandler):
   """Base class reused by all client approval handlers."""
 
@@ -704,39 +803,36 @@ class ApiGrantApprovalHandlerBase(api_call_handler_base.ApiCallHandler):
   # Class to be used to grant the approval. Should be set by a subclass.
   approval_grantor = None
 
-  def SendGrantEmail(self, approval, token=None):
+  def SendGrantEmail(self, approval, context=None):
     if not config.CONFIG.Get("Email.send_approval_emails"):
       return
 
     subject_template = jinja2.Template(
         "Approval for {{ user }} to access {{ subject }}.", autoescape=True)
     subject = subject_template.render(
-        user=utils.SmartUnicode(approval.requestor),
-        subject=utils.SmartUnicode(approval.subject_title))
+        user=approval.requestor, subject=approval.subject_title)
 
-    template = jinja2.Template(
-        """
-<html><body><h1>Access to
-<a href='{{ admin_ui }}/#/{{ subject_url }}'>{{ subject_title }}</a>
-granted.</h1>
+    template = jinja2.Template(_APPROVAL_GRANTED_TEMPLATE, autoescape=True)
+    base_url = config.CONFIG["AdminUI.url"].rstrip("/") + "/"
+    subject_url = base_url + approval.subject_url_path.lstrip("/")
+    legacy_subject_url = base_url + approval.subject_url_path_legacy.lstrip("/")
 
-The user {{ username }} has granted access to
-<a href='{{ admin_ui }}/#/{{ subject_url }}'>{{ subject_title }}</a> for the
-purpose of <em>{{ reason }}</em>.
+    if subject_url == legacy_subject_url:
+      # In case the new UI does not yet support showing the given subject type
+      # (client, hunt, cronjob), hide the fallback link to the old UI in the
+      # email template. Instead, clicking the main button will link the user to
+      # the old UI.
+      legacy_subject_url = None
 
-Please click <a href='{{ admin_ui }}/#/{{ subject_url }}'>here</a> to access it.
-
-<p>Thanks,</p>
-<p>{{ signature }}</p>
-</body></html>""",
-        autoescape=True)
     body = template.render(
-        subject_title=utils.SmartUnicode(approval.subject_title),
-        username=utils.SmartUnicode(token.username),
-        reason=utils.SmartUnicode(approval.reason),
-        admin_ui=utils.SmartUnicode(config.CONFIG["AdminUI.url"].strip("/")),
-        subject_url=utils.SmartUnicode(approval.subject_url_path.strip("/")),
-        signature=utils.SmartUnicode(config.CONFIG["Email.signature"]))
+        grantor=context.username,
+        requestor=approval.requestor,
+        reason=approval.reason,
+        legacy_subject_url=legacy_subject_url,
+        subject_url=subject_url,
+        subject_title=approval.subject_title,
+        html_signature=config.CONFIG["Email.approval_signature"],
+        text_signature=config.CONFIG["Email.signature"])
 
     # Email subject should match approval request, and we add message id
     # references so they are grouped together in a thread by gmail.
@@ -747,31 +843,31 @@ Please click <a href='{{ admin_ui }}/#/{{ subject_url }}'>here</a> to access it.
 
     requestor_email = data_store.REL_DB.ReadGRRUser(
         approval.requestor).GetEmail()
-    username_email = data_store.REL_DB.ReadGRRUser(token.username).GetEmail()
+    username_email = data_store.REL_DB.ReadGRRUser(context.username).GetEmail()
 
     email_alerts.EMAIL_ALERTER.SendEmail(
-        requestor_email,
-        username_email,
-        subject,
-        body,
+        to_addresses=requestor_email,
+        from_address=username_email,
+        subject=subject,
+        message=body,
         is_html=True,
         cc_addresses=",".join(approval.email_cc_addresses),
         headers=headers)
 
-  def CreateGrantNotification(self, approval, token=None):
+  def CreateGrantNotification(self, approval, context=None):
     notification_lib.Notify(
         approval.requestor, self.__class__.approval_notification_type,
         "%s has granted you access to %s." %
-        (token.username, approval.subject_title),
+        (context.username, approval.subject_title),
         approval.subject.ObjectReference())
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     if not args.username:
       raise ValueError("username can't be empty.")
 
     try:
       data_store.REL_DB.GrantApproval(args.username, args.approval_id,
-                                      token.username)
+                                      context.username)
 
       approval_obj = data_store.REL_DB.ReadApprovalRequest(
           args.username, args.approval_id)
@@ -783,8 +879,8 @@ Please click <a href='{{ admin_ui }}/#/{{ subject_url }}'>here</a> to access it.
 
     result = self.__class__.result_type().InitFromDatabaseObject(approval_obj)
 
-    self.SendGrantEmail(result, token=token)
-    self.CreateGrantNotification(result, token=token)
+    self.SendGrantEmail(result, context=context)
+    self.CreateGrantNotification(result, context=context)
     return result
 
 
@@ -815,15 +911,14 @@ class ApiCreateClientApprovalHandler(ApiCreateApprovalHandlerBase):
   approval_notification_type = (
       rdf_objects.UserNotification.Type.TYPE_CLIENT_APPROVAL_REQUESTED)
 
-  def Handle(self, args, token=None):
-    result = super(ApiCreateClientApprovalHandler, self).Handle(
-        args, token=token)
+  def Handle(self, args, context=None):
+    result = super().Handle(args, context=context)
 
     if args.keep_client_alive:
       flow.StartFlow(
           client_id=str(args.client_id),
           flow_cls=administrative.KeepAlive,
-          creator=token.username,
+          creator=context.username,
           duration=3600)
 
     return result
@@ -862,6 +957,15 @@ class ApiGrantClientApprovalHandler(ApiGrantApprovalHandlerBase):
   approval_notification_type = (
       rdf_objects.UserNotification.Type.TYPE_CLIENT_APPROVAL_GRANTED)
 
+  def Handle(self, args, context=None):
+    approval = super().Handle(args, context=context)
+
+    if approval.is_valid:
+      flow.StartScheduledFlows(
+          client_id=str(approval.subject.client_id), creator=approval.requestor)
+
+    return approval
+
 
 class ApiListClientApprovalsArgs(ApiClientApprovalArgsBase):
   protobuf = api_user_pb2.ApiListClientApprovalsArgs
@@ -889,7 +993,7 @@ class ApiListClientApprovalsHandler(ApiListApprovalsHandlerBase):
 
   def _CheckState(self, state, approval):
     try:
-      approval.CheckAccess(approval.token)
+      approval.CheckAccess(approval.context)
       is_valid = True
     except access_control.UnauthorizedAccess:
       is_valid = False
@@ -922,14 +1026,14 @@ class ApiListClientApprovalsHandler(ApiListApprovalsHandlerBase):
     else:
       return lambda approval: True  # Accept all by default.
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     subject_id = None
     if args.client_id:
       subject_id = str(args.client_id)
 
     approvals = sorted(
         data_store.REL_DB.ReadApprovalRequests(
-            token.username,
+            context.username,
             rdf_objects.ApprovalRequest.ApprovalType.APPROVAL_TYPE_CLIENT,
             subject_id=subject_id,
             include_expired=True),
@@ -1012,6 +1116,9 @@ class ApiGrantHuntApprovalHandler(ApiGrantApprovalHandlerBase):
 
 class ApiListHuntApprovalsArgs(ApiHuntApprovalArgsBase):
   protobuf = api_user_pb2.ApiListHuntApprovalsArgs
+  rdf_deps = [
+      api_hunt.ApiHuntId,
+  ]
 
 
 class ApiListHuntApprovalsResult(rdf_structs.RDFProtoStruct):
@@ -1027,15 +1134,21 @@ class ApiListHuntApprovalsHandler(ApiListApprovalsHandlerBase):
   args_type = ApiListHuntApprovalsArgs
   result_type = ApiListHuntApprovalsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
+    subject_id = None
+    if args.hunt_id:
+      subject_id = str(args.hunt_id)
+
     approvals = sorted(
         data_store.REL_DB.ReadApprovalRequests(
-            token.username,
+            context.username,
             rdf_objects.ApprovalRequest.ApprovalType.APPROVAL_TYPE_HUNT,
-            subject_id=None,
-            include_expired=True),
+            subject_id=subject_id,
+            include_expired=True,
+        ),
         key=lambda ar: ar.timestamp,
-        reverse=True)
+        reverse=True,
+    )
 
     if not args.count:
       end = None
@@ -1132,10 +1245,10 @@ class ApiListCronJobApprovalsHandler(ApiListApprovalsHandlerBase):
   args_type = ApiListCronJobApprovalsArgs
   result_type = ApiListCronJobApprovalsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     approvals = sorted(
         data_store.REL_DB.ReadApprovalRequests(
-            token.username,
+            context.username,
             rdf_objects.ApprovalRequest.ApprovalType.APPROVAL_TYPE_CRON_JOB,
             subject_id=None,
             include_expired=True),
@@ -1164,12 +1277,12 @@ class ApiGetOwnGrrUserHandler(api_call_handler_base.ApiCallHandler):
     super().__init__()
     self.interface_traits = interface_traits
 
-  def Handle(self, unused_args, token=None):
+  def Handle(self, unused_args, context=None):
     """Fetches and renders current user's settings."""
 
-    result = ApiGrrUser(username=token.username)
+    result = ApiGrrUser(username=context.username)
 
-    user_record = data_store.REL_DB.ReadGRRUser(token.username)
+    user_record = data_store.REL_DB.ReadGRRUser(context.username)
     result.InitFromDatabaseObject(user_record)
 
     result.interface_traits = (
@@ -1183,12 +1296,12 @@ class ApiUpdateGrrUserHandler(api_call_handler_base.ApiCallHandler):
 
   args_type = ApiGrrUser
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     if args.username or args.HasField("interface_traits"):
       raise ValueError("Only user settings can be updated.")
 
     data_store.REL_DB.WriteGRRUser(
-        token.username,
+        context.username,
         ui_mode=args.settings.mode,
         canary_mode=args.settings.canary_mode)
 
@@ -1203,11 +1316,11 @@ class ApiGetPendingUserNotificationsCountHandler(
 
   result_type = ApiGetPendingUserNotificationsCountResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     """Fetches the pending notification count."""
     ns = list(
         data_store.REL_DB.ReadUserNotifications(
-            token.username,
+            context.username,
             state=rdf_objects.UserNotification.State.STATE_PENDING))
     return ApiGetPendingUserNotificationsCountResult(count=len(ns))
 
@@ -1233,10 +1346,10 @@ class ApiListPendingUserNotificationsHandler(
   args_type = ApiListPendingUserNotificationsArgs
   result_type = ApiListPendingUserNotificationsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     """Fetches the pending notifications."""
     ns = data_store.REL_DB.ReadUserNotifications(
-        token.username,
+        context.username,
         state=rdf_objects.UserNotification.State.STATE_PENDING,
         timerange=(args.timestamp, None))
 
@@ -1268,10 +1381,10 @@ class ApiDeletePendingUserNotificationHandler(
 
   args_type = ApiDeletePendingUserNotificationArgs
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     """Deletes the notification from the pending notifications."""
     data_store.REL_DB.UpdateUserNotifications(
-        token.username, [args.timestamp],
+        context.username, [args.timestamp],
         state=rdf_objects.UserNotification.State.STATE_NOT_PENDING)
 
 
@@ -1293,12 +1406,12 @@ class ApiListAndResetUserNotificationsHandler(
   args_type = ApiListAndResetUserNotificationsArgs
   result_type = ApiListAndResetUserNotificationsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     """Fetches the user notifications."""
     back_timestamp = rdfvalue.RDFDatetime.Now() - rdfvalue.Duration.From(
-        180, rdfvalue.DAYS)
+        2 * 52, rdfvalue.WEEKS)
     ns = data_store.REL_DB.ReadUserNotifications(
-        token.username, timerange=(back_timestamp, None))
+        context.username, timerange=(back_timestamp, None))
 
     pending_timestamps = [
         n.timestamp
@@ -1306,7 +1419,7 @@ class ApiListAndResetUserNotificationsHandler(
         if n.state == rdf_objects.UserNotification.State.STATE_PENDING
     ]
     data_store.REL_DB.UpdateUserNotifications(
-        token.username,
+        context.username,
         pending_timestamps,
         state=rdf_objects.UserNotification.State.STATE_NOT_PENDING)
 
@@ -1351,18 +1464,48 @@ def _GetAllUsernames():
   return sorted(user.username for user in data_store.REL_DB.ReadGRRUsers())
 
 
+def _GetMostRequestedUsernames(context):
+  requests = data_store.REL_DB.ReadApprovalRequests(
+      context.username,
+      rdf_objects.ApprovalRequest.ApprovalType.APPROVAL_TYPE_CLIENT,
+      include_expired=True)
+  users = collection.Flatten(req.notified_users for req in requests)
+  user_counts = collections.Counter(users)
+  return [username for (username, _) in user_counts.most_common()]
+
+
 class ApiListApproverSuggestionsHandler(api_call_handler_base.ApiCallHandler):
   """"List suggestions for approver usernames."""
 
   args_type = ApiListApproverSuggestionsArgs
   result_type = ApiListApproverSuggestionsResult
 
-  def Handle(self, args, token=None):
-    suggestions = []
+  def Handle(self, args, context=None):
+    all_usernames = _GetAllUsernames()
+    usernames = []
 
-    for username in _GetAllUsernames():
-      if (username.startswith(args.username_query) and
-          username != token.username):
-        suggestions.append(ApproverSuggestion(username=username))
+    if not args.username_query:
+      # When the user has not started typing a username yet, try to suggest
+      # previously requested approvers. Do not suggest usernames that are not
+      # actually registered users.
+      all_usernames_set = set(all_usernames)
+      usernames = [
+          u for u in _GetMostRequestedUsernames(context)
+          if u in all_usernames_set
+      ]
 
+    if not usernames:
+      # If no previously requested approvers can be suggested, or the user
+      # started typing a username, suggest names from all registered users.
+      usernames = [
+          u for u in all_usernames if u.startswith(args.username_query)
+      ]
+
+    try:
+      # If present, remove the requestor from suggested approvers.
+      usernames.remove(context.username)
+    except ValueError:
+      pass
+
+    suggestions = [ApproverSuggestion(username=u) for u in usernames]
     return ApiListApproverSuggestionsResult(suggestions=suggestions)

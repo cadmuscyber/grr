@@ -1,15 +1,18 @@
-import {async, ComponentFixture, TestBed} from '@angular/core/testing';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
-import {FlowFormModule} from '@app/components/flow_form/module';
-import {Client} from '@app/lib/models/client';
-import {ClientFacade} from '@app/store/client_facade';
-import {FlowFacade} from '@app/store/flow_facade';
-import {FlowFacadeMock, mockFlowFacade} from '@app/store/flow_facade_test_util';
-import {initTestEnvironment} from '@app/testing';
-import {Subject} from 'rxjs';
+import {RouterTestingModule} from '@angular/router/testing';
+
+import {FlowFormModule} from '../../components/flow_form/module';
+import {Browser} from '../../lib/api/api_interfaces';
+import {RequestStatusType} from '../../lib/api/track_request';
+import {newClient, newFlowDescriptor} from '../../lib/models/model_test_util';
+import {ClientPageGlobalStore} from '../../store/client_page_global_store';
+import {ClientPageGlobalStoreMock, mockClientPageGlobalStore} from '../../store/client_page_global_store_test_util';
+import {ConfigGlobalStore} from '../../store/config_global_store';
+import {ConfigGlobalStoreMock, mockConfigGlobalStore} from '../../store/config_global_store_test_util';
+import {initTestEnvironment} from '../../testing';
 
 import {FlowForm} from './flow_form';
-
 
 initTestEnvironment();
 
@@ -18,29 +21,28 @@ function getSubmit<T>(fixture: ComponentFixture<T>) {
 }
 
 describe('FlowForm Component', () => {
-  let selectedClient$: Subject<Client>;
-  let flowFacade: FlowFacadeMock;
-  let clientFacade: Partial<ClientFacade>;
+  let configGlobalStore: ConfigGlobalStoreMock;
+  let clientPageGlobalStore: ClientPageGlobalStoreMock;
 
-  beforeEach(async(() => {
-    selectedClient$ = new Subject();
-    flowFacade = mockFlowFacade();
-    clientFacade = {
-      selectedClient$,
-      startFlow: jasmine.createSpy('startFlow'),
-    };
+  beforeEach(waitForAsync(() => {
+    configGlobalStore = mockConfigGlobalStore();
+    clientPageGlobalStore = mockClientPageGlobalStore();
 
     TestBed
         .configureTestingModule({
           imports: [
             NoopAnimationsModule,
+            RouterTestingModule,
             FlowFormModule,
           ],
-
           providers: [
-            {provide: FlowFacade, useValue: flowFacade},
-            {provide: ClientFacade, useValue: clientFacade},
-          ]
+            {provide: ConfigGlobalStore, useFactory: () => configGlobalStore},
+            {
+              provide: ClientPageGlobalStore,
+              useFactory: () => clientPageGlobalStore
+            },
+          ],
+          teardown: {destroyAfterEach: false}
         })
         .compileComponents();
   }));
@@ -51,7 +53,7 @@ describe('FlowForm Component', () => {
 
     expect(getSubmit(fixture)).toBeNull();
 
-    flowFacade.selectedFlowSubject.next();
+    clientPageGlobalStore.mockedObservables.selectedFlowDescriptor$.next(null);
     expect(getSubmit(fixture)).toBeNull();
   });
 
@@ -59,55 +61,51 @@ describe('FlowForm Component', () => {
     const fixture = TestBed.createComponent(FlowForm);
     fixture.detectChanges();
 
-    flowFacade.selectedFlowSubject.next({
-      name: 'BrowserHistoryFlow',
-      friendlyName: 'Browser History',
-      category: 'Browser',
-      defaultArgs: {
-        collectChrome: true,
-        collectFirefox: true,
-        collectInternetExplorer: true,
-        collectOpera: true,
-        collectSafari: true,
-      }
-    });
+    clientPageGlobalStore.mockedObservables.selectedFlowDescriptor$.next(
+        newFlowDescriptor());
     fixture.detectChanges();
 
     expect(getSubmit(fixture)).toBeTruthy();
   });
 
-  it('triggers startFlow on form submit', () => {
+  it('triggers scheduleOrStartFlow on form submit', () => {
     const fixture = TestBed.createComponent(FlowForm);
     fixture.detectChanges();
 
-    selectedClient$.next({
-      clientId: 'C.1234',
-      fleetspeakEnabled: true,
-      knowledgeBase: {},
-      labels: []
-    });
-    flowFacade.selectedFlowSubject.next({
-      name: 'BrowserHistoryFlow',
-      friendlyName: 'Browser History',
-      category: 'Browser',
-      defaultArgs: {
-        collectChrome: true,
-        collectFirefox: true,
-        collectInternetExplorer: true,
-        collectOpera: true,
-        collectSafari: true,
-      }
-    });
+    clientPageGlobalStore.mockedObservables.selectedClient$.next(newClient());
+    clientPageGlobalStore.mockedObservables.selectedFlowDescriptor$.next(
+        newFlowDescriptor({
+          name: 'CollectBrowserHistory',
+          defaultArgs: {
+            browsers: [Browser.CHROME],
+          }
+        }));
+    clientPageGlobalStore.mockedObservables.hasAccess$.next(true);
     fixture.detectChanges();
 
     getSubmit(fixture).click();
-    expect(clientFacade.startFlow)
-        .toHaveBeenCalledWith('C.1234', 'BrowserHistoryFlow', {
-          collectChrome: true,
-          collectFirefox: true,
-          collectInternetExplorer: true,
-          collectOpera: true,
-          collectSafari: true,
-        });
+    expect(clientPageGlobalStore.scheduleOrStartFlow).toHaveBeenCalledWith({
+      browsers: [Browser.CHROME],
+    });
+  });
+
+  it('shows errors when flow submit fails', () => {
+    const fixture = TestBed.createComponent(FlowForm);
+    fixture.detectChanges();
+
+    clientPageGlobalStore.mockedObservables.selectedClient$.next(newClient());
+    clientPageGlobalStore.mockedObservables.selectedFlowDescriptor$.next(
+        newFlowDescriptor());
+    clientPageGlobalStore.mockedObservables.hasAccess$.next(true);
+    fixture.detectChanges();
+
+    clientPageGlobalStore.mockedObservables.startFlowStatus$.next({
+      status: RequestStatusType.ERROR,
+      error: 'foobazzle rapidly disintegrated'
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.innerText)
+        .toContain('foobazzle rapidly disintegrated');
   });
 });

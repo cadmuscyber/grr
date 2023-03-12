@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Shut down windows hosts."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import platform
 import re
@@ -14,9 +10,9 @@ def NetshStaticIp(interface,
                   ip=u'127.0.0.9',
                   subnet=u'255.255.255.255',
                   gw=u'127.0.0.1'):
-  """Changes interface to a staticly set IP.
+  """Changes interface to a statically set IP.
 
-  Sets IP configs to local if no paramaters passed.
+  Sets IP configs to local if no parameters passed.
 
   Args:
     interface: Name of the interface.
@@ -33,7 +29,7 @@ def NetshStaticIp(interface,
   ]
   # pylint: disable=undefined-variable
   res = client_utils_common.Execute(
-      'cmd', args, time_limit=-1, bypass_whitelist=True)
+      'cmd', args, time_limit=-1, bypass_allowlist=True)
   return res
 
 
@@ -53,7 +49,7 @@ def DisableInterfaces(interface):
     if host_version.find(version) != -1:
       # pylint: disable=undefined-variable
       res = client_utils_common.Execute(
-          'cmd', set_args, time_limit=-1, bypass_whitelist=True)
+          'cmd', set_args, time_limit=-1, bypass_allowlist=True)
       return res
   return ('', 'Command not available for this version.', 99, '')
 
@@ -68,7 +64,7 @@ def GetEnabledInterfaces():
   show_args = ['/c', 'netsh', 'show', 'interface']
   # pylint: disable=undefined-variable
   res = client_utils_common.Execute(
-      'cmd', show_args, time_limit=-1, bypass_whitelist=True)
+      'cmd', show_args, time_limit=-1, bypass_allowlist=True)
   pattern = re.compile(r'\s*')
   for line in res[0].split('\r\n'):  # res[0] is stdout.
     interface_info = pattern.split(line)
@@ -97,7 +93,7 @@ def MsgUser(msg):
     if host_version.find(version) != -1:
       # pylint: disable=undefined-variable
       res = client_utils_common.Execute(
-          'cmd', msg_args, time_limit=-1, bypass_whitelist=True)
+          'cmd', msg_args, time_limit=-1, bypass_allowlist=True)
       return res
   return ('', 'Command not available for this version.', -1)
 

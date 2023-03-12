@@ -1,19 +1,14 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for grr.parsers.windows_registry_parser."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
 from grr_response_core.lib.parsers import windows_registry_parser
+from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
-from grr_response_core.lib.util import compatibility
 from grr.test_lib import flow_test_lib
 from grr.test_lib import test_lib
 
@@ -82,13 +77,7 @@ class WindowsRegistryParserTest(flow_test_lib.FlowTestsBaseclass):
       elif str(result.registry_key).endswith("AcpiPmi"):
         self.assertEqual(result.name, "AcpiPmi")
         self.assertEqual(result.startup_type, 3)
-        # TODO: String representation in Python 2 represents
-        # unicode strings with "u" prefix and there is nothing we can do about
-        # that.
-        if compatibility.PY2:
-          self.assertEqual(result.display_name, "[u'AcpiPmi']")
-        else:
-          self.assertEqual(result.display_name, "['AcpiPmi']")
+        self.assertEqual(result.display_name, "['AcpiPmi']")
         self.assertEqual(result.registry_key, "%s/AcpiPmi" % hklm_set01)
         names.append(result.display_name)
       elif str(result.registry_key).endswith("ACPI"):
@@ -102,13 +91,8 @@ class WindowsRegistryParserTest(flow_test_lib.FlowTestsBaseclass):
         self.assertEqual(result.driver_package_id,
                          "acpi.inf_amd64_neutral_99aaaaabcccccccc")
         names.append(result.display_name)
-    # TODO: See TODO comment above.
-    if compatibility.PY2:
-      self.assertCountEqual(names,
-                            [u"中国日报", "[u'AcpiPmi']", "Microsoft ACPI Driver"])
-    else:
-      self.assertCountEqual(names,
-                            [u"中国日报", "['AcpiPmi']", "Microsoft ACPI Driver"])
+    self.assertCountEqual(names,
+                          [u"中国日报", "['AcpiPmi']", "Microsoft ACPI Driver"])
 
   def testWinUserSpecialDirs(self):
     reg_str = rdf_client_fs.StatEntry.RegistryType.REG_SZ
@@ -129,6 +113,43 @@ class WindowsRegistryParserTest(flow_test_lib.FlowTestsBaseclass):
     stat = self._MakeRegStat(sysroot, r"C:\Windows", None)
     parser = windows_registry_parser.WinSystemDriveParser()
     self.assertEqual(r"C:", next(parser.Parse(stat, None)))
+
+  def testWindowsRegistryInstalledSoftware(self):
+    reg_str = rdf_client_fs.StatEntry.RegistryType.REG_SZ
+    hklm = "HKEY_LOCAL_MACHINE"
+    k = hklm + "/Software/Microsoft/Windows/CurrentVersion/Uninstall"
+    service_keys = [
+        # Valid.
+        (k + "/Google Chrome/DisplayName", "Google Chrome", reg_str),
+        (k + "/Google Chrome/DisplayVersion", "89.0.4389.82", reg_str),
+        (k + "/Google Chrome/Publisher", "Google LLC", reg_str),
+        # Invalid - Contains no data.
+        (k + "/AddressBook/Default", "", reg_str),
+        # Invalid - Missing DisplayName.
+        (k + "/Foo/DisplayVersion", "1.2.3.4", reg_str),
+        (k + "/Foo/Publisher", "Bar Inc", reg_str),
+        # Valid.
+        (k + "/Baz/DisplayName", "Baz", reg_str),
+        (k + "/Baz/DisplayVersion", "2.3.4.5", reg_str),
+        (k + "/Baz/Publisher", "Baz LLC", reg_str),
+    ]
+
+    stats = [self._MakeRegStat(*x) for x in service_keys]
+    parser = windows_registry_parser.WindowsRegistryInstalledSoftwareParser()
+
+    got = parser.ParseMultiple(stats, None)  # KnowledgeBase is not used.
+    want = [
+        rdf_client.SoftwarePackages(packages=[
+            rdf_client.SoftwarePackage.Installed(
+                name="Google Chrome",
+                description="Google LLC",
+                version="89.0.4389.82"),
+            rdf_client.SoftwarePackage.Installed(
+                name="Baz", description="Baz LLC", version="2.3.4.5"),
+        ])
+    ]
+
+    self.assertEqual(want, got)
 
 
 def main(argv):

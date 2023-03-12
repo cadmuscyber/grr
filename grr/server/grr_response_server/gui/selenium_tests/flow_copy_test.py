@@ -1,13 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test flow copy UI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
 from grr_response_server import access_control
@@ -28,7 +24,7 @@ class TestFlowCopy(gui_test_lib.GRRSeleniumTest,
                    hunt_test_lib.StandardHuntTestMixin):
 
   def setUp(self):
-    super(TestFlowCopy, self).setUp()
+    super().setUp()
 
     # Prepare our fixture.
     self.client_id = "C.0000000000000001"
@@ -39,7 +35,7 @@ class TestFlowCopy(gui_test_lib.GRRSeleniumTest,
 
     self.email_descriptor = rdf_output_plugin.OutputPluginDescriptor(
         plugin_name=email_plugin.EmailOutputPlugin.__name__,
-        plugin_args=email_plugin.EmailOutputPluginArgs(
+        args=email_plugin.EmailOutputPluginArgs(
             email_address="test@localhost", emails_limit=42))
 
   def testOriginalFlowArgsAreShownInCopyForm(self):
@@ -164,13 +160,12 @@ class TestFlowCopy(gui_test_lib.GRRSeleniumTest,
     flows.sort(key=lambda f: f.create_time)
     fobj = flows[-1]
 
+    plugin_desc = rdf_output_plugin.OutputPluginDescriptor(
+        plugin_name=gui_test_lib.DummyOutputPlugin.__name__,
+        args=flows_processes.ListProcessesArgs(filename_regex="foobar!"))
+
     self.assertListEqual(
-        list(fobj.output_plugins), [
-            rdf_output_plugin.OutputPluginDescriptor(
-                plugin_name=gui_test_lib.DummyOutputPlugin.__name__,
-                plugin_args=flows_processes.ListProcessesArgs(
-                    filename_regex="foobar!")), self.email_descriptor
-        ])
+        list(fobj.output_plugins), [plugin_desc, self.email_descriptor])
     self.assertEqual(
         fobj.args,
         flows_processes.ListProcessesArgs(filename_regex="somethingElse*",))

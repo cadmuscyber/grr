@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
 """A registry based configuration parser."""
 
 # NOTE: Running a 32 bit compiled client and 64 bit compiled client on a 64 bit
@@ -8,18 +7,15 @@
 # system. The clients will not share their config keys if the registry keys they
 # use are hooked by WOW64.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import collections
 import logging
-from typing import Text
+from typing import Any, Dict, Text
 from urllib import parse as urlparse
 
 import winreg
 
-from grr_response_core.lib import config_lib
+from grr_response_core.lib import config_parser
 from grr_response_core.lib.util import precondition
 
 
@@ -39,17 +35,16 @@ def ParseRegistryURI(uri):
       path=url.path.replace("/", "\\").lstrip("\\"))
 
 
-class RegistryConfigParser(config_lib.GRRConfigParser):
+class RegistryConfigParser(config_parser.GRRConfigParser):
   """A registry based configuration parser.
 
   This config system simply stores all the parameters as values of type REG_SZ
   in a single key.
   """
-  name = "reg"
 
-  def __init__(self, filename=None):
+  def __init__(self, config_path: str) -> None:
     """We interpret the name as a key name."""
-    self._key_spec = ParseRegistryURI(filename)
+    self._key_spec = ParseRegistryURI(config_path)
 
     self._root_key = None
 
@@ -69,9 +64,9 @@ class RegistryConfigParser(config_lib.GRRConfigParser):
       self.parsed = self._key_spec.path
     return self._root_key
 
-  def RawData(self):
+  def ReadData(self) -> Dict[str, Any]:
     """Yields the valus in each section."""
-    result = collections.OrderedDict()
+    result = dict()
 
     i = 0
     while True:
@@ -88,7 +83,7 @@ class RegistryConfigParser(config_lib.GRRConfigParser):
 
     return result
 
-  def SaveData(self, raw_data):
+  def SaveData(self, raw_data: Dict[str, Any]) -> None:
     logging.info("Writing back configuration to key %s.", self._key_spec)
 
     # Ensure intermediate directories exist.
@@ -110,3 +105,6 @@ class RegistryConfigParser(config_lib.GRRConfigParser):
     finally:
       # Make sure changes hit the disk.
       winreg.FlushKey(self._AccessRootKey())
+
+  def Copy(self) -> "RegistryConfigParser":
+    return RegistryConfigParser(self.config_path)

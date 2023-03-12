@@ -1,17 +1,12 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Common tests for stats-collector implementations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import abc
 import time
+from unittest import mock
 
 from absl.testing import absltest
-
-import mock
 
 from grr_response_core.lib.rdfvalues import stats as rdf_stats
 from grr_response_core.stats import metrics
@@ -37,7 +32,7 @@ class StatsCollectorTest(
   """
 
   def setUp(self):
-    super(StatsCollectorTest, self).setUp()
+    super().setUp()
 
     self._mock_time = 100.0
     time_patcher = mock.patch.object(time, "time", lambda: self._mock_time)

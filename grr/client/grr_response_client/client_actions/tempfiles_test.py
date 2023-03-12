@@ -1,14 +1,11 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for grr_response_client.client_actions.tempfiles."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import os
 import shutil
 import tempfile
+from unittest import mock
 
 from absl import app
 
@@ -25,7 +22,7 @@ class GRRTempFileTestFilename(test_lib.GRRBaseTest):
 
   def setUp(self):
     """Create fake filesystem."""
-    super(GRRTempFileTestFilename, self).setUp()
+    super().setUp()
     # This is where temp files go if a directory is not provided.
     # For this test it has to be different from the temp directory
     # so we create a new one.
@@ -62,8 +59,10 @@ class GRRTempFileTestFilename(test_lib.GRRBaseTest):
 
   def testWrongOwnerGetsFixed(self):
 
+    lstat = os.lstat
+
     def mystat(filename):
-      stat_info = os.lstat.old_target(filename)
+      stat_info = lstat(filename)
       stat_list = list(stat_info)
       # Adjust the UID.
       stat_list[4] += 1
@@ -76,7 +75,7 @@ class GRRTempFileTestFilename(test_lib.GRRBaseTest):
 
     self.assertTrue(os.path.exists(fd.name))
 
-    with utils.Stubber(os, "lstat", mystat):
+    with mock.patch.object(os, "lstat", mystat):
       fd2 = tempfiles.CreateGRRTempFile(filename="temptemp", mode="wb")
       fd2.close()
 
@@ -91,7 +90,7 @@ class DeleteGRRTempFiles(client_test_lib.EmptyActionTest):
   """Test DeleteGRRTempFiles client action."""
 
   def setUp(self):
-    super(DeleteGRRTempFiles, self).setUp()
+    super().setUp()
     filename = "%s_blah" % config.CONFIG["Client.tempfile_prefix"]
     self.tempfile = utils.JoinPath(self.temp_dir, "delete_test", filename)
     self.dirname = os.path.dirname(self.tempfile)
@@ -228,7 +227,7 @@ class DeleteGRRTempFiles(client_test_lib.EmptyActionTest):
       res.append(os.path.basename(self.temp_fd2.name))
       return res
 
-    with utils.Stubber(os, "listdir", listdir):
+    with mock.patch.object(os, "listdir", listdir):
       result = self.RunAction(tempfiles.DeleteGRRTempFiles, self.pathspec)[0]
       self.assertIn("not_really_a_file does not exist", result.data)
 

@@ -1,14 +1,26 @@
 #!/usr/bin/env python
-# Lint as: python3
 """A module with utilities for a very simple chunked serialization format."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import struct
 from typing import IO
 from typing import Iterator
 from typing import Optional
+
+
+class Error(Exception):
+  """Base error class for chunked module."""
+
+
+class IncorrectSizeTagError(Error):
+  """Raised when chunk size header can't be parsed."""
+
+
+class ChunkSizeTooBigError(Error):
+  """Raised when chunk header has what appears to be an invalid size."""
+
+
+class ChunkTruncatedError(Error):
+  """Raised when chunk appears to be truncated."""
 
 
 def Write(buf: IO[bytes], chunk: bytes) -> None:
@@ -22,17 +34,23 @@ def Write(buf: IO[bytes], chunk: bytes) -> None:
   buf.write(chunk)
 
 
-def Read(buf: IO[bytes]) -> Optional[bytes]:
+def Read(buf: IO[bytes],
+         max_chunk_size: Optional[int] = None) -> Optional[bytes]:
   """Reads a single chunk from the input buffer.
 
   Args:
     buf: An input buffer to read the chunk from.
+    max_chunk_size: If set, will raise if chunk's size is larger than a given
+      value.
 
   Returns:
     A single chunk if it is available, `None` if the buffer is empty.
 
   Raises:
-    ValueError: If the buffer contains incorrect sequence of bytes.
+    InvalidSizeTagError: if the buffer contains incorrect sequence of bytes.
+    ChunkSizeTooBigError: if the read chunk size is larger than max_chunk_size.
+    ChunkTruncatedError: if the read chunk size is smaller than what was
+        manifested in the header.
   """
   count_bytes = buf.read(_UINT64.size)
   if not count_bytes:
@@ -41,29 +59,45 @@ def Read(buf: IO[bytes]) -> Optional[bytes]:
   try:
     (count,) = _UINT64.unpack(count_bytes)
   except struct.error as error:
-    raise ValueError(f"Incorrect size tag {count_bytes}: {error}")
+    raise IncorrectSizeTagError(f"Incorrect size tag {count_bytes}: {error}")
+
+  # It might happen that we are given file with incorrect format. If the size
+  # tag is interpreted as a huge number, reading the buffer will lead to raising
+  # an exception, because Python will try to allocate a buffer to read into. If
+  # possible, we try to check guard against such situations and provide more
+  # informative exception message.
+
+  if max_chunk_size is not None and count > max_chunk_size:
+    raise ChunkSizeTooBigError(f"Malformed input: chunk size {count} "
+                               f"is bigger than {max_chunk_size}")
 
   chunk = buf.read(count)
   if len(chunk) != count:
-    raise ValueError(f"Content too short: {chunk}")
+    raise ChunkTruncatedError(
+        f"Malformed input: chunk size {count} "
+        f"is bigger than actual number of bytes read {len(chunk)}")
 
   return chunk
 
 
-def ReadAll(buf: IO[bytes]) -> Iterator[bytes]:
+def ReadAll(buf: IO[bytes],
+            max_chunk_size: Optional[int] = None) -> Iterator[bytes]:
   """Reads all the chunks from the input buffer (until the end).
 
   Args:
     buf: An input buffer to read the chunks from.
+    max_chunk_size: If set, will raise if chunk's size is larger than a given
+        value.
 
   Yields:
     Chunks of bytes stored in the buffer.
 
   Raises:
-    ValueError: If the buffer contains an incorrect sequence of bytes.
+    InvalidSizeTagError if the buffer contains incorrect sequence of bytes.
+    ChunkSizeTooBigError if the read chunk size is larger than max_chunk_size.
   """
   while True:
-    chunk = Read(buf)
+    chunk = Read(buf, max_chunk_size=max_chunk_size)
     if chunk is None:
       return
 

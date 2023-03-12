@@ -1,13 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
 """AFF4 RDFValue implementations for client information.
 
 This module contains the RDFValue implementations used to communicate with the
 client.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import binascii
 import hashlib
@@ -17,7 +13,7 @@ import re
 import socket
 import struct
 import sys
-from typing import Text
+from typing import Mapping
 
 import distro
 import psutil
@@ -30,7 +26,6 @@ from grr_response_core.lib.rdfvalues import client_network as rdf_client_network
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import text
 from grr_response_proto import jobs_pb2
 from grr_response_proto import knowledge_base_pb2
@@ -51,13 +46,6 @@ except ImportError:
 FS_ENCODING = sys.getfilesystemencoding() or sys.getdefaultencoding()
 
 _LOCALHOST = "localhost"
-
-
-def _DecodeArgument(arg) -> Text:
-  if compatibility.PY2:
-    return arg.decode(FS_ENCODING)
-  else:
-    return arg
 
 
 class ClientURN(rdfvalue.RDFURN):
@@ -354,7 +342,7 @@ class Process(rdf_structs.RDFProtoStruct):
           pass
 
       try:
-        response.cmdline = list(map(_DecodeArgument, psutil_process.cmdline()))
+        response.cmdline = list(psutil_process.cmdline())
       except (psutil.NoSuchProcess, psutil.AccessDenied):
         pass
       except Exception as e:  # pylint: disable=broad-except
@@ -467,6 +455,13 @@ class Process(rdf_structs.RDFProtoStruct):
       return response
 
 
+class NamedPipe(rdf_structs.RDFProtoStruct):
+  """An RDF wrapper for the named pipe message."""
+
+  protobuf = sysinfo_pb2.NamedPipe
+  rdf_deps = []
+
+
 class SoftwarePackage(rdf_structs.RDFProtoStruct):
   """Represent an installed package on the client."""
   protobuf = sysinfo_pb2.SoftwarePackage
@@ -558,9 +553,15 @@ class Uname(rdf_structs.RDFProtoStruct):
 
     # Emulate PEP 425 naming conventions - e.g. cp27-cp27mu-linux_x86_64.
     if pep425tags:
+      try:
+        # 0.33.6
+        pep_platform = pep425tags.get_platform()
+      except TypeError:
+        # 0.34.2
+        pep_platform = pep425tags.get_platform(None)
       pep425tag = "%s%s-%s-%s" % (
           pep425tags.get_abbr_impl(), pep425tags.get_impl_ver(),
-          str(pep425tags.get_abi_tag()).lower(), pep425tags.get_platform())
+          str(pep425tags.get_abi_tag()).lower(), pep_platform)
     else:
       # For example: windows_7_amd64
       pep425tag = "%s_%s_%s" % (system, release, architecture)
@@ -633,16 +634,46 @@ class ClientCrash(rdf_structs.RDFProtoStruct):
   ]
 
 
+class EdrAgent(rdf_structs.RDFProtoStruct):
+  """An RDF wrapper for protobuf message containing EDR agent metadata."""
+
+  protobuf = jobs_pb2.EdrAgent
+  rdf_deps = []
+
+
+class FleetspeakValidationInfoTag(rdf_structs.RDFProtoStruct):
+  """Dictionary entry in FleetspeakValidationInfo."""
+  protobuf = jobs_pb2.FleetspeakValidationInfoTag
+
+
+class FleetspeakValidationInfo(rdf_structs.RDFProtoStruct):
+  """Dictionary-like struct containing Fleetspeak ValidationInfo."""
+  protobuf = jobs_pb2.FleetspeakValidationInfo
+  rdf_deps = [FleetspeakValidationInfoTag]
+
+  @classmethod
+  def FromStringDict(cls, dct: Mapping[str, str]) -> "FleetspeakValidationInfo":
+    instance = cls()
+    for key, value in dct.items():
+      instance.tags.Append(key=key, value=value)
+    return instance
+
+  def ToStringDict(self) -> Mapping[str, str]:
+    return {tag.key: tag.value for tag in self.tags}
+
+
 class ClientSummary(rdf_structs.RDFProtoStruct):
   """Object containing client's summary data."""
   protobuf = jobs_pb2.ClientSummary
   rdf_deps = [
       ClientInformation,
       ClientURN,
+      EdrAgent,
       rdf_client_network.Interface,
       rdfvalue.RDFDatetime,
       Uname,
       User,
+      FleetspeakValidationInfo,
   ]
 
 

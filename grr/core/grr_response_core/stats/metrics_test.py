@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for the metrics interface for stats collection."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+from unittest import mock
 
 from absl.testing import absltest
-
-import mock
 
 from grr_response_core.stats import default_stats_collector
 from grr_response_core.stats import metrics

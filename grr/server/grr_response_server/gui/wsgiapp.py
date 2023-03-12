@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """GRR HTTP server implementation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import base64
 import hashlib
@@ -27,12 +23,25 @@ from werkzeug import wrappers as werkzeug_wrappers
 from werkzeug import wsgi as werkzeug_wsgi
 
 from grr_response_core import config
+from grr_response_core.config import contexts
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.util import precondition
-from grr_response_server import access_control
 from grr_response_server import server_logging
+from grr_response_server.gui import csp
 from grr_response_server.gui import http_api
+from grr_response_server.gui import http_response
 from grr_response_server.gui import webauth
+
+# pylint: disable=g-import-not-at-top
+try:
+  # Werkzeug 0.16.0
+  from werkzeug.wsgi import SharedDataMiddleware
+  from werkzeug.wsgi import DispatcherMiddleware
+except ImportError:
+  # Werkzeug 1.0.1
+  from werkzeug.middleware.shared_data import SharedDataMiddleware
+  from werkzeug.middleware.dispatcher import DispatcherMiddleware
+# pylint: enable=g-import-not-at-top
 
 CSRF_DELIMITER = b":"
 CSRF_TOKEN_DURATION = rdfvalue.Duration.From(10, rdfvalue.HOURS)
@@ -131,7 +140,6 @@ class HttpRequest(werkzeug_wrappers.Request):
     super().__init__(*args, **kwargs)
 
     self._user = None
-    self.token = None
     self.email = None
 
     self.timestamp = rdfvalue.RDFDatetime.Now().AsMicrosecondsSinceEpoch()
@@ -174,7 +182,7 @@ def LogAccessWrapper(func):
       # all possible exceptions and generate a proper Response object.
       # Still, handling exceptions here to guarantee that the access is logged
       # no matter what.
-      response = werkzeug_wrappers.Response("", status=500)
+      response = http_response.HttpResponse("", status=500)
       server_logging.LOGGER.LogHttpAdminUIAccess(request, response)
       raise
 
@@ -218,20 +226,6 @@ class AdminUIApp(object):
   def _BuildRequest(self, environ):
     return HttpRequest(environ)
 
-  def _BuildToken(self, request, execution_time):
-    """Build an ACLToken from the request."""
-    token = access_control.ACLToken(
-        username=request.user,
-        reason=request.args.get("reason", ""),
-        process="GRRAdminUI",
-        expiry=rdfvalue.RDFDatetime.Now() + execution_time)
-
-    for field in ["Remote_Addr", "X-Forwarded-For"]:
-      remote_addr = request.headers.get(field, "")
-      if remote_addr:
-        token.source_ips.append(remote_addr)
-    return token
-
   def _HandleHomepage(self, request):
     """Renders GRR home page by rendering base.html Jinja template."""
 
@@ -242,7 +236,7 @@ class AdminUIApp(object):
         autoescape=True)
 
     create_time = psutil.Process(os.getpid()).create_time()
-    context = {
+    template_context = {
         "heading":
             config.CONFIG["AdminUI.heading"],
         "report_url":
@@ -264,8 +258,8 @@ class AdminUIApp(object):
             config.CONFIG["Source.version_string"]
     }
     template = env.get_template("base.html")
-    response = werkzeug_wrappers.Response(
-        template.render(context), mimetype="text/html")
+    response = http_response.HttpResponse(
+        template.render(template_context), mimetype="text/html")
 
     # For a redirect-based Firebase authentication scheme we won't have any
     # user information at this point - therefore checking if the user is
@@ -283,14 +277,16 @@ class AdminUIApp(object):
     del request  # Unused.
 
     context = {
-        "is_development": "Debug Context" in config.CONFIG.context,
+        "is_development": contexts.DEBUG_CONTEXT in config.CONFIG.context,
+        "is_test": contexts.TEST_CONTEXT in config.CONFIG.context,
+        "analytics_id": config.CONFIG["AdminUI.analytics_id"],
     }
 
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(config.CONFIG["AdminUI.template_root"]),
         autoescape=True)
     template = env.get_template("base-v2.html")
-    response = werkzeug_wrappers.Response(
+    response = http_response.HttpResponse(
         template.render(context), mimetype="text/html")
 
     return response
@@ -324,7 +320,7 @@ class AdminUIApp(object):
 
     # We have to redirect via JavaScript to have access to and to preserve the
     # URL hash. We don't know the hash part of the url on the server.
-    return werkzeug_wrappers.Response(
+    return http_response.HttpResponse(
         """
 <script>
 var friendly_hash = window.location.hash;
@@ -361,7 +357,7 @@ window.location = '%s' + friendly_hash;
 
   def WSGIHandler(self):
     """Returns GRR's WSGI handler."""
-    sdm = werkzeug_wsgi.SharedDataMiddleware(self, {
+    sdm = SharedDataMiddleware(self, {
         "/": config.CONFIG["AdminUI.document_root"],
     })
     # Use DispatcherMiddleware to make sure that SharedDataMiddleware is not
@@ -371,9 +367,11 @@ window.location = '%s' + friendly_hash;
     # SharedDataMiddleware may fail early while trying to convert the
     # URL into the file path and not dispatch the call further to our own
     # WSGI handler.
-    return werkzeug_wsgi.DispatcherMiddleware(self, {
+    dm = DispatcherMiddleware(self, {
         "/static": sdm,
     })
+    # Add Content Security Policy headers to the Admin UI pages.
+    return csp.CspMiddleware(dm)
 
 
 class SingleThreadedServerInet6(simple_server.WSGIServer):

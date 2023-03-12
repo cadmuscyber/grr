@@ -1,17 +1,16 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests the client artifactor collection."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import builtins
 import glob
 import io
 import os
+from typing import IO
+from typing import Iterable
+from typing import Iterator
+from unittest import mock
 
 from absl import app
-import mock
 import psutil
 
 from grr_response_client.client_actions import artifact_collector
@@ -50,7 +49,7 @@ class ArtifactCollectorTest(client_test_lib.EmptyActionTest):
   """Test the artifact collection on the client."""
 
   def setUp(self):
-    super(ArtifactCollectorTest, self).setUp()
+    super().setUp()
     self.source_type = rdf_artifact.ArtifactSource.SourceType
     self.test_artifacts_file = os.path.join(config.CONFIG["Test.data_dir"],
                                             "artifacts", "test_artifacts.json")
@@ -98,7 +97,7 @@ class ArtifactCollectorTest(client_test_lib.EmptyActionTest):
         attributes={"client_action": "ListProcesses"})
     request = GetRequest(source, "TestClientActionArtifact")
 
-    with utils.Stubber(psutil, "process_iter", ProcessIter):
+    with mock.patch.object(psutil, "process_iter", ProcessIter):
       collected_artifact = self.RunArtifactCollector(request)
       value = collected_artifact.action_results[0].value
       self.assertIsInstance(value, rdf_client.Process)
@@ -248,8 +247,8 @@ class ArtifactCollectorTest(client_test_lib.EmptyActionTest):
         collected_artifact = self.RunArtifactCollector(request)
         self.assertEmpty(collected_artifact.action_results)
 
-  def testDirectoryArtifact(self):
-    """Test the source type `DIRECTORY`."""
+  def testPathArtifact(self):
+    """Test the source type `PATH`."""
 
     paths = [
         os.path.join(self.base_path, "%%Users.username%%*"),
@@ -266,7 +265,7 @@ class ArtifactCollectorTest(client_test_lib.EmptyActionTest):
         os.path.join(self.base_path, "VFSFixture", "var", "log", "wtmp"),
     ]
     source = rdf_artifact.ArtifactSource(
-        type=self.source_type.DIRECTORY, attributes={"paths": paths})
+        type=self.source_type.PATH, attributes={"paths": paths})
     knowledge_base = rdf_client.KnowledgeBase(users=[
         rdf_client.User(username="test"),
         rdf_client.User(username="syslog")
@@ -397,10 +396,10 @@ class ArtifactCollectorTest(client_test_lib.EmptyActionTest):
       self.RunAction(artifact_collector.ArtifactCollector, request)
 
 
-class OSXArtifactCollectorTests(client_test_lib.OSSpecificClientTests):
+class OSXArtifactCollectorTests(client_test_lib.EmptyActionTest):
 
   def setUp(self):
-    super(OSXArtifactCollectorTests, self).setUp()
+    super().setUp()
     # pylint: disable=g-import-not-at-top
     from grr_response_client.client_actions import operating_system
     from grr_response_client.client_actions.osx import osx
@@ -440,8 +439,8 @@ class OSXArtifactCollectorTests(client_test_lib.OSSpecificClientTests):
         attributes={"client_action": "EnumerateFilesystems"})
     request = GetRequest(source, "TestClientActionArtifact")
 
-    with utils.Stubber(self.os, "EnumerateFilesystemsFromClient",
-                       self.EnumerateFilesystemsStub):
+    with mock.patch.object(self.os, "EnumerateFilesystemsFromClient",
+                           self.EnumerateFilesystemsStub):
       result = self.RunAction(artifact_collector.ArtifactCollector, request)[0]
       collected_artifact = result.collected_artifacts[0]
 
@@ -459,8 +458,8 @@ class OSXArtifactCollectorTests(client_test_lib.OSSpecificClientTests):
         attributes={"client_action": "OSXEnumerateRunningServices"})
     request = GetRequest(source, "TestClientActionArtifact")
 
-    with utils.Stubber(self.os, "EnumerateRunningServices",
-                       self.OSXEnumerateRunningServicesStub):
+    with mock.patch.object(self.os, "EnumerateRunningServices",
+                           self.OSXEnumerateRunningServicesStub):
       result = self.RunAction(artifact_collector.ArtifactCollector, request)[0]
       collected_artifact = result.collected_artifacts[0]
 
@@ -471,10 +470,10 @@ class OSXArtifactCollectorTests(client_test_lib.OSSpecificClientTests):
       self.assertEqual(res.label, "com.apple.FileSyncAgent.PHD")
 
 
-class WindowsArtifactCollectorTests(client_test_lib.OSSpecificClientTests):
+class WindowsArtifactCollectorTests(client_test_lib.EmptyActionTest):
 
   def setUp(self):
-    super(WindowsArtifactCollectorTests, self).setUp()
+    super().setUp()
     self.test_artifacts_file = os.path.join(config.CONFIG["Test.data_dir"],
                                             "artifacts", "test_artifacts.json")
 
@@ -539,12 +538,17 @@ class TestEchoCmdParser(parser.CommandParser):
     ])
 
 
-class FakeFileParser(parsers.SingleFileParser):
+class FakeFileParser(parsers.SingleFileParser[rdf_protodict.AttributedDict]):
 
   output_types = [rdf_protodict.AttributedDict]
   supported_artifacts = ["FakeFileArtifact"]
 
-  def ParseFile(self, knowledge_base, pathspec, filedesc):
+  def ParseFile(
+      self,
+      knowledge_base: rdf_client.KnowledgeBase,
+      pathspec: rdf_paths.PathSpec,
+      filedesc: IO[bytes],
+  ) -> Iterator[rdf_protodict.AttributedDict]:
     del knowledge_base  # Unused.
 
     lines = set(l.strip() for l in filedesc.read().splitlines())
@@ -557,12 +561,18 @@ class FakeFileParser(parsers.SingleFileParser):
     yield rdf_protodict.AttributedDict(**cfg)
 
 
-class FakeFileMultiParser(parsers.MultiFileParser):
+class FakeFileMultiParser(parsers.MultiFileParser[rdf_protodict.AttributedDict]
+                         ):
 
   output_types = [rdf_protodict.AttributedDict]
   supported_artifacts = ["FakeFileArtifact2"]
 
-  def ParseFiles(self, knowledge_base, pathspecs, filedescs):
+  def ParseFiles(
+      self,
+      knowledge_base: rdf_client.KnowledgeBase,
+      pathspecs: Iterable[rdf_paths.PathSpec],
+      filedescs: Iterable[IO[bytes]],
+  ) -> Iterator[rdf_protodict.AttributedDict]:
     del knowledge_base  # Unused.
 
     lines = set()
@@ -674,8 +684,8 @@ class KnowledgeBaseUpdateTest(client_test_lib.EmptyActionTest):
 
   def GetUpdatedKnowledgeBase(self):
     """Runs the artifact collector with the specified client action result."""
-    with utils.Stubber(artifact_collector.ArtifactCollector, "_ProcessSources",
-                       self.GetActionResult):
+    with mock.patch.object(artifact_collector.ArtifactCollector,
+                           "_ProcessSources", self.GetActionResult):
       result = self.RunAction(artifact_collector.ArtifactCollector,
                               self.request)[0]
     return result.knowledge_base

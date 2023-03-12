@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for GRR settings-related views."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -37,7 +33,7 @@ class TestManageBinariesView(gui_test_lib.GRRSeleniumTest,
   """Test the Binaries GUI."""
 
   def setUp(self):
-    super(TestManageBinariesView, self).setUp()
+    super().setUp()
     self.SetUpBinaries()
 
   def testNotAccessibleForNonAdmins(self):

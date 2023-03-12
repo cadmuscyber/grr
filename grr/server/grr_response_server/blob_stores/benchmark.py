@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Benchmark to compare different BlobStore implementations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
 import io
 import time
@@ -12,10 +7,6 @@ import time
 from absl import app
 from absl import flags
 import numpy as np
-
-# pylint: disable=unused-import,g-bad-import-order
-from grr_response_server import server_plugins
-# pylint: enable=unused-import,g-bad-import-order
 
 from grr_response_core.lib import rdfvalue
 from grr_response_server import blob_store

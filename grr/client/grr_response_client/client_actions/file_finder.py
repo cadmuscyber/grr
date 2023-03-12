@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """The file finder client action."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 
@@ -15,6 +11,7 @@ from grr_response_client.client_actions.file_finder_utils import conditions
 from grr_response_client.client_actions.file_finder_utils import globbing
 from grr_response_client.client_actions.file_finder_utils import subactions
 from grr_response_core.lib.rdfvalues import client as rdf_client
+from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.util import filesystem
@@ -28,14 +25,15 @@ class _SkipFileException(Exception):
   pass
 
 
-def FileFinderOSFromClient(args):
+def FileFinderOSFromClient(
+    args: rdf_file_finder.FileFinderArgs) -> Iterator[rdf_client_fs.StatEntry]:
   """This function expands paths from the args and returns related stat entries.
 
   Args:
-    args: An `rdf_file_finder.FileFinderArgs` object.
+    args: A proto message with arguments for the file finder action.
 
   Yields:
-    `rdf_paths.PathSpec` instances.
+    Stat entries corresponding to the found files.
   """
   stat_cache = filesystem.StatCache()
 
@@ -128,7 +126,7 @@ class FileFinderOS(actions.ActionPlugin):
         raise _SkipFileException()
 
   def _ValidateContent(self, stat, filepath, matches):
-    if self._content_conditions and stat.IsDirectory():
+    if self._content_conditions and not stat.IsRegular():
       raise _SkipFileException()
 
     for content_condition in self._content_conditions:

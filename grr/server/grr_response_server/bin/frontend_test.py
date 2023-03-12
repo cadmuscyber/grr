@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Unittest for grr http server."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import hashlib
 import ipaddress
@@ -60,11 +56,11 @@ class GRRHTTPServerTest(test_lib.GRRBaseTest):
     cls.httpd_thread.join()
 
   def setUp(self):
-    super(GRRHTTPServerTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
 
   def tearDown(self):
-    super(GRRHTTPServerTest, self).tearDown()
+    super().tearDown()
 
     # Wait until all pending http requests have been handled.
     for _ in range(100):
@@ -95,7 +91,7 @@ class GRRHTTPServerTest(test_lib.GRRBaseTest):
           action=action,
           process_non_regular_files=True,
           network_bytes_limit=network_bytes_limit,
-          token=self.token)
+          creator=self.test_username)
 
       return session_id
 

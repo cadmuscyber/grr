@@ -3,6 +3,7 @@ syntax = "proto2";
 import "grr_response_proto/artifact.proto";
 import "grr_response_proto/semantic.proto";
 
+package grr;
 
 //
 // Method arguments and results.

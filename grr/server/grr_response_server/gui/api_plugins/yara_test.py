@@ -1,8 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl.testing import absltest
 
@@ -20,7 +16,7 @@ class ApiUploadYaraSignatureHandlerTest(api_test_lib.ApiCallHandlerTest):
     testing_startup.TestInit()
 
   def setUp(self):
-    super(ApiUploadYaraSignatureHandlerTest, self).setUp()
+    super().setUp()
     self.handler = api_yara.ApiUploadYaraSignatureHandler()
 
   def testSignatureIsUploadedToBlobStore(self):
@@ -29,7 +25,7 @@ class ApiUploadYaraSignatureHandlerTest(api_test_lib.ApiCallHandlerTest):
     args = api_yara.ApiUploadYaraSignatureArgs()
     args.signature = signature
 
-    blob_id = self.handler.Handle(args, token=self.token).blob_id
+    blob_id = self.handler.Handle(args, context=self.context).blob_id
     blob = data_store.BLOBS.ReadBlob(blob_id)
 
     self.assertEqual(blob.decode("utf-8"), signature)
@@ -38,7 +34,7 @@ class ApiUploadYaraSignatureHandlerTest(api_test_lib.ApiCallHandlerTest):
     args = api_yara.ApiUploadYaraSignatureArgs()
     args.signature = "rule foo { condition: false };"
 
-    blob_id = self.handler.Handle(args, token=self.token).blob_id
+    blob_id = self.handler.Handle(args, context=self.context).blob_id
 
     self.assertTrue(data_store.REL_DB.VerifyYaraSignatureReference(blob_id))
 

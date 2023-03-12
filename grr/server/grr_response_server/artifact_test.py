@@ -1,19 +1,18 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for artifacts."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import logging
 import os
 import subprocess
+from typing import Collection
+from typing import IO
+from typing import Iterable
+from typing import Iterator
+from unittest import mock
 
 from absl import app
-
-import mock
+from absl.testing import absltest
 
 from grr_response_client import actions
 from grr_response_client.client_actions import searching
@@ -22,7 +21,6 @@ from grr_response_core import config
 from grr_response_core.lib import parser
 from grr_response_core.lib import parsers
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
 from grr_response_core.lib.parsers import linux_file_parser
 from grr_response_core.lib.parsers import wmi_parser
 from grr_response_core.lib.rdfvalues import anomaly as rdf_anomaly
@@ -38,6 +36,7 @@ from grr_response_server import data_store
 from grr_response_server import file_store
 from grr_response_server import server_stubs
 from grr_response_server.databases import db
+from grr_response_server.databases import db_test_utils
 from grr_response_server.flows.general import collectors
 from grr_response_server.flows.general import filesystem
 from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
@@ -48,6 +47,7 @@ from grr.test_lib import client_test_lib
 from grr.test_lib import flow_test_lib
 from grr.test_lib import parser_test_lib
 from grr.test_lib import test_lib
+from grr.test_lib import time
 from grr.test_lib import vfs_test_lib
 
 # pylint: mode=test
@@ -136,12 +136,16 @@ class MultiProvideParser(parser.RegistryValueParser):
     yield rdf_protodict.Dict(test_dict)
 
 
-class RaisingParser(parsers.SingleResponseParser):
+class RaisingParser(parsers.SingleResponseParser[None]):
 
   output_types = [None]
   supported_artifacts = ["RaisingArtifact"]
 
-  def ParseResponse(self, knowledge_base, response):
+  def ParseResponse(
+      self,
+      knowledge_base: rdf_client.KnowledgeBase,
+      response: rdfvalue.RDFValue,
+  ) -> Iterator[None]:
     del knowledge_base, response  # Unused.
     raise parsers.ParseError("It was bound to happen.")
 
@@ -179,7 +183,7 @@ class ArtifactTest(flow_test_lib.FlowTestsBaseclass):
 
   def setUp(self):
     """Make sure things are initialized."""
-    super(ArtifactTest, self).setUp()
+    super().setUp()
     # Common group of mocks used by lots of tests.
     self.client_mock = action_mocks.ActionMock(
         searching.Find,
@@ -220,7 +224,7 @@ class ArtifactTest(flow_test_lib.FlowTestsBaseclass):
         client_mock=client_mock,
         client_id=client_id,
         artifact_list=artifact_list,
-        token=self.token,
+        creator=self.test_username,
         **kw)
 
     return flow_test_lib.GetFlowResults(client_id, session_id)
@@ -385,7 +389,7 @@ class ArtifactFlowLinuxTest(ArtifactTest):
 
   def setUp(self):
     """Make sure things are initialized."""
-    super(ArtifactFlowLinuxTest, self).setUp()
+    super().setUp()
     users = [
         rdf_client.User(username="gogol"),
         rdf_client.User(username="gevulot"),
@@ -402,14 +406,14 @@ class ArtifactFlowLinuxTest(ArtifactTest):
     """Check we can run command based artifacts and get anomalies."""
     client_id = test_lib.TEST_CLIENT_ID
     client_mock = self.MockClient(standard.ExecuteCommand, client_id=client_id)
-    with utils.Stubber(subprocess, "Popen", client_test_lib.Popen):
+    with mock.patch.object(subprocess, "Popen", client_test_lib.Popen):
       session_id = flow_test_lib.TestFlowHelper(
           collectors.ArtifactCollectorFlow.__name__,
           client_mock,
           client_id=client_id,
-          use_tsk=False,
+          use_raw_filesystem_access=False,
           artifact_list=["TestCmdArtifact"],
-          token=self.token)
+          creator=self.test_username)
 
     results = flow_test_lib.GetFlowResults(client_id, session_id)
     self.assertLen(results, 2)
@@ -514,7 +518,7 @@ class ArtifactFlowLinuxTest(ArtifactTest):
           artifact_list=["RaisingArtifact"],
           apply_parsers=True,
           check_flow_errors=True,
-          token=self.token)
+          creator=self.test_username)
 
     results = flow_test_lib.GetFlowResults(client_id=client_id, flow_id=flow_id)
     self.assertEmpty(results)
@@ -533,7 +537,7 @@ class ArtifactFlowWindowsTest(ArtifactTest):
 
   def setUp(self):
     """Make sure things are initialized."""
-    super(ArtifactFlowWindowsTest, self).setUp()
+    super().setUp()
     self.SetupClient(0, system="Windows", os_version="6.2", arch="AMD64")
     self.LoadTestArtifacts()
 
@@ -560,7 +564,7 @@ class GrrKbTest(ArtifactTest):
         artifact.KnowledgeBaseInitializationFlow.__name__,
         self.client_mock,
         client_id=test_lib.TEST_CLIENT_ID,
-        token=self.token,
+        creator=self.test_username,
         **kw)
 
     results = flow_test_lib.GetFlowResults(test_lib.TEST_CLIENT_ID, session_id)
@@ -571,7 +575,7 @@ class GrrKbTest(ArtifactTest):
 class GrrKbWindowsTest(GrrKbTest):
 
   def setUp(self):
-    super(GrrKbWindowsTest, self).setUp()
+    super().setUp()
     self.SetupClient(0, system="Windows", os_version="6.2", arch="AMD64")
 
     os_overrider = vfs_test_lib.VFSOverrider(rdf_paths.PathSpec.PathType.OS,
@@ -634,7 +638,7 @@ class GrrKbWindowsTest(GrrKbTest):
         paths=paths,
         pathtype=rdf_paths.PathSpec.PathType.REGISTRY,
         client_id=client_id,
-        token=self.token)
+        creator=self.test_username)
     path = paths[0].replace("\\", "/")
 
     path_info = data_store.REL_DB.ReadPathInfo(
@@ -690,7 +694,7 @@ class GrrKbWindowsTest(GrrKbTest):
             artifact.KnowledgeBaseInitializationFlow.__name__,
             self.client_mock,
             client_id=test_lib.TEST_CLIENT_ID,
-            token=self.token)
+            creator=self.test_username)
       finally:
         logging.disable(logging.NOTSET)
     return session_id
@@ -712,7 +716,7 @@ class GrrKbWindowsTest(GrrKbTest):
 class GrrKbLinuxTest(GrrKbTest):
 
   def setUp(self):
-    super(GrrKbLinuxTest, self).setUp()
+    super().setUp()
     self.SetupClient(0, system="Linux", os_version="12.04")
 
   @parser_test_lib.WithAllParsers
@@ -724,7 +728,7 @@ class GrrKbLinuxTest(GrrKbTest):
             "LinuxReleaseInfo"
         ],
         "Artifacts.netgroup_filter_regexes": ["^login$"],
-        "Artifacts.netgroup_user_blacklist": ["isaac"]
+        "Artifacts.netgroup_ignore_users": ["isaac"]
     }):
       with vfs_test_lib.FakeTestDataVFSOverrider():
         with test_lib.SuppressLogs():
@@ -797,7 +801,6 @@ class GrrKbLinuxTest(GrrKbTest):
         doc="Foo bar baz.",
         sources=[foo_artifact_source],
         provides=["os"],
-        labels=["System"],
         supported_os=["Linux"])
 
     with artifact_test_lib.PatchCleanArtifactRegistry():
@@ -808,7 +811,7 @@ class GrrKbLinuxTest(GrrKbTest):
             artifact.KnowledgeBaseInitializationFlow.__name__,
             client_mock=action_mocks.ActionMock(FooAction),
             client_id=test_lib.TEST_CLIENT_ID,
-            token=self.token)
+            creator=self.test_username)
 
     results = flow_test_lib.GetFlowResults(test_lib.TEST_CLIENT_ID, session_id)
     self.assertLen(results, 1)
@@ -818,13 +821,14 @@ class GrrKbLinuxTest(GrrKbTest):
 class GrrKbDarwinTest(GrrKbTest):
 
   def setUp(self):
-    super(GrrKbDarwinTest, self).setUp()
+    super().setUp()
     self.SetupClient(0, system="Darwin", os_version="10.9")
 
   @parser_test_lib.WithAllParsers
   def testKnowledgeBaseRetrievalDarwin(self):
     """Check we can retrieve a Darwin kb."""
-    with test_lib.ConfigOverrider({"Artifacts.knowledge_base": ["MacOSUsers"]}):
+    with test_lib.ConfigOverrider(
+        {"Artifacts.knowledge_base": ["UsersDirectory"]}):
       with vfs_test_lib.VFSOverrider(rdf_paths.PathSpec.PathType.OS,
                                      vfs_test_lib.ClientVFSHandlerFixture):
         kb = self._RunKBI()
@@ -835,6 +839,447 @@ class GrrKbDarwinTest(GrrKbTest):
     self.assertCountEqual([x.username for x in kb.users], ["scalzi"])
     user = kb.GetUser(username="scalzi")
     self.assertEqual(user.homedir, "/Users/scalzi")
+
+
+class ParserApplicatorTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.client_id = db_test_utils.InitializeClient(data_store.REL_DB)
+
+  def testApplySingleResponseSuccessful(self):
+
+    class FooParser(parsers.SingleResponseParser):
+
+      supported_artifacts = ["Foo"]
+
+      def ParseResponse(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          response: rdf_client_fs.StatEntry,
+      ) -> Iterable[rdfvalue.RDFString]:
+        return [rdfvalue.RDFString(f"{knowledge_base.os}:{response.st_dev}")]
+
+    with parser_test_lib._ParserContext("Foo", FooParser):
+      factory = parsers.ArtifactParserFactory("Foo")
+      client_id = self.client_id
+      knowledge_base = rdf_client.KnowledgeBase(os="Redox")
+
+      applicator = artifact.ParserApplicator(factory, client_id, knowledge_base)
+      applicator.Apply([rdf_client_fs.StatEntry(st_dev=1337)])
+
+      errors = list(applicator.Errors())
+      self.assertEmpty(errors)
+
+      responses = list(applicator.Responses())
+      self.assertEqual(responses, ["Redox:1337"])
+
+  def testApplySingleResponseError(self):
+
+    class FooParseError(parsers.ParseError):
+      pass
+
+    class FooParser(parsers.SingleResponseParser):
+
+      supported_artifacts = ["Foo"]
+
+      def ParseResponse(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          response: rdf_client_fs.StatEntry,
+      ) -> Iterable[rdfvalue.RDFString]:
+        del knowledge_base, response  # Unused.
+        raise FooParseError("Lorem ipsum.")
+
+    with parser_test_lib._ParserContext("Foo", FooParser):
+      factory = parsers.ArtifactParserFactory("Foo")
+      client_id = self.client_id
+      knowledge_base = rdf_client.KnowledgeBase()
+
+      applicator = artifact.ParserApplicator(factory, client_id, knowledge_base)
+      applicator.Apply([rdf_client_fs.StatEntry()])
+
+      errors = list(applicator.Errors())
+      self.assertLen(errors, 1)
+      self.assertIsInstance(errors[0], FooParseError)
+
+      responses = list(applicator.Responses())
+      self.assertEmpty(responses)
+
+  def testApplyMultiResponseSuccess(self):
+
+    class QuuxParser(parsers.MultiResponseParser[rdfvalue.RDFInteger]):
+
+      supported_artifacts = ["Quux"]
+
+      def ParseResponses(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          responses: Collection[rdf_client_fs.StatEntry],
+      ) -> Iterable[rdfvalue.RDFInteger]:
+        return [stat_entry.st_dev for stat_entry in responses]
+
+    with parser_test_lib._ParserContext("Quux", QuuxParser):
+      factory = parsers.ArtifactParserFactory("Quux")
+      client_id = self.client_id
+      knowledge_base = rdf_client.KnowledgeBase()
+
+      applicator = artifact.ParserApplicator(factory, client_id, knowledge_base)
+      applicator.Apply([
+          rdf_client_fs.StatEntry(st_dev=42),
+          rdf_client_fs.StatEntry(st_dev=1337),
+      ])
+
+      errors = list(applicator.Errors())
+      self.assertEmpty(errors)
+
+      responses = list(applicator.Responses())
+      self.assertCountEqual(responses, [42, 1337])
+
+  def testApplyMultipleParsersError(self):
+
+    class QuuxParseError(parsers.ParseError):
+      pass
+
+    class QuuxParser(parsers.MultiResponseParser[rdfvalue.RDFInteger]):
+
+      supported_artifacts = ["Quux"]
+
+      def ParseResponses(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          responses: Collection[rdf_client_fs.StatEntry],
+      ) -> Iterable[rdfvalue.RDFInteger]:
+        del knowledge_base, responses  # Unused.
+        raise QuuxParseError("Lorem ipsum.")
+
+    with parser_test_lib._ParserContext("Quux", QuuxParser):
+      factory = parsers.ArtifactParserFactory("Quux")
+      client_id = self.client_id
+      knowledge_base = rdf_client.KnowledgeBase()
+
+      applicator = artifact.ParserApplicator(factory, client_id, knowledge_base)
+      applicator.Apply([rdf_client_fs.StatEntry()])
+
+      errors = list(applicator.Errors())
+      self.assertLen(errors, 1)
+      self.assertIsInstance(errors[0], QuuxParseError)
+
+      responses = list(applicator.Responses())
+      self.assertEmpty(responses)
+
+  def testSingleFileResponse(self):
+
+    class NorfParser(parsers.SingleFileParser[rdfvalue.RDFBytes]):
+
+      supported_artifacts = ["Norf"]
+
+      def ParseFile(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          pathspec: rdf_paths.PathSpec,
+          filedesc: file_store.BlobStream,
+      ) -> Iterable[rdfvalue.RDFBytes]:
+        del knowledge_base, pathspec  # Unused.
+        return [rdfvalue.RDFBytes(filedesc.Read())]
+
+    with parser_test_lib._ParserContext("Norf", NorfParser):
+      factory = parsers.ArtifactParserFactory("Norf")
+      client_id = self.client_id
+      knowledge_base = rdf_client.KnowledgeBase()
+
+      stat_entry = rdf_client_fs.StatEntry()
+      stat_entry.pathspec.path = "foo/bar/baz"
+      stat_entry.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+      self._WriteFile(stat_entry.pathspec.path, b"4815162342")
+
+      applicator = artifact.ParserApplicator(factory, client_id, knowledge_base)
+      applicator.Apply([stat_entry])
+
+      errors = list(applicator.Errors())
+      self.assertEmpty(errors)
+
+      responses = list(applicator.Responses())
+      self.assertLen(responses, 1)
+      self.assertEqual(responses[0], b"4815162342")
+
+  def testSingleFileError(self):
+
+    class NorfParseError(parsers.ParseError):
+      pass
+
+    class NorfParser(parsers.SingleFileParser[None]):
+
+      supported_artifacts = ["Norf"]
+
+      def ParseFile(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          pathspec: rdf_paths.PathSpec,
+          filedesc: file_store.BlobStream,
+      ) -> Iterable[rdfvalue.RDFBytes]:
+        del knowledge_base, pathspec, filedesc  # Unused.
+        raise NorfParseError("Lorem ipsum.")
+
+    with parser_test_lib._ParserContext("Norf", NorfParser):
+      factory = parsers.ArtifactParserFactory("Norf")
+      client_id = self.client_id
+      knowledge_base = rdf_client.KnowledgeBase()
+
+      stat_entry = rdf_client_fs.StatEntry()
+      stat_entry.pathspec.path = "foo/bar/baz"
+      stat_entry.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+      self._WriteFile(stat_entry.pathspec.path, b"")
+
+      applicator = artifact.ParserApplicator(factory, client_id, knowledge_base)
+      applicator.Apply([stat_entry])
+
+      errors = list(applicator.Errors())
+      self.assertLen(errors, 1)
+      self.assertIsInstance(errors[0], NorfParseError)
+
+      responses = list(applicator.Responses())
+      self.assertEmpty(responses)
+
+  def testMultiFileSuccess(self):
+
+    class ThudParser(parsers.MultiFileParser[rdf_protodict.Dict]):
+
+      supported_artifacts = ["Thud"]
+
+      def ParseFiles(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          pathspecs: Collection[rdf_paths.PathSpec],
+          filedescs: Collection[file_store.BlobStream],
+      ) -> Iterable[rdf_protodict.Dict]:
+        results = []
+        for pathspec, filedesc in zip(pathspecs, filedescs):
+          result = rdf_protodict.Dict()
+          result["path"] = pathspec.path
+          result["content"] = filedesc.Read()
+          results.append(result)
+        return results
+
+    with parser_test_lib._ParserContext("Thud", ThudParser):
+      factory = parsers.ArtifactParserFactory("Thud")
+      client_id = self.client_id
+      knowledge_base = rdf_client.KnowledgeBase()
+
+      stat_entry_foo = rdf_client_fs.StatEntry()
+      stat_entry_foo.pathspec.path = "quux/foo"
+      stat_entry_foo.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+      self._WriteFile(stat_entry_foo.pathspec.path, b"FOO")
+
+      stat_entry_bar = rdf_client_fs.StatEntry()
+      stat_entry_bar.pathspec.path = "quux/bar"
+      stat_entry_bar.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+      self._WriteFile(stat_entry_bar.pathspec.path, b"BAR")
+
+      applicator = artifact.ParserApplicator(factory, client_id, knowledge_base)
+      applicator.Apply([stat_entry_foo, stat_entry_bar])
+
+      errors = list(applicator.Errors())
+      self.assertEmpty(errors)
+
+      responses = list(applicator.Responses())
+      self.assertLen(responses, 2)
+      self.assertEqual(responses[0], {"path": "quux/foo", "content": b"FOO"})
+      self.assertEqual(responses[1], {"path": "quux/bar", "content": b"BAR"})
+
+  def testMultiFileError(self):
+
+    class ThudParseError(parsers.ParseError):
+      pass
+
+    class ThudParser(parsers.MultiFileParser[rdf_protodict.Dict]):
+
+      supported_artifacts = ["Thud"]
+
+      def ParseFiles(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          pathspecs: Collection[rdf_paths.PathSpec],
+          filedescs: Collection[file_store.BlobStream],
+      ) -> Iterable[rdf_protodict.Dict]:
+        del knowledge_base, pathspecs, filedescs  # Unused.
+        raise ThudParseError("Lorem ipsum.")
+
+    with parser_test_lib._ParserContext("Thud", ThudParser):
+      factory = parsers.ArtifactParserFactory("Thud")
+      client_id = self.client_id
+      knowledge_base = rdf_client.KnowledgeBase()
+
+      stat_entry = rdf_client_fs.StatEntry()
+      stat_entry.pathspec.path = "foo/bar/baz"
+      stat_entry.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+      self._WriteFile(stat_entry.pathspec.path, b"\xff\x00\xff")
+
+      applicator = artifact.ParserApplicator(factory, client_id, knowledge_base)
+      applicator.Apply([stat_entry])
+
+      errors = list(applicator.Errors())
+      self.assertLen(errors, 1)
+      self.assertIsInstance(errors[0], ThudParseError)
+
+      responses = list(applicator.Responses())
+      self.assertEmpty(responses)
+
+  def _WriteFile(self, path: str, data: bytes) -> None:
+    components = tuple(path.split("/"))
+
+    blob_id = data_store.BLOBS.WriteBlobWithUnknownHash(blob_data=data)
+    blob_ref = rdf_objects.BlobReference(
+        offset=0, size=len(data), blob_id=blob_id)
+
+    path_info = rdf_objects.PathInfo.OS(components=components)
+    path_info.hash_entry.sha256 = blob_id.AsBytes()
+    data_store.REL_DB.WritePathInfos(self.client_id, [path_info])
+
+    client_path = db.ClientPath.OS(
+        client_id=self.client_id, components=components)
+
+    file_store.AddFileWithUnknownHash(client_path, [blob_ref])
+
+  def testSingleResponseAndSingleFileParser(self):
+
+    class FooParser(parsers.SingleResponseParser[rdfvalue.RDFString]):
+
+      supported_artifacts = ["Quux"]
+
+      def ParseResponse(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          response: rdfvalue.RDFValue,
+      ) -> Iterator[rdfvalue.RDFString]:
+        del knowledge_base  # Unused.
+
+        if not isinstance(response, rdfvalue.RDFString):
+          raise TypeError(f"Unexpected response type: {type(response)}")
+
+        yield rdfvalue.RDFString(f"FOO-{response}")
+
+    class BarParser(parsers.SingleFileParser[rdfvalue.RDFString]):
+
+      supported_artifacts = ["Quux"]
+
+      def ParseFile(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          pathspec: rdf_paths.PathSpec,
+          filedesc: IO[bytes],
+      ) -> Iterator[rdfvalue.RDFString]:
+        del knowledge_base, pathspec, filedesc  # Unused.
+        yield rdfvalue.RDFString("BAR")
+
+    with parser_test_lib._ParserContext("Foo", FooParser):
+      with parser_test_lib._ParserContext("Bar", BarParser):
+        factory = parsers.ArtifactParserFactory("Quux")
+        knowledge_base = rdf_client.KnowledgeBase()
+
+        applicator = artifact.ParserApplicator(
+            factory, client_id=self.client_id, knowledge_base=knowledge_base)
+
+        applicator.Apply([
+            rdfvalue.RDFString("THUD"),
+            rdfvalue.RDFString("BLARGH"),
+        ])
+
+        responses = list(applicator.Responses())
+        self.assertLen(responses, 2)
+        self.assertEqual(responses[0], rdfvalue.RDFString("FOO-THUD"))
+        self.assertEqual(responses[1], rdfvalue.RDFString("FOO-BLARGH"))
+
+  def testSingleResponseAndSingleFileParserWithStatResponse(self):
+
+    class FooParser(parsers.SingleResponseParser[rdfvalue.RDFString]):
+
+      supported_artifacts = ["Quux"]
+
+      def ParseResponse(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          response: rdfvalue.RDFValue,
+      ) -> Iterator[rdfvalue.RDFString]:
+        del knowledge_base  # Unused.
+
+        if not isinstance(response, rdf_client_fs.StatEntry):
+          raise TypeError(f"Unexpected response type: {type(response)}")
+
+        yield rdfvalue.RDFString(f"PATH('{response.pathspec.path}')")
+
+    class BarParser(parsers.SingleFileParser[rdfvalue.RDFString]):
+
+      supported_artifacts = ["Quux"]
+
+      def ParseFile(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          pathspec: rdf_paths.PathSpec,
+          filedesc: IO[bytes],
+      ) -> Iterator[rdfvalue.RDFString]:
+        raise NotImplementedError()
+
+    with parser_test_lib._ParserContext("Foo", FooParser):
+      with parser_test_lib._ParserContext("Bar", BarParser):
+        factory = parsers.ArtifactParserFactory("Quux")
+        knowledge_base = rdf_client.KnowledgeBase()
+
+        stat_entry = rdf_client_fs.StatEntry()
+        stat_entry.pathspec.path = "foo/bar/baz"
+        stat_entry.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+
+        applicator = artifact.ParserApplicator(
+            factory, client_id=self.client_id, knowledge_base=knowledge_base)
+
+        applicator.Apply([stat_entry])
+
+        responses = list(applicator.Responses())
+        self.assertLen(responses, 1)
+        self.assertEqual(responses[0], "PATH('foo/bar/baz')")
+
+  def testTimestamp(self):
+
+    class BlarghParser(parsers.SingleFileParser[rdfvalue.RDFBytes]):
+
+      supported_artifacts = ["Blargh"]
+
+      def ParseFile(
+          self,
+          knowledge_base: rdf_client.KnowledgeBase,
+          pathspec: rdf_paths.PathSpec,
+          filedesc: file_store.BlobStream,
+      ) -> Iterable[rdfvalue.RDFBytes]:
+        del knowledge_base, pathspec  # Unused.
+        return [rdfvalue.RDFBytes(filedesc.Read())]
+
+    with parser_test_lib._ParserContext("Blargh", BlarghParser):
+      factory = parsers.ArtifactParserFactory("Blargh")
+
+      stat_entry = rdf_client_fs.StatEntry()
+      stat_entry.pathspec.path = "foo/bar/baz"
+      stat_entry.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+
+      self._WriteFile(stat_entry.pathspec.path, b"OLD")
+
+      time.Step()
+      timestamp = rdfvalue.RDFDatetime.Now()
+
+      self._WriteFile(stat_entry.pathspec.path, b"NEW")
+
+      applicator = artifact.ParserApplicator(
+          factory,
+          client_id=self.client_id,
+          knowledge_base=rdf_client.KnowledgeBase(),
+          timestamp=timestamp)
+      applicator.Apply([stat_entry])
+
+      errors = list(applicator.Errors())
+      self.assertEmpty(errors)
+
+      responses = list(applicator.Responses())
+      self.assertLen(responses, 1)
+      self.assertEqual(responses[0], b"OLD")
 
 
 def main(argv):

@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for the FileFinder flow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import glob
 import hashlib
@@ -12,22 +7,24 @@ import io
 import os
 import stat
 import struct
+from typing import List, Optional, Sequence, Any
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_client import vfs
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr_response_core.lib.util import compatibility
+from grr_response_core.lib.rdfvalues import structs as rdf_structs
 from grr_response_core.lib.util import temp
+from grr_response_proto import flows_pb2
 from grr_response_server import data_store
 from grr_response_server import file_store
 from grr_response_server.databases import db
+from grr_response_server.databases import db_test_utils
 from grr_response_server.flows.general import file_finder
 from grr_response_server.rdfvalues import objects as rdf_objects
 from grr.test_lib import action_mocks
@@ -128,7 +125,7 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
                 self.client_id,
                 rdf_objects.PathInfo.PathType.OS,
                 components=self.FilenameToPathComponents(fname)))
-        self.Fail("Found downloaded file: %s" % fname)
+        self.fail("Found downloaded file: %s" % fname)
       except file_store.FileHasNoContentError:
         pass
 
@@ -178,16 +175,23 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
 
     self.assertEqual(reply_count, len(expected_files))
 
-  def RunFlow(self, paths=None, conditions=None, action=None):
+  def RunFlow(
+      self,
+      paths: Optional[List[str]] = None,
+      conditions: Optional[List[rdf_file_finder.FileFinderCondition]] = None,
+      action: Optional[rdf_file_finder.FileFinderAction] = None,
+      implementation_type: Optional[rdf_structs.EnumNamedValue] = None
+  ) -> Sequence[Any]:
     self.last_session_id = flow_test_lib.TestFlowHelper(
         file_finder.FileFinder.__name__,
         self.client_mock,
         client_id=self.client_id,
         paths=paths or [self.path],
         pathtype=rdf_paths.PathSpec.PathType.OS,
+        implementation_type=implementation_type,
         action=action,
         conditions=conditions,
-        token=self.token)
+        creator=self.test_username)
     return flow_test_lib.GetFlowResults(self.client_id, self.last_session_id)
 
   def RunFlowAndCheckResults(
@@ -226,7 +230,7 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
     return results
 
   def setUp(self):
-    super(TestFileFinderFlow, self).setUp()
+    super().setUp()
     self.client_mock = action_mocks.FileFinderClientMockWithTimestamps()
     self.fixture_path = os.path.join(self.base_path, "searching")
     self.path = os.path.join(self.fixture_path, "*.log")
@@ -341,6 +345,23 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
 
   CONDITION_TESTS_ACTIONS = sorted(
       set(rdf_file_finder.FileFinderAction.Action.enum_dict.values()))
+
+  def testLiteralMatchConditionWithEmptyLiteral(self):
+    match = rdf_file_finder.FileFinderContentsLiteralMatchCondition(
+        mode=rdf_file_finder.FileFinderContentsLiteralMatchCondition.Mode
+        .ALL_HITS,
+        bytes_before=10,
+        bytes_after=10)  # No `literal=` provided.
+    literal_condition = rdf_file_finder.FileFinderCondition(
+        condition_type=rdf_file_finder.FileFinderCondition.Type
+        .CONTENTS_LITERAL_MATCH,
+        contents_literal_match=match)
+
+    for action in self.CONDITION_TESTS_ACTIONS:
+      # Flow arguments validation should fail with an empty literal.
+      with self.assertRaises(ValueError):
+        self.RunFlowAndCheckResults(
+            action=action, conditions=[literal_condition])
 
   def testLiteralMatchConditionWithDifferentActions(self):
     expected_files = ["auth.log"]
@@ -726,7 +747,7 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
 
   def _RunTSKFileFinder(self, paths):
     image_path = os.path.join(self.base_path, "ntfs_img.dd")
-    with utils.Stubber(
+    with mock.patch.object(
         vfs, "_VFS_VIRTUALROOTS", {
             rdf_paths.PathSpec.PathType.TSK:
                 rdf_paths.PathSpec(
@@ -742,7 +763,7 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
             paths=paths,
             pathtype=rdf_paths.PathSpec.PathType.TSK,
             action=rdf_file_finder.FileFinderAction(action_type=action),
-            token=self.token)
+            creator=self.test_username)
 
   def _ListTestChildPathInfos(self,
                               path_components,
@@ -815,7 +836,7 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
         client_id=self.client_id,
         paths=[],
         pathtype=rdf_paths.PathSpec.PathType.OS,
-        token=self.token)
+        creator=self.test_username)
 
   def testUseExternalStores(self):
     with temp.AutoTempDirPath(remove_non_empty=True) as tempdir:
@@ -831,14 +852,14 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
 
       with mock.patch.object(file_store.EXTERNAL_FILE_STORE, "AddFiles") as efs:
         flow_id = flow_test_lib.TestFlowHelper(
-            compatibility.GetName(file_finder.FileFinder),
+            file_finder.FileFinder.__name__,
             self.client_mock,
             client_id=self.client_id,
             paths=paths,
             pathtype=rdf_paths.PathSpec.PathType.OS,
             action=action,
             process_non_regular_files=True,
-            token=self.token)
+            creator=self.test_username)
 
       results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
 
@@ -855,14 +876,14 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
 
       with mock.patch.object(file_store.EXTERNAL_FILE_STORE, "AddFiles") as efs:
         flow_id = flow_test_lib.TestFlowHelper(
-            compatibility.GetName(file_finder.FileFinder),
+            file_finder.FileFinder.__name__,
             self.client_mock,
             client_id=self.client_id,
             paths=paths,
             pathtype=rdf_paths.PathSpec.PathType.OS,
             action=action,
             process_non_regular_files=True,
-            token=self.token)
+            creator=self.test_username)
 
       results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
       self.assertLen(results, 1)
@@ -911,15 +932,84 @@ class TestFileFinderFlow(vfs_test_lib.VfsTestCase,
       self.assertEqual(results[0].stat_entry.st_ino,
                        results[1].stat_entry.st_ino)
 
+  def testLinksAndContent(self):
+    with temp.AutoTempDirPath(remove_non_empty=True) as tempdir:
+      # This sets up a structure as follows:
+      # <dir>  tempdir/dir
+      # <file> tempdir/foo
+      # <lnk>  tempdir/foo_lnk
+      # <lnk>  tempdir/dir_lnk
+
+      # foo_lnk is a symbolic link to foo (a file).
+      # dir_lnk is a symbolic link to dir (a directory).
+
+      path = os.path.join(tempdir, "foo")
+      with io.open(path, "w") as fd:
+        fd.write("some content")
+
+      dir_path = os.path.join(tempdir, "dir")
+      os.mkdir(dir_path)
+
+      lnk_path = os.path.join(tempdir, "foo_lnk")
+      os.symlink(path, lnk_path)
+
+      dir_lnk_path = os.path.join(tempdir, "dir_lnk")
+      os.symlink(dir_path, dir_lnk_path)
+
+      path_glob = os.path.join(tempdir, "**3")
+      condition = rdf_file_finder.FileFinderCondition.ContentsLiteralMatch(
+          literal=b"some")
+      results = self.RunFlow(
+          action=rdf_file_finder.FileFinderAction.Stat(resolve_links=False),
+          conditions=[condition],
+          paths=[path_glob])
+
+      self.assertLen(results, 2)
+
+      results = self.RunFlow(
+          action=rdf_file_finder.FileFinderAction.Stat(resolve_links=True),
+          conditions=[condition],
+          paths=[path_glob])
+
+      self.assertLen(results, 2)
+
+
+class TestFileFinderFlowWithImplementationType(TestFileFinderFlow):
+
+  def RunFlow(
+      self,
+      paths: Optional[List[str]] = None,
+      conditions: Optional[List[rdf_file_finder.FileFinderCondition]] = None,
+      action: Optional[rdf_file_finder.FileFinderAction] = None,
+      implementation_type: Optional[rdf_structs.EnumNamedValue] = None
+  ) -> Sequence[Any]:
+
+    results = super().RunFlow(
+        paths=paths,
+        conditions=conditions,
+        action=action,
+        implementation_type=rdf_paths.PathSpec.ImplementationType.DIRECT)
+
+    for result in results:
+      if result.HasField("stat_entry"):
+        self.assertEqual(result.stat_entry.pathspec.implementation_type,
+                         rdf_paths.PathSpec.ImplementationType.DIRECT)
+      for match in result.matches:
+        if match.HasField("pathspec"):
+          self.assertEqual(match.pathspec.implementation_type,
+                           rdf_paths.PathSpec.ImplementationType.DIRECT)
+
+    return results
+
 
 class TestClientFileFinderFlow(flow_test_lib.FlowTestsBaseclass):
   """Test the ClientFileFinder flow."""
 
   def setUp(self):
-    super(TestClientFileFinderFlow, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
 
-  def _RunCFF(self, paths, action):
+  def _RunCFF(self, paths, action, conditions=None):
     flow_id = flow_test_lib.TestFlowHelper(
         file_finder.ClientFileFinder.__name__,
         action_mocks.ClientFileFinderClientMock(),
@@ -927,8 +1017,9 @@ class TestClientFileFinderFlow(flow_test_lib.FlowTestsBaseclass):
         paths=paths,
         pathtype=rdf_paths.PathSpec.PathType.OS,
         action=rdf_file_finder.FileFinderAction(action_type=action),
+        conditions=conditions,
         process_non_regular_files=True,
-        token=self.token)
+        creator=self.test_username)
 
     results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
     return results, flow_id
@@ -958,14 +1049,14 @@ class TestClientFileFinderFlow(flow_test_lib.FlowTestsBaseclass):
 
     with mock.patch.object(file_store.EXTERNAL_FILE_STORE, "AddFiles") as efs:
       flow_id = flow_test_lib.TestFlowHelper(
-          compatibility.GetName(file_finder.ClientFileFinder),
+          file_finder.ClientFileFinder.__name__,
           action_mocks.ClientFileFinderClientMock(),
           client_id=self.client_id,
           paths=paths,
           pathtype=rdf_paths.PathSpec.PathType.OS,
           action=action,
           process_non_regular_files=True,
-          token=self.token)
+          creator=self.test_username)
 
     results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
     self.assertLen(results, 1)
@@ -976,14 +1067,14 @@ class TestClientFileFinderFlow(flow_test_lib.FlowTestsBaseclass):
 
     with mock.patch.object(file_store.EXTERNAL_FILE_STORE, "AddFiles") as efs:
       flow_id = flow_test_lib.TestFlowHelper(
-          compatibility.GetName(file_finder.ClientFileFinder),
+          file_finder.ClientFileFinder.__name__,
           action_mocks.ClientFileFinderClientMock(),
           client_id=self.client_id,
           paths=paths,
           pathtype=rdf_paths.PathSpec.PathType.OS,
           action=action,
           process_non_regular_files=True,
-          token=self.token)
+          creator=self.test_username)
 
     results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
     self.assertLen(results, 1)
@@ -1015,7 +1106,7 @@ class TestClientFileFinderFlow(flow_test_lib.FlowTestsBaseclass):
         pathtype=rdf_paths.PathSpec.PathType.OS,
         action=action,
         process_non_regular_files=True,
-        token=self.token)
+        creator=self.test_username)
 
     results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
 
@@ -1036,7 +1127,7 @@ class TestClientFileFinderFlow(flow_test_lib.FlowTestsBaseclass):
         pathtype=rdf_paths.PathSpec.PathType.OS,
         action=action,
         process_non_regular_files=True,
-        token=self.token)
+        creator=self.test_username)
 
     results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
 
@@ -1162,6 +1253,120 @@ class TestClientFileFinderFlow(flow_test_lib.FlowTestsBaseclass):
 
     with io.open(filepath, "wb"):
       pass
+
+  def testLinksAndContent(self):
+    with temp.AutoTempDirPath(remove_non_empty=True) as tempdir:
+      # This sets up a structure as follows:
+      # <dir>  tempdir/dir
+      # <file> tempdir/foo
+      # <lnk>  tempdir/foo_lnk
+      # <lnk>  tempdir/dir_lnk
+
+      # foo_lnk is a symbolic link to foo (a file).
+      # dir_lnk is a symbolic link to dir (a directory).
+
+      path = os.path.join(tempdir, "foo")
+      with io.open(path, "w") as fd:
+        fd.write("some content")
+
+      dir_path = os.path.join(tempdir, "dir")
+      os.mkdir(dir_path)
+
+      lnk_path = os.path.join(tempdir, "foo_lnk")
+      os.symlink(path, lnk_path)
+
+      dir_lnk_path = os.path.join(tempdir, "dir_lnk")
+      os.symlink(dir_path, dir_lnk_path)
+
+      path_glob = os.path.join(tempdir, "**3")
+      action = rdf_file_finder.FileFinderAction.Action.STAT
+      condition = rdf_file_finder.FileFinderCondition.ContentsLiteralMatch(
+          literal=b"some")
+
+      results, _ = self._RunCFF([path_glob], action, conditions=[condition])
+
+      self.assertLen(results, 1)
+      self.assertEqual(results[0].stat_entry.pathspec.path, path)
+
+  def testInterpolationMissingAttributes(self):
+    creator = db_test_utils.InitializeUser(data_store.REL_DB)
+    client_id = db_test_utils.InitializeClient(data_store.REL_DB)
+
+    # We need to write some dummy snapshot to ensure the knowledgebase is there.
+    snapshot = rdf_objects.ClientSnapshot()
+    snapshot.client_id = client_id
+    snapshot.knowledge_base.fqdn = "foobar.example.com"
+    data_store.REL_DB.WriteClientSnapshot(snapshot)
+
+    flow_args = rdf_file_finder.FileFinderArgs()
+    flow_args.action = rdf_file_finder.FileFinderAction.Stat()
+    flow_args.paths = ["%%environ_path%%", "%%environ_temp%%"]
+
+    flow_id = flow_test_lib.StartFlow(
+        file_finder.ClientFileFinder,
+        creator=creator,
+        client_id=client_id,
+        flow_args=flow_args)
+
+    flow_obj = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+    self.assertEqual(flow_obj.flow_state, flows_pb2.Flow.ERROR)
+    self.assertIn("Missing knowledgebase attributes", flow_obj.error_message)
+
+    log_entries = data_store.REL_DB.ReadFlowLogEntries(
+        client_id=client_id, flow_id=flow_id, offset=0, count=1024)
+    self.assertLen(log_entries, 2)
+    self.assertIn("environ_path", log_entries[0].message)
+    self.assertIn("environ_temp", log_entries[1].message)
+
+  def testInterpolationUnknownAttributes(self):
+    creator = db_test_utils.InitializeUser(data_store.REL_DB)
+    client_id = db_test_utils.InitializeClient(data_store.REL_DB)
+
+    # We need to write some dummy snapshot to ensure the knowledgebase is there.
+    snapshot = rdf_objects.ClientSnapshot()
+    snapshot.client_id = client_id
+    snapshot.knowledge_base.fqdn = "foobar.example.com"
+    data_store.REL_DB.WriteClientSnapshot(snapshot)
+
+    flow_args = rdf_file_finder.FileFinderArgs()
+    flow_args.action = rdf_file_finder.FileFinderAction.Stat()
+    flow_args.paths = ["%%foo%%", "%%bar%%"]
+
+    flow_id = flow_test_lib.StartFlow(
+        file_finder.ClientFileFinder,
+        creator=creator,
+        client_id=client_id,
+        flow_args=flow_args)
+
+    flow_obj = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+    self.assertEqual(flow_obj.flow_state, flows_pb2.Flow.ERROR)
+    self.assertIn("Unknown knowledgebase attributes", flow_obj.error_message)
+
+    log_entries = data_store.REL_DB.ReadFlowLogEntries(
+        client_id=client_id, flow_id=flow_id, offset=0, count=1024)
+    self.assertLen(log_entries, 2)
+    self.assertIn("foo", log_entries[0].message)
+    self.assertIn("bar", log_entries[1].message)
+
+  def testInterpolationNoKnowledgebase(self):
+    creator = db_test_utils.InitializeUser(data_store.REL_DB)
+    client_id = db_test_utils.InitializeClient(data_store.REL_DB)
+
+    # We do not write any snapshot not to have any knowledgebase for the client.
+
+    flow_args = rdf_file_finder.FileFinderArgs()
+    flow_args.action = rdf_file_finder.FileFinderAction.Stat()
+    flow_args.paths = ["%%os%%"]
+
+    flow_id = flow_test_lib.StartFlow(
+        file_finder.ClientFileFinder,
+        creator=creator,
+        client_id=client_id,
+        flow_args=flow_args)
+
+    flow_obj = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+    self.assertEqual(flow_obj.flow_state, flows_pb2.Flow.ERROR)
+    self.assertIn("No knowledgebase available", flow_obj.error_message)
 
 
 def main(argv):

@@ -1,15 +1,12 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Simple parsers for registry keys and values."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 import os
 import re
-
+from typing import Iterable
+from typing import Iterator
 
 from grr_response_core.lib import artifact_utils
 from grr_response_core.lib import parser
@@ -250,7 +247,8 @@ class WinUserSpecialDirs(parser.RegistryMultiParser):
     return user_dict.values()
 
 
-class WinServicesParser(parsers.MultiResponseParser):
+class WinServicesParser(
+    parsers.MultiResponseParser[rdf_client.WindowsServiceInformation]):
   """Parser for Windows services values from the registry.
 
   See service key doco:
@@ -276,7 +274,11 @@ class WinServicesParser(parsers.MultiResponseParser):
       return None
     return key_name.lower()
 
-  def ParseResponses(self, knowledge_base, responses):
+  def ParseResponses(
+      self,
+      knowledge_base: rdf_client.KnowledgeBase,
+      responses: Iterable[rdfvalue.RDFValue],
+  ) -> Iterator[rdf_client.WindowsServiceInformation]:
     """Parse Service registry keys and return WindowsServiceInformation."""
     del knowledge_base  # Unused.
     precondition.AssertIterableType(responses, rdf_client_fs.StatEntry)
@@ -295,9 +297,9 @@ class WinServicesParser(parsers.MultiResponseParser):
         "Parameters/ServiceDLL": "service_dll"
     }
 
-    # Field map key should be converted to lowercase because key aquired through
-    # self._GetKeyName could have some  characters in different case than the
-    # field map, e.g. ServiceDLL and ServiceDll.
+    # Field map key should be converted to lowercase because key acquired
+    # through self._GetKeyName could have some  characters in different
+    # case than the field map, e.g. ServiceDLL and ServiceDll.
     field_map = {k.lower(): v for k, v in field_map.items()}
     for stat in responses:
 
@@ -547,3 +549,36 @@ ZONE_LIST = {
     "Central Standard Time": "CST6CDT",
     "Pacific Standard Time": "PST8PDT",
 }
+
+
+class WindowsRegistryInstalledSoftwareParser(parser.RegistryMultiParser):
+  """Parser registry uninstall keys yields rdf_client.SoftwarePackages."""
+  output_types = [rdf_client.SoftwarePackages]
+  supported_artifacts = ["WindowsUninstallKeys"]
+
+  def ParseMultiple(self, stats, kb):
+    del kb  # unused
+
+    apps = {}
+    for stat in stats:
+      matches = re.search(r"/CurrentVersion/Uninstall/([^/]+)/([^$]+)",
+                          stat.pathspec.path)
+      if not matches:
+        continue
+      app_name, key = matches.groups()
+      apps.setdefault(app_name, {})[key] = stat.registry_data.GetValue()
+
+    packages = []
+    for key, app in apps.items():
+      if "DisplayName" not in app:
+        continue
+      packages.append(
+          rdf_client.SoftwarePackage.Installed(
+              name=app.get("DisplayName"),
+              description=app.get("Publisher", ""),
+              version=app.get("DisplayVersion", "")))
+
+    if packages:
+      return [rdf_client.SoftwarePackages(packages=packages)]
+
+    return []

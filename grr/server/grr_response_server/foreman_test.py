@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for the GRR Foreman."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from unittest import mock
 
 from absl import app
 
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
 from grr_response_server import data_store
 from grr_response_server import foreman
 from grr_response_server import foreman_rules
@@ -25,14 +21,41 @@ class ForemanTests(test_lib.GRRBaseTest):
     # Keep a record of all the clients
     self.clients_started.append((hunt_id, client_id))
 
+  def testAssigningTasksToClientDoesNotEraseFleetspeakValidationInfo(self):
+    client_id = self.SetupClient(0)
+    data_store.REL_DB.WriteClientMetadata(
+        client_id, fleetspeak_validation_info={
+            "foo": "bar",
+            "12": "34"
+        })
+
+    # Setup the rules so that AssignTasksToClient have to apply them
+    # and update the foreman check timestamp (otherwise it will exit
+    # doing nothing).
+    now = rdfvalue.RDFDatetime.Now()
+    expiration_time = now + rdfvalue.Duration.From(1, rdfvalue.HOURS)
+    # Make a new rule
+    rule = foreman_rules.ForemanCondition(
+        creation_time=now,
+        expiration_time=expiration_time,
+        description="Test rule",
+        hunt_id="11111111")
+    data_store.REL_DB.WriteForemanRule(rule)
+
+    foreman_obj = foreman.Foreman()
+    foreman_obj.AssignTasksToClient(client_id)
+
+    client_metadata = data_store.REL_DB.ReadClientMetadata(client_id)
+    self.assertTrue(client_metadata.HasField("last_fleetspeak_validation_info"))
+
   def testOperatingSystemSelection(self):
     """Tests that we can distinguish based on operating system."""
     self.SetupClient(1, system="Windows XP")
     self.SetupClient(2, system="Linux")
     self.SetupClient(3, system="Windows 7")
 
-    with utils.Stubber(hunt, "StartHuntFlowOnClient",
-                       self.StartHuntFlowOnClient):
+    with mock.patch.object(hunt, "StartHuntFlowOnClient",
+                           self.StartHuntFlowOnClient):
       # Now setup the filters
       now = rdfvalue.RDFDatetime.Now()
       expiration_time = now + rdfvalue.Duration.From(1, rdfvalue.HOURS)
@@ -42,7 +65,7 @@ class ForemanTests(test_lib.GRRBaseTest):
           creation_time=now,
           expiration_time=expiration_time,
           description="Test rule",
-          hunt_id="111111")
+          hunt_id="11111111")
 
       # Matches Windows boxes
       rule.client_rule_set = foreman_rules.ForemanClientRuleSet(rules=[
@@ -86,8 +109,8 @@ class ForemanTests(test_lib.GRRBaseTest):
     self.SetupClient(0x13, system="Windows 7", install_time=one_week_ago)
     self.SetupClient(0x14, system="Windows 7", last_boot_time=boot_time)
 
-    with utils.Stubber(hunt, "StartHuntFlowOnClient",
-                       self.StartHuntFlowOnClient):
+    with mock.patch.object(hunt, "StartHuntFlowOnClient",
+                           self.StartHuntFlowOnClient):
       now = rdfvalue.RDFDatetime.Now()
       expiration_time = now + rdfvalue.Duration.From(1, rdfvalue.HOURS)
 
@@ -96,7 +119,7 @@ class ForemanTests(test_lib.GRRBaseTest):
           creation_time=now,
           expiration_time=expiration_time,
           description="Test rule(old)",
-          hunt_id="111111")
+          hunt_id="11111111")
 
       # Matches the old client
       one_hour_ago = base_time - rdfvalue.Duration.From(1, rdfvalue.HOURS)
@@ -117,7 +140,7 @@ class ForemanTests(test_lib.GRRBaseTest):
           creation_time=now,
           expiration_time=expiration_time,
           description="Test rule(new)",
-          hunt_id="222222")
+          hunt_id="22222222")
 
       # Matches the newer clients
       rule.client_rule_set = foreman_rules.ForemanClientRuleSet(rules=[
@@ -137,7 +160,7 @@ class ForemanTests(test_lib.GRRBaseTest):
           creation_time=now,
           expiration_time=expiration_time,
           description="Test rule(eq)",
-          hunt_id="333333")
+          hunt_id="33333333")
 
       # Note that this also tests the handling of nonexistent attributes.
       rule.client_rule_set = foreman_rules.ForemanClientRuleSet(rules=[
@@ -162,13 +185,13 @@ class ForemanTests(test_lib.GRRBaseTest):
       # Make sure that the clients ran the correct flows.
       self.assertLen(self.clients_started, 4)
       self.assertEqual(self.clients_started[0][1], u"C.1000000000000011")
-      self.assertEqual("222222", self.clients_started[0][0])
+      self.assertEqual("22222222", self.clients_started[0][0])
       self.assertEqual(self.clients_started[1][1], u"C.1000000000000012")
-      self.assertEqual("222222", self.clients_started[1][0])
+      self.assertEqual("22222222", self.clients_started[1][0])
       self.assertEqual(self.clients_started[2][1], u"C.1000000000000013")
-      self.assertEqual("111111", self.clients_started[2][0])
+      self.assertEqual("11111111", self.clients_started[2][0])
       self.assertEqual(self.clients_started[3][1], u"C.1000000000000014")
-      self.assertEqual("333333", self.clients_started[3][0])
+      self.assertEqual("33333333", self.clients_started[3][0])
 
   def testRuleExpiration(self):
     with test_lib.FakeTime(1000):
@@ -180,25 +203,25 @@ class ForemanTests(test_lib.GRRBaseTest):
               creation_time=rdfvalue.RDFDatetime.FromSecondsSinceEpoch(1000),
               expiration_time=rdfvalue.RDFDatetime.FromSecondsSinceEpoch(1500),
               description="Test rule1",
-              hunt_id="111111"))
+              hunt_id="11111111"))
       rules.append(
           foreman_rules.ForemanCondition(
               creation_time=rdfvalue.RDFDatetime.FromSecondsSinceEpoch(1000),
               expiration_time=rdfvalue.RDFDatetime.FromSecondsSinceEpoch(1200),
               description="Test rule2",
-              hunt_id="222222"))
+              hunt_id="22222222"))
       rules.append(
           foreman_rules.ForemanCondition(
               creation_time=rdfvalue.RDFDatetime.FromSecondsSinceEpoch(1000),
               expiration_time=rdfvalue.RDFDatetime.FromSecondsSinceEpoch(1500),
               description="Test rule3",
-              hunt_id="333333"))
+              hunt_id="33333333"))
       rules.append(
           foreman_rules.ForemanCondition(
               creation_time=rdfvalue.RDFDatetime.FromSecondsSinceEpoch(1000),
               expiration_time=rdfvalue.RDFDatetime.FromSecondsSinceEpoch(1300),
               description="Test rule4",
-              hunt_id="444444"))
+              hunt_id="44444444"))
 
       client_id = self.SetupClient(0x21)
 

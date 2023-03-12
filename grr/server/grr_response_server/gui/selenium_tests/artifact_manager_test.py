@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test the artifact rendering interface."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import os
@@ -22,7 +17,7 @@ class TestArtifactManagementRender(gui_test_lib.GRRSeleniumTest):
   """Test the Cron view GUI."""
 
   def setUp(self):
-    super(TestArtifactManagementRender, self).setUp()
+    super().setUp()
 
     self.json_file = os.path.realpath(
         os.path.join(config.CONFIG["Test.data_dir"], "artifacts",

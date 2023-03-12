@@ -1,24 +1,21 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test client actions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import collections
+import contextlib
 import os
 import platform
 import stat
 import unittest
+from unittest import mock
 
 from absl import app
-import mock
 import psutil
 
 from grr_response_client import actions
 from grr_response_client import client_utils
 from grr_response_client.client_actions import standard
+from grr_response_client.unprivileged import communication
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
@@ -90,7 +87,7 @@ class ActionTest(client_test_lib.EmptyActionTest):
     def ProcessIter():
       return iter([client_test_lib.MockWindowsProcess()])
 
-    with utils.Stubber(psutil, "process_iter", ProcessIter):
+    with mock.patch.object(psutil, "process_iter", ProcessIter):
       results = self.RunAction(standard.ListProcesses, None)
 
       self.assertLen(results, 1)
@@ -161,47 +158,84 @@ class ActionTest(client_test_lib.EmptyActionTest):
     self.assertEqual(action.SendReply.call_count, 1)
     self.assertEqual(action.SendReply.call_args[0][0].status, "OK")
 
+  def testCPUAccounting(self):
+    with contextlib.ExitStack() as stack:
+      server_cpu_time = 1.0
+      server_sys_time = 1.1
+      stack.enter_context(
+          mock.patch.object(communication, "TotalServerCpuTime",
+                            lambda: server_cpu_time))
+      stack.enter_context(
+          mock.patch.object(communication, "TotalServerSysTime",
+                            lambda: server_sys_time))
+
+      process_cpu_time = 1.2
+      process_sys_time = 1.3
+
+      class FakeProcess(object):
+
+        def __init__(self, pid=None):
+          pass
+
+        def cpu_times(self):  # pylint: disable=invalid-name
+          return collections.namedtuple("pcputimes",
+                                        ["user", "system"])(process_cpu_time,
+                                                            process_sys_time)
+
+      stack.enter_context(mock.patch.object(psutil, "Process", FakeProcess))
+
+      class _ProgressAction(ProgressAction):
+
+        def Run(self, *args):
+          super().Run(*args)
+          nonlocal server_cpu_time, server_sys_time
+          server_cpu_time = 42.0
+          server_sys_time = 43.0
+          nonlocal process_cpu_time, process_sys_time
+          process_cpu_time = 10.0
+          process_sys_time = 11.0
+
+      message = rdf_flows.GrrMessage(name="ProgressAction", runtime_limit_us=0)
+      worker = mock.MagicMock()
+      action = _ProgressAction(worker)
+      action.SendReply = mock.MagicMock()
+      action.Execute(message)
+      self.assertEqual(action.SendReply.call_count, 1)
+      self.assertAlmostEqual(
+          action.SendReply.call_args[0][0].cpu_time_used.user_cpu_time,
+          42.0 - 1.0 + 10.0 - 1.2)
+      self.assertAlmostEqual(
+          action.SendReply.call_args[0][0].cpu_time_used.system_cpu_time,
+          43.0 - 1.1 + 11.0 - 1.3)
+
   def testCPULimit(self):
-    received_messages = []
-
-    class MockWorker(object):
-
-      def Heartbeat(self):
-        pass
-
-      def SendClientAlert(self, msg):
-        received_messages.append(msg)
 
     class FakeProcess(object):
 
-      times = [(1, 0), (2, 0), (3, 0), (10000, 0), (10001, 0)]
-
-      def __init__(self, unused_pid=None):
+      def __init__(self, pid=None):
+        del pid  # unused
+        self.times = [(1, 0), (2, 0), (3, 0), (10000, 0), (10001, 0)]
         self.pcputimes = collections.namedtuple("pcputimes", ["user", "system"])
 
       def cpu_times(self):  # pylint: disable=g-bad-name
         return self.pcputimes(*self.times.pop(0))
 
-    results = []
-
-    def MockSendReply(unused_self, reply=None, **kwargs):
-      results.append(reply or rdf_client.LogMessage(**kwargs))
-
-    message = rdf_flows.GrrMessage(name="ProgressAction", cpu_limit=3600)
-
-    action_cls = ProgressAction
-    with utils.MultiStubber((psutil, "Process", FakeProcess),
-                            (action_cls, "SendReply", MockSendReply)):
-
-      action = action_cls(grr_worker=MockWorker())
+    with mock.patch.object(psutil, "Process", FakeProcess):
+      worker = mock.MagicMock()
+      action = ProgressAction(grr_worker=worker)
+      message = rdf_flows.GrrMessage(name="ProgressAction", cpu_limit=3600)
       action.Execute(message)
 
-      self.assertIn("Action exceeded cpu limit.", results[0].error_message)
-      self.assertIn("CPUExceededError", results[0].error_message)
-      self.assertEqual("CPU_LIMIT_EXCEEDED", results[0].status)
+      self.assertEqual(worker.SendReply.call_count, 1)
+      reply = worker.SendReply.call_args[0][0]
 
-      self.assertLen(received_messages, 1)
-      self.assertEqual(received_messages[0], "Cpu limit exceeded.")
+      self.assertIn("Action exceeded cpu limit.", reply.error_message)
+      self.assertIn("CPUExceededError", reply.error_message)
+      self.assertEqual("CPU_LIMIT_EXCEEDED", reply.status)
+
+      self.assertEqual(worker.SendClientAlert.call_count, 1)
+      self.assertEqual(worker.SendClientAlert.call_args[0][0],
+                       "Cpu limit exceeded.")
 
   @unittest.skipIf(platform.system() == "Windows",
                    "os.statvfs is not available on Windows")

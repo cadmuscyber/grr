@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test client vfs."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import functools
 import os
@@ -156,7 +151,7 @@ class FindTest(client_test_lib.EmptyActionTest):
   """Test the find client Actions."""
 
   def setUp(self):
-    super(FindTest, self).setUp()
+    super().setUp()
 
     # Install the mock
     vfs_overrider = vfs_test_lib.VFSOverrider(rdf_paths.PathSpec.PathType.OS,
@@ -439,7 +434,7 @@ class GrepTest(vfs_test_lib.VfsTestCase, client_test_lib.EmptyActionTest):
   XOR_OUT_KEY = 0
 
   def setUp(self):
-    super(GrepTest, self).setUp()
+    super().setUp()
 
     # Install the mock
     vfs_overrider = vfs_test_lib.VFSOverrider(rdf_paths.PathSpec.PathType.OS,

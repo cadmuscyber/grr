@@ -1,11 +1,7 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for grr.parsers.osx_launchd."""
 
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -19,7 +15,7 @@ from grr.test_lib import test_lib
 class OSXLaunchdJobDictTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super(OSXLaunchdJobDictTest, self).setUp()
+    super().setUp()
     self.jobdict = osx_launchd_testdata.JOBS
     self.parser = osx_launchd.OSXLaunchdJobDict(self.jobdict)
 
@@ -47,7 +43,7 @@ class DarwinPersistenceMechanismsParserTest(flow_test_lib.FlowTestsBaseclass):
     parser = osx_launchd.DarwinPersistenceMechanismsParser()
     serv_info = rdf_client.OSXServiceInformation(
         label="blah", args=["/blah/test", "-v"])
-    results = list(parser.Parse(serv_info, None))
+    results = list(parser.ParseResponse(rdf_client.KnowledgeBase(), serv_info))
     self.assertEqual(results[0].pathspec.path, "/blah/test")
 
 

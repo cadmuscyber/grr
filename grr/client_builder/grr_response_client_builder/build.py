@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Classes for handling build and repackaging of clients.
 
 This handles invocations for the build across the supported platforms including
 handling Visual Studio, pyinstaller and other packaging mechanisms.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import abc
 

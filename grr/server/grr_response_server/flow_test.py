@@ -1,25 +1,29 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for flows."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+import random
+from unittest import mock
 
 from absl import app
-
-import mock
+from absl.testing import absltest
 
 from grr_response_client import actions
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import type_info
+from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
+from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_server import action_registry
 from grr_response_server import data_store
 from grr_response_server import flow
 from grr_response_server import flow_base
 from grr_response_server import server_stubs
+from grr_response_server import worker_lib
+from grr_response_server.databases import db
+from grr_response_server.flows import file
 from grr_response_server.flows.general import transfer
 from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
+from grr_response_server.rdfvalues import flow_runner as rdf_flow_runner
 from grr_response_server.rdfvalues import output_plugin as rdf_output_plugin
 from grr.test_lib import acl_test_lib
 from grr.test_lib import action_mocks
@@ -67,7 +71,7 @@ class CallStateFlow(flow_base.FlowBase):
 class BasicFlowTest(flow_test_lib.FlowTestsBaseclass):
 
   def setUp(self):
-    super(BasicFlowTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
 
 
@@ -157,6 +161,33 @@ class CallClientChildFlow(flow_base.FlowBase):
     self.CallClient(server_stubs.GetClientStats, next_state="End")
 
 
+class ParentFlowWithoutForwardingOutputPlugins(flow_base.FlowBase):
+  """This flow creates a Child without forwarding OutputPlugins."""
+
+  def Start(self):
+    # Call the child flow WITHOUT output plugins.
+    self.CallFlow("ChildFlow", next_state="IgnoreChildReplies")
+
+  def IgnoreChildReplies(self, responses):
+    del responses  # Unused
+    self.SendReply(rdfvalue.RDFString("Parent received"))
+
+
+class ParentFlowWithForwardedOutputPlugins(flow_base.FlowBase):
+  """This flow creates a Child without forwarding OutputPlugins."""
+
+  def Start(self):
+    # Calls the child flow WITH output plugins.
+    self.CallFlow(
+        "ChildFlow",
+        output_plugins=self.rdf_flow.output_plugins,
+        next_state="IgnoreChildReplies")
+
+  def IgnoreChildReplies(self, responses):
+    del responses  # Unused
+    self.SendReply(rdfvalue.RDFString("Parent received"))
+
+
 class FlowWithBrokenStart(flow_base.FlowBase):
 
   def Start(self):
@@ -177,33 +208,8 @@ class FlowCreationTest(BasicFlowTest):
     with self.assertRaises(flow.CanNotStartFlowWithExistingIdError):
       flow.StartFlow(
           flow_cls=CallClientParentFlow,
-          parent_hunt_id=flow_id,
+          parent=flow.FlowParent.FromHuntID(flow_id),
           client_id=self.client_id)
-
-  def testPendingFlowTermination(self):
-    client_mock = ClientMock()
-
-    flow_id = flow.StartFlow(flow_cls=ParentFlow, client_id=self.client_id)
-    flow_obj = data_store.REL_DB.ReadFlowObject(self.client_id, flow_id)
-    self.assertEqual(flow_obj.flow_state, "RUNNING")
-
-    pending_termination = rdf_flow_objects.PendingFlowTermination(
-        reason="testing")
-    data_store.REL_DB.UpdateFlow(
-        self.client_id, flow_id, pending_termination=pending_termination)
-
-    with flow_test_lib.TestWorker() as worker:
-      with test_lib.SuppressLogs():
-        flow_test_lib.RunFlow(
-            self.client_id,
-            flow_id,
-            client_mock=client_mock,
-            worker=worker,
-            check_flow_errors=False)
-
-      flow_obj = data_store.REL_DB.ReadFlowObject(self.client_id, flow_id)
-      self.assertEqual(flow_obj.flow_state, "ERROR")
-      self.assertEqual(flow_obj.error_message, "testing")
 
   def testChildTermination(self):
     flow_id = flow.StartFlow(
@@ -420,7 +426,7 @@ class NoRequestParentFlow(flow_base.FlowBase):
 class FlowOutputPluginsTest(BasicFlowTest):
 
   def setUp(self):
-    super(FlowOutputPluginsTest, self).setUp()
+    super().setUp()
     test_output_plugins.DummyFlowOutputPlugin.num_calls = 0
     test_output_plugins.DummyFlowOutputPlugin.num_responses = 0
 
@@ -513,6 +519,415 @@ class FlowOutputPluginsTest(BasicFlowTest):
 
     self.assertEqual(test_output_plugins.DummyFlowOutputPlugin.num_calls, 1)
     self.assertEqual(test_output_plugins.DummyFlowOutputPlugin.num_responses, 1)
+
+  def testOutputPluginsOnlyRunInParentFlow_DoesNotForward(self):
+    self.RunFlow(
+        flow_cls=ParentFlowWithoutForwardingOutputPlugins,
+        client_mock=ClientMock(),
+        output_plugins=[
+            rdf_output_plugin.OutputPluginDescriptor(
+                plugin_name="DummyFlowOutputPlugin")
+        ])
+
+    # Parent calls once, and child doesn't call.
+    self.assertEqual(test_output_plugins.DummyFlowOutputPlugin.num_calls, 1)
+    # Parent has one response, child has two.
+    self.assertEqual(test_output_plugins.DummyFlowOutputPlugin.num_responses, 1)
+
+  def testOutputPluginsOnlyRunInParentFlow_Forwards(self):
+    self.RunFlow(
+        flow_cls=ParentFlowWithForwardedOutputPlugins,
+        client_mock=ClientMock(),
+        output_plugins=[
+            rdf_output_plugin.OutputPluginDescriptor(
+                plugin_name="DummyFlowOutputPlugin")
+        ])
+
+    # Parent calls once, and child doesn't call.
+    self.assertEqual(test_output_plugins.DummyFlowOutputPlugin.num_calls, 1)
+    # Parent has one response, child has two.
+    self.assertEqual(test_output_plugins.DummyFlowOutputPlugin.num_responses, 1)
+
+
+class ScheduleFlowTest(flow_test_lib.FlowTestsBaseclass):
+
+  def SetupUser(self, username="u0"):
+    data_store.REL_DB.WriteGRRUser(username)
+    return username
+
+  def ScheduleFlow(self, **kwargs):
+    merged_kwargs = {
+        "flow_name":
+            file.CollectSingleFile.__name__,
+        "flow_args":
+            rdf_file_finder.CollectSingleFileArgs(
+                path="/foo{}".format(random.randint(0, 1000))),
+        "runner_args":
+            rdf_flow_runner.FlowRunnerArgs(cpu_limit=random.randint(0, 60)),
+        **kwargs
+    }
+
+    return flow.ScheduleFlow(**merged_kwargs)
+
+  def testScheduleFlowCreatesMultipleScheduledFlows(self):
+    client_id0 = self.SetupClient(0)
+    client_id1 = self.SetupClient(1)
+    username0 = self.SetupUser("u0")
+    username1 = self.SetupUser("u1")
+
+    sf0 = self.ScheduleFlow(client_id=client_id0, creator=username0)
+    sf1 = self.ScheduleFlow(client_id=client_id0, creator=username0)
+    sf2 = self.ScheduleFlow(client_id=client_id1, creator=username0)
+    sf3 = self.ScheduleFlow(client_id=client_id0, creator=username1)
+
+    self.assertEqual([sf0, sf1], flow.ListScheduledFlows(client_id0, username0))
+    self.assertEqual([sf2], flow.ListScheduledFlows(client_id1, username0))
+    self.assertEqual([sf3], flow.ListScheduledFlows(client_id0, username1))
+
+  def testStartScheduledFlowsCreatesFlow(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    self.ScheduleFlow(
+        client_id=client_id,
+        creator=username,
+        flow_name=file.CollectSingleFile.__name__,
+        flow_args=rdf_file_finder.CollectSingleFileArgs(path="/foo"),
+        runner_args=rdf_flow_runner.FlowRunnerArgs(cpu_limit=60))
+
+    flow.StartScheduledFlows(client_id, username)
+
+    flows = data_store.REL_DB.ReadAllFlowObjects(client_id)
+    self.assertLen(flows, 1)
+
+    self.assertEqual(flows[0].client_id, client_id)
+    self.assertEqual(flows[0].creator, username)
+    self.assertEqual(flows[0].flow_class_name, file.CollectSingleFile.__name__)
+    self.assertEqual(flows[0].args.path, "/foo")
+    self.assertEqual(flows[0].flow_state,
+                     rdf_flow_objects.Flow.FlowState.RUNNING)
+    self.assertEqual(flows[0].cpu_limit, 60)
+
+  def testStartScheduledFlowsDeletesScheduledFlows(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    self.ScheduleFlow(client_id=client_id, creator=username)
+    self.ScheduleFlow(client_id=client_id, creator=username)
+
+    flow.StartScheduledFlows(client_id, username)
+    self.assertEmpty(flow.ListScheduledFlows(client_id, username))
+
+  def testStartScheduledFlowsSucceedsWithoutScheduledFlows(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    flow.StartScheduledFlows(client_id, username)
+
+  def testStartScheduledFlowsFailsForUnknownClient(self):
+    self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    with self.assertRaises(db.UnknownClientError):
+      flow.StartScheduledFlows("C.1234123412341234", username)
+
+  def testStartScheduledFlowsFailsForUnknownUser(self):
+    client_id = self.SetupClient(0)
+    self.SetupUser("u0")
+
+    with self.assertRaises(db.UnknownGRRUserError):
+      flow.StartScheduledFlows(client_id, "nonexistent")
+
+  def testStartScheduledFlowsStartsMultipleFlows(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    self.ScheduleFlow(client_id=client_id, creator=username)
+    self.ScheduleFlow(client_id=client_id, creator=username)
+
+    flow.StartScheduledFlows(client_id, username)
+
+  def testStartScheduledFlowsHandlesErrorInFlowConstructor(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    self.ScheduleFlow(
+        client_id=client_id,
+        creator=username,
+        flow_name=file.CollectSingleFile.__name__,
+        flow_args=rdf_file_finder.CollectSingleFileArgs(path="/foo"),
+        runner_args=rdf_flow_runner.FlowRunnerArgs(cpu_limit=60))
+
+    with mock.patch.object(
+        file.CollectSingleFile, "__init__",
+        side_effect=ValueError("foobazzle")):
+      flow.StartScheduledFlows(client_id, username)
+
+    self.assertEmpty(data_store.REL_DB.ReadAllFlowObjects(client_id))
+
+    scheduled_flows = flow.ListScheduledFlows(client_id, username)
+    self.assertLen(scheduled_flows, 1)
+    self.assertIn("foobazzle", scheduled_flows[0].error)
+
+  def testStartScheduledFlowsHandlesErrorInFlowArgsValidation(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    self.ScheduleFlow(
+        client_id=client_id,
+        creator=username,
+        flow_name=file.CollectSingleFile.__name__,
+        flow_args=rdf_file_finder.CollectSingleFileArgs(path="/foo"),
+        runner_args=rdf_flow_runner.FlowRunnerArgs(cpu_limit=60))
+
+    with mock.patch.object(
+        rdf_file_finder.CollectSingleFileArgs,
+        "Validate",
+        side_effect=ValueError("foobazzle")):
+      flow.StartScheduledFlows(client_id, username)
+
+    self.assertEmpty(data_store.REL_DB.ReadAllFlowObjects(client_id))
+
+    scheduled_flows = flow.ListScheduledFlows(client_id, username)
+    self.assertLen(scheduled_flows, 1)
+    self.assertIn("foobazzle", scheduled_flows[0].error)
+
+  def testStartScheduledFlowsContinuesNextOnFailure(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    self.ScheduleFlow(
+        client_id=client_id,
+        creator=username,
+        flow_name=file.CollectSingleFile.__name__,
+        flow_args=rdf_file_finder.CollectSingleFileArgs(path="/foo"),
+        runner_args=rdf_flow_runner.FlowRunnerArgs(cpu_limit=60))
+
+    self.ScheduleFlow(
+        client_id=client_id,
+        creator=username,
+        flow_name=file.CollectSingleFile.__name__,
+        flow_args=rdf_file_finder.CollectSingleFileArgs(path="/foo"),
+        runner_args=rdf_flow_runner.FlowRunnerArgs(cpu_limit=60))
+
+    with mock.patch.object(
+        rdf_file_finder.CollectSingleFileArgs,
+        "Validate",
+        side_effect=[ValueError("foobazzle"), mock.DEFAULT]):
+      flow.StartScheduledFlows(client_id, username)
+
+    self.assertLen(data_store.REL_DB.ReadAllFlowObjects(client_id), 1)
+    self.assertLen(flow.ListScheduledFlows(client_id, username), 1)
+
+  def testUnscheduleFlowCorrectlyRemovesScheduledFlow(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    sf1 = self.ScheduleFlow(client_id=client_id, creator=username)
+    sf2 = self.ScheduleFlow(client_id=client_id, creator=username)
+
+    flow.UnscheduleFlow(client_id, username, sf1.scheduled_flow_id)
+
+    self.assertEqual([sf2], flow.ListScheduledFlows(client_id, username))
+
+    flow.StartScheduledFlows(client_id, username)
+
+    self.assertLen(data_store.REL_DB.ReadAllFlowObjects(client_id), 1)
+
+  def testStartedFlowUsesScheduledFlowId(self):
+    client_id = self.SetupClient(0)
+    username = self.SetupUser("u0")
+
+    sf = self.ScheduleFlow(client_id=client_id, creator=username)
+
+    flow.StartScheduledFlows(client_id, username)
+    flows = data_store.REL_DB.ReadAllFlowObjects(client_id)
+
+    self.assertGreater(len(sf.scheduled_flow_id), 0)
+    self.assertEqual(flows[0].flow_id, sf.scheduled_flow_id)
+
+
+class RandomFlowIdTest(absltest.TestCase):
+
+  def testFlowIdGeneration(self):
+    self.assertLen(flow.RandomFlowId(), 16)
+
+    with mock.patch.object(
+        flow.random, "Id64", return_value=0xF0F1F2F3F4F5F6F7):
+      self.assertEqual(flow.RandomFlowId(), "F0F1F2F3F4F5F6F7")
+
+    with mock.patch.object(flow.random, "Id64", return_value=0):
+      self.assertEqual(flow.RandomFlowId(), "0000000000000000")
+
+    with mock.patch.object(flow.random, "Id64", return_value=1):
+      self.assertEqual(flow.RandomFlowId(), "0000000000000001")
+
+    with mock.patch.object(
+        flow.random, "Id64", return_value=0x0000000100000000):
+      self.assertEqual(flow.RandomFlowId(), "0000000100000000")
+
+
+class NotSendingStatusClientMock(action_mocks.ActionMock):
+  """A mock for testing resource limits."""
+
+  NUM_INCREMENTAL_RESPONSES = 10
+
+  def __init__(self, shuffle=False):
+    super().__init__()
+    self._shuffle = shuffle
+
+  def HandleMessage(self, message):
+    responses = [
+        rdfvalue.RDFString(f"Hello World {i}")
+        for i in range(self.NUM_INCREMENTAL_RESPONSES)
+    ]
+
+    messages = []
+    for i, r in enumerate(responses):
+      messages.append(
+          rdf_flows.GrrMessage(
+              session_id=message.session_id,
+              request_id=message.request_id,
+              task_id=message.Get("task_id"),
+              name=message.name,
+              response_id=i + 1,
+              payload=r,
+              type=rdf_flows.GrrMessage.Type.MESSAGE))
+
+    if self._shuffle:
+      random.shuffle(messages)
+
+    return messages
+
+
+class StatusOnlyClientMock(action_mocks.ActionMock):
+
+  def HandleMessage(self, message):
+    return [self.GenerateStatusMessage(message, response_id=42)]
+
+
+class FlowWithIncrementalCallback(flow_base.FlowBase):
+  """This flow will be called by our parent."""
+
+  def Start(self):
+    self.CallClient(
+        ReturnHello,
+        callback_state=self.ReceiveHelloCallback.__name__,
+        next_state=self.ReceiveHello.__name__)
+
+  def ReceiveHelloCallback(self, responses):
+    # Relay each message when it comes.
+    for r in responses:
+      self.SendReply(r)
+
+  def ReceiveHello(self, responses):
+    # Relay all incoming messages once more (but prefix the strings).
+    for response in responses:
+      self.SendReply(rdfvalue.RDFString("Final: " + str(response)))
+
+
+class IncrementalResponseHandlingTest(BasicFlowTest):
+
+  @mock.patch.object(FlowWithIncrementalCallback, "ReceiveHelloCallback")
+  def testIncrementalCallbackReturnsResultsBeforeStatus(self, m):
+    # Mocks don't have names by default.
+    m.__name__ = "ReceiveHelloCallback"
+
+    flow_id = flow_test_lib.StartAndRunFlow(
+        FlowWithIncrementalCallback,
+        client_mock=NotSendingStatusClientMock(),
+        client_id=self.client_id,
+        # Set check_flow_errors to False, otherwise test runner will complain
+        # that the flow has finished in the RUNNING state.
+        check_flow_errors=False)
+    flow_obj = flow_test_lib.GetFlowObj(self.client_id, flow_id)
+    self.assertEqual(flow_obj.flow_state, flow_obj.FlowState.RUNNING)
+
+    self.assertEqual(m.call_count,
+                     NotSendingStatusClientMock.NUM_INCREMENTAL_RESPONSES)
+    for i in range(NotSendingStatusClientMock.NUM_INCREMENTAL_RESPONSES):
+      # Get the positional arguments of each call.
+      args = m.mock_calls[i][1]
+      # Compare the first positional argument ('responses') to the responses
+      # list that we expect to have been passed to the callback.
+      self.assertEqual(list(args[0]), [rdfvalue.RDFString(f"Hello World {i}")])
+
+  @mock.patch.object(FlowWithIncrementalCallback, "ReceiveHelloCallback")
+  def testIncrementalCallbackIsNotCalledWhenStatusMessageArrivesEarly(self, m):
+    # Mocks don't have names by default.
+    m.__name__ = "ReceiveHelloCallback"
+
+    flow_id = flow_test_lib.StartAndRunFlow(
+        FlowWithIncrementalCallback,
+        client_mock=StatusOnlyClientMock(),
+        client_id=self.client_id,
+        # Set check_flow_errors to False, otherwise test runner will complain
+        # that the flow has finished in the RUNNING state.
+        check_flow_errors=False)
+
+    flow_obj = flow_test_lib.GetFlowObj(self.client_id, flow_id)
+    self.assertEqual(flow_obj.flow_state, flow_obj.FlowState.RUNNING)
+
+    self.assertEqual(m.call_count, 0)
+
+  def testSendReplyWorksCorrectlyInIncrementalCallback(self):
+    flow_id = flow_test_lib.StartAndRunFlow(
+        FlowWithIncrementalCallback,
+        client_mock=NotSendingStatusClientMock(),
+        client_id=self.client_id,
+        # Set check_flow_errors to False, otherwise test runner will complain
+        # that the flow has finished in the RUNNING state.
+        check_flow_errors=False)
+    flow_obj = flow_test_lib.GetFlowObj(self.client_id, flow_id)
+    self.assertEqual(flow_obj.flow_state, flow_obj.FlowState.RUNNING)
+
+    results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
+    self.assertListEqual(results, [
+        rdfvalue.RDFString(f"Hello World {i}")
+        for i in range(NotSendingStatusClientMock.NUM_INCREMENTAL_RESPONSES)
+    ])
+
+  def testIncrementalCallbackIsCalledWithResponsesInRightOrder(self):
+    flow_id = flow_test_lib.StartAndRunFlow(
+        FlowWithIncrementalCallback,
+        client_mock=NotSendingStatusClientMock(shuffle=True),
+        client_id=self.client_id,
+        # Set check_flow_errors to False, otherwise test runner will complain
+        # that the flow has finished in the RUNNING state.
+        check_flow_errors=False)
+
+    flow_obj = flow_test_lib.GetFlowObj(self.client_id, flow_id)
+    self.assertEqual(flow_obj.flow_state, flow_obj.FlowState.RUNNING)
+
+    results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
+    self.assertListEqual(results, [
+        rdfvalue.RDFString(f"Hello World {i}")
+        for i in range(NotSendingStatusClientMock.NUM_INCREMENTAL_RESPONSES)
+    ])
+
+  def testIncrementalCallbackIsCalledWhenAllResponsesArriveAtOnce(self):
+    flow_id = flow_test_lib.StartAndRunFlow(
+        FlowWithIncrementalCallback,
+        client_mock=ClientMock(),
+        client_id=self.client_id)
+
+    results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
+    self.assertListEqual(results, [
+        rdfvalue.RDFString("Hello World"),
+        rdfvalue.RDFString("Final: Hello World")
+    ])
+
+
+class WorkerTest(BasicFlowTest):
+
+  def testRaisesIfFlowProcessingRequestDoesNotTriggerAnyProcessing(self):
+    with flow_test_lib.TestWorker() as worker:
+      flow_id = flow.StartFlow(
+          flow_cls=CallClientParentFlow, client_id=self.client_id)
+      fpr = rdf_flows.FlowProcessingRequest(
+          client_id=self.client_id, flow_id=flow_id)
+      with self.assertRaises(worker_lib.FlowHasNothingToProcessError):
+        worker.ProcessFlow(fpr)
 
 
 def main(argv):

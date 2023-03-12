@@ -1,12 +1,13 @@
 #!/usr/bin/env python
-# Lint as: python3
 """This file implements a VFS abstraction on the client."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import abc
+import io
 import os
+from typing import IO
+from typing import Iterable
+from typing import List
+from typing import Optional
 
 from grr_response_client import client_utils
 from grr_response_core.lib import utils
@@ -25,9 +26,9 @@ class UnsupportedHandlerError(Error):
     super().__init__("VFSHandler {} is not supported.".format(pathtype))
 
 
-class VFSHandler(metaclass=abc.ABCMeta):
+class VFSHandler(IO[bytes], metaclass=abc.ABCMeta):
   """Base class for handling objects in the VFS."""
-  supported_pathtype = -1
+  supported_pathtype = rdf_paths.PathSpec.PathType.UNSET
 
   # Should this handler be auto-registered?
   auto_register = False
@@ -184,7 +185,7 @@ class VFSHandler(metaclass=abc.ABCMeta):
     return new_pathspec
 
   def ListFiles(self, ext_attrs=False):
-    """An iterator over all VFS files contained in this directory.
+    """Returns an iterator over all VFS files contained in this directory.
 
     Generates a StatEntry for each file or directory.
 
@@ -195,6 +196,7 @@ class VFSHandler(metaclass=abc.ABCMeta):
       IOError: if this fails.
     """
     del ext_attrs  # Unused.
+    return []
 
   def ListNames(self):
     """A generator for all names in this directory."""
@@ -207,6 +209,54 @@ class VFSHandler(metaclass=abc.ABCMeta):
   stat = utils.Proxy("Stat")
   tell = utils.Proxy("Tell")
   close = utils.Proxy("Close")
+
+  def seekable(self) -> bool:
+    return True
+
+  def readable(self) -> bool:
+    return True
+
+  def writable(self) -> bool:
+    return False
+
+  def closed(self) -> bool:
+    # TODO(hanuszczak): `Close` is actually implemented only for the Windows
+    # registry handler. Otherwise it just uses default implementation that does
+    # nothing. It might make sense to implement this `closed` logic in the base
+    # class or simply always return `False`.
+    raise NotImplementedError()
+
+  def isatty(self) -> bool:
+    return False
+
+  def fileno(self) -> int:
+    raise io.UnsupportedOperation()
+
+  @property
+  def name(self) -> str:
+    raise io.UnsupportedOperation()
+
+  @property
+  def mode(self) -> str:
+    return "rb"
+
+  def readline(self, limit: int = 0) -> bytes:
+    raise io.UnsupportedOperation()
+
+  def readlines(self, hint: int = 0) -> List[bytes]:
+    raise io.UnsupportedOperation()
+
+  def write(self, s: bytes) -> int:
+    raise io.UnsupportedOperation()
+
+  def writelines(self, lines: Iterable[bytes]) -> None:
+    raise io.UnsupportedOperation()
+
+  def truncate(self, size: Optional[int] = None) -> int:
+    raise io.UnsupportedOperation()
+
+  def flush(self) -> None:
+    raise io.UnsupportedOperation()
 
   @classmethod
   def Open(cls, fd, component, handlers, pathspec=None, progress_callback=None):
@@ -274,7 +324,7 @@ class VFSHandler(metaclass=abc.ABCMeta):
       except IOError as e:
         # Can not open the first component, we must raise here.
         if i <= 1:
-          raise IOError("File not found: {}".format(component))
+          raise IOError("File not found: {}".format(component)) from e
 
         # Do not try to use TSK to open a not-found registry entry, fail
         # instead. Using TSK would lead to confusing error messages, hiding
@@ -293,3 +343,11 @@ class VFSHandler(metaclass=abc.ABCMeta):
 
   def GetMetadata(self):
     return self.metadata
+
+  @property
+  def native_path(self) -> Optional[str]:
+    """Returns the path to a native file this handler corresponds to.
+
+    Returns None if this handler doesn't correspond to a native file.
+    """
+    return None

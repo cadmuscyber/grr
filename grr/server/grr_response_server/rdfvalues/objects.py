@@ -1,21 +1,17 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Top level datastore objects.
 
 This package contains the rdfvalue wrappers around the top level datastore
 objects defined by objects.proto.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import functools
 import hashlib
 import itertools
 import os
 import stat
+from typing import Collection
 from typing import Text
-
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
@@ -27,7 +23,6 @@ from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 from grr_response_core.lib.util import text
 from grr_response_proto import objects_pb2
@@ -43,6 +38,10 @@ class StringMapEntry(rdf_structs.RDFProtoStruct):
   protobuf = objects_pb2.StringMapEntry
 
 
+class ClientSnapshotMetadata(rdf_structs.RDFProtoStruct):
+  protobuf = objects_pb2.ClientSnapshotMetadata
+
+
 class ClientSnapshot(rdf_structs.RDFProtoStruct):
   """The client object.
 
@@ -55,7 +54,9 @@ class ClientSnapshot(rdf_structs.RDFProtoStruct):
 
   rdf_deps = [
       StringMapEntry,
+      ClientSnapshotMetadata,
       rdf_cloud.CloudInstance,
+      rdf_client.EdrAgent,
       rdf_client_fs.Filesystem,
       rdf_client.HardwareInfo,
       rdf_client_network.Interface,
@@ -64,6 +65,7 @@ class ClientSnapshot(rdf_structs.RDFProtoStruct):
       rdf_client_fs.Volume,
       rdfvalue.ByteSize,
       rdfvalue.RDFDatetime,
+      rdf_client.FleetspeakValidationInfo,
   ]
 
   def __init__(self, *args, **kwargs):
@@ -135,6 +137,9 @@ class ClientSnapshot(rdf_structs.RDFProtoStruct):
           summary.system_info.version = "%d.%d" % (kb.os_major_version,
                                                    kb.os_minor_version)
 
+    summary.edr_agents = self.edr_agents
+    summary.fleetspeak_validation_info = self.fleetspeak_validation_info
+
     hwi = self.hardware_info
     if hwi:
       summary.serial_number = hwi.serial_number
@@ -150,6 +155,7 @@ class ClientSnapshot(rdf_structs.RDFProtoStruct):
         summary.cloud_instance_id = cloud_instance.amazon.instance_id
       else:
         raise ValueError("Bad cloud type: %s" % cloud_instance.cloud_type)
+
     return summary
 
 
@@ -160,6 +166,7 @@ class ClientMetadata(rdf_structs.RDFProtoStruct):
       rdf_client_network.NetworkAddress,
       rdf_crypto.RDFX509Cert,
       rdfvalue.RDFDatetime,
+      rdf_client.FleetspeakValidationInfo,
   ]
 
 
@@ -271,7 +278,7 @@ class HashID(rdfvalue.RDFValue):
     return rdfvalue.HashDigest(self._value)
 
   def __repr__(self):
-    cls_name = compatibility.GetName(self.__class__)
+    cls_name = self.__class__.__name__
     value = text.Hexify(self._value)
     return "{cls_name}('{value}')".format(cls_name=cls_name, value=value)
 
@@ -363,6 +370,10 @@ class PathInfo(rdf_structs.RDFProtoStruct):
     return cls(*args, path_type=cls.PathType.NTFS, **kwargs)
 
   @classmethod
+  def Temp(cls, *args, **kwargs):
+    return cls(*args, path_type=cls.PathType.TEMP, **kwargs)
+
+  @classmethod
   def PathTypeFromPathspecPathType(cls, ps_path_type):
     if ps_path_type == rdf_paths.PathSpec.PathType.OS:
       return cls.PathType.OS
@@ -376,6 +387,22 @@ class PathInfo(rdf_structs.RDFProtoStruct):
       return cls.PathType.NTFS
     else:
       raise ValueError("Unexpected path type: %s" % ps_path_type)
+
+  @classmethod
+  def PathTypeToPathspecPathType(
+      cls, pathtype: "PathInfo.PathType") -> "rdf_paths.PathSpec.PathType":
+    if pathtype == cls.PathType.OS:
+      return rdf_paths.PathSpec.PathType.OS
+    elif pathtype == cls.PathType.TSK:
+      return rdf_paths.PathSpec.PathType.TSK
+    elif pathtype == cls.PathType.REGISTRY:
+      return rdf_paths.PathSpec.PathType.REGISTRY
+    elif pathtype == cls.PathType.TEMP:
+      return rdf_paths.PathSpec.PathType.TMPFILE
+    elif pathtype == cls.PathType.NTFS:
+      return rdf_paths.PathSpec.PathType.NTFS
+    else:
+      raise ValueError(f"Unexpected path type: {pathtype}")
 
   @classmethod
   def FromPathSpec(cls, pathspec):
@@ -517,6 +544,11 @@ def _ValidatePathComponents(components):
     raise ValueError(message % (components, error))
 
 
+def ParsePath(path: str) -> Collection[str]:
+  """Splits a path at / separators into path components."""
+  return [component for component in path.split("/") if component]
+
+
 # TODO(hanuszczak): Instead of these two functions for categorized paths we
 # should create an RDF value that wraps a string and provides these two as
 # methods.
@@ -524,7 +556,7 @@ def _ValidatePathComponents(components):
 
 def ParseCategorizedPath(path):
   """Parses a categorized path string into type and list of components."""
-  components = tuple(component for component in path.split("/") if component)
+  components = tuple(ParsePath(path))
   if components[0:2] == ("fs", "os"):
     return PathInfo.PathType.OS, components[2:]
   elif components[0:2] == ("fs", "tsk"):
@@ -536,7 +568,8 @@ def ParseCategorizedPath(path):
   elif components[0:2] == ("fs", "ntfs"):
     return PathInfo.PathType.NTFS, components[2:]
   else:
-    raise ValueError("Incorrect path: '%s'" % path)
+    raise ValueError(
+        "Path {!r} does not start with a VFS prefix like /fs/os/".format(path))
 
 
 def ToCategorizedPath(path_type, components):

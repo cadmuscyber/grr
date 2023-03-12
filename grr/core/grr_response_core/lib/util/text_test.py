@@ -1,9 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl.testing import absltest
 
@@ -34,6 +29,20 @@ class HexifyTest(absltest.TestCase):
   def testAscii(self):
     self.assertEqual(text.Hexify(b"foo"), "666f6f")
     self.assertEqual(text.Hexify(b"bar"), "626172")
+
+
+class UnescapeStringTest(absltest.TestCase):
+
+  def testWhitespace(self):
+    self.assertEqual(text.Unescape("\\n"), "\n")
+    self.assertEqual(text.Unescape("\\r"), "\r")
+
+  def testQuotemark(self):
+    self.assertEqual(text.Unescape("\\'"), "'")
+    self.assertEqual(text.Unescape("\\\""), "\"")
+
+  def testMany(self):
+    self.assertEqual(text.Unescape("foo\\n\\'bar\\'\nbaz"), "foo\n'bar'\nbaz")
 
 
 if __name__ == "__main__":

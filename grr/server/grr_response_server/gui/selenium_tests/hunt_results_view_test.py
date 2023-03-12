@@ -1,13 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test the hunt results interface."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_core.lib import rdfvalue
 from grr_response_server.gui import api_call_router_with_approval_checks
@@ -50,7 +46,7 @@ class TestHuntResultsView(gui_test_lib.GRRSeleniumHuntTest):
         [rdfvalue.RDFString("foo-result")])
 
     self.Open("/#/hunts/%s/results" % hunt_id)
-    self.Click("css=td:contains('%s') button:has(.glyphicon-info-sign)" %
+    self.Click("css=td:contains('%s') button:has(.fa-info-circle)" %
                self.client_ids[0])
 
     self.WaitUntil(self.IsElementPresent,
@@ -131,7 +127,7 @@ class TestHuntResultsView(gui_test_lib.GRRSeleniumHuntTest):
         mock_method.assert_called_with(
             api_hunt.ApiGetExportedHuntResultsArgs(
                 hunt_id=hunt_id, plugin_name=plugin),
-            token=mock.ANY)
+            context=mock.ANY)
 
         return True
       except AssertionError:

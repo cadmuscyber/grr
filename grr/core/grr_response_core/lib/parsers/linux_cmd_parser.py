@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Simple parsers for the output of linux commands."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 import re
@@ -121,7 +117,7 @@ class RpmCmdParser(parser.CommandParser):
     rpm_re = re.compile(r"^(\w[-\w\+]+?)-(\d.*)$")
     self.CheckReturn(cmd, return_val)
     packages = []
-    for line in stdout.splitlines():
+    for line in stdout.decode("utf-8").splitlines():
       pkg_match = rpm_re.match(line.strip())
       if pkg_match:
         name, version = pkg_match.groups()
@@ -130,7 +126,7 @@ class RpmCmdParser(parser.CommandParser):
     if packages:
       yield rdf_client.SoftwarePackages(packages=packages)
 
-    for line in stderr.splitlines():
+    for line in stderr.decode("utf-8").splitlines():
       if "error: rpmdbNextIterator: skipping h#" in line:
         yield rdf_anomaly.Anomaly(
             type="PARSER_ANOMALY", symptom="Broken rpm database.")
@@ -280,7 +276,7 @@ class PsCmdParser(parser.CommandParser):
     Note that cmdline consumes every field up to the end of line
     and as it is string, we can't perfectly see what the arguments
     on the command line really were. We just assume a space is the arg
-    seperator. It's imperfect, but it's better than nothing.
+    separator. It's imperfect, but it's better than nothing.
     Obviously, if cmd/cmdline is specified, it must be the last
     column of output.
 

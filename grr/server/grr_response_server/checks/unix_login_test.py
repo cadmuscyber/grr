@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for service state checks."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -24,7 +19,7 @@ class LoginPolicyConfigurationTests(checks_test_lib.HostCheckTest):
     cls.LoadCheck("unix_login.yaml")
 
   def setUp(self, *args, **kwargs):
-    super(LoginPolicyConfigurationTests, self).setUp(*args, **kwargs)
+    super().setUp(*args, **kwargs)
     if not LoginPolicyConfigurationTests.results:
       LoginPolicyConfigurationTests.results = self._GenResults()
 

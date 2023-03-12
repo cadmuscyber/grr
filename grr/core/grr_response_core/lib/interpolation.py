@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """A module with utilities for string interpolation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import collections
 import re
@@ -53,7 +49,7 @@ class Substitution(object):
     """Formats given pattern with this substitution environment.
 
     A pattern can contain placeholders for variables (`%%foo%%`) and scopes
-    (`%%bar.baz%%`) that are replaced with concrete values in this substiution
+    (`%%bar.baz%%`) that are replaced with concrete values in this substitution
     environment (specified in the constructor).
 
     Args:

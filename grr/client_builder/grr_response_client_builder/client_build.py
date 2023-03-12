@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 """This tool builds or repacks the client binaries."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
 import getpass
 import glob
@@ -216,6 +212,12 @@ class TemplateBuilder(object):
     context.append("Target:%s" % self.platform)
     if "Target:Linux" in context:
       context.append(self.GetPackageFormat())
+    if ("Target:Windows" in context and
+        grr_config.CONFIG["ClientBuilder.build_msi"]):
+      # Include an additional context in the MSI template.
+      # The repacker uses this context to chose the .msi extension for the
+      # repacked installer.
+      context.append("Target:WindowsMsi")
 
     template_path = None
     # If output is specified, place the built template file there, otherwise
@@ -320,13 +322,16 @@ class MultiTemplateRepacker(object):
         passwd = None
 
         if sign:
-          if template.endswith(".exe.zip"):
+          if template.endswith(".exe.zip") or template.endswith(".msi.zip"):
             # This is for osslsigncode only.
             if platform.system() != "Windows":
               passwd = self.GetWindowsPassphrase()
               repack_args.append("--sign")
             else:
-              bulk_sign_installers = True
+              if template.endswith(".msi.zip"):
+                repack_args.append("--sign")
+              else:
+                bulk_sign_installers = True
             if signed_template:
               repack_args.append("--signed_template")
           elif template.endswith(".rpm.zip"):
@@ -337,7 +342,7 @@ class MultiTemplateRepacker(object):
             pool.apply_async(SpawnProcess, (repack_args,), dict(passwd=passwd)))
 
         # Also build debug if it's windows.
-        if template.endswith(".exe.zip"):
+        if template.endswith(".exe.zip") or template.endswith(".msi.zip"):
           debug_args = []
           debug_args.extend(repack_args)
           debug_args.append("--debug_build")
@@ -389,7 +394,7 @@ def GetClientConfig(filename):
   config_lib.ParseConfigCommandLine()
   context = list(grr_config.CONFIG.context)
   context.append("Client Context")
-  # Disable timestamping so we can get a reproducible and cachable config file.
+  # Disable timestamping so we can get a reproducible and cacheable config file.
   config_data = build_helpers.GetClientConfig(
       context, validate=True, deploy_timestamp=False)
   with open(filename, "w") as fd:
@@ -428,8 +433,6 @@ def main(args):
           raise RuntimeError("ClientBuilder.install_dir must be set.")
         if not grr_config.CONFIG.Get("ClientBuilder.fleetspeak_plist_path"):
           raise RuntimeError("ClientBuilder.fleetspeak_plist_path must be set.")
-      grr_config.CONFIG.Set("ClientBuilder.client_path",
-                            "grr_response_client.grr_fs_client")
     TemplateBuilder().BuildTemplate(context=context, output=args.output)
   elif args.subparser_name == "repack":
     if args.debug_build:

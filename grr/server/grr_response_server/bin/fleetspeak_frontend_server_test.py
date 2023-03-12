@@ -1,17 +1,14 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Unittest for GRR<->Fleetspeak server side glue code."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+from unittest import mock
 
 from absl import app
-import mock
 
-from grr_response_core.lib import communicator
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
+from grr_response_server import communicator
 from grr_response_server import data_store
 from grr_response_server import events
 from grr_response_server import fleetspeak_utils
@@ -57,8 +54,10 @@ class FleetspeakGRRFEServerTest(flow_test_lib.FlowTestsBaseclass):
       fs_message = fs_common_pb2.Message(
           message_type="GrrMessage",
           source=fs_common_pb2.Address(
-              client_id=fs_client_id, service_name=FS_SERVICE_NAME))
+              client_id=fs_client_id, service_name=FS_SERVICE_NAME),
+      )
       fs_message.data.Pack(grr_message.AsPrimitiveProto())
+      fs_message.validation_info.tags["foo"] = "bar"
       fs_messages.append(fs_message)
 
     with test_lib.FakeTime(rdfvalue.RDFDatetime.FromSecondsSinceEpoch(123)):
@@ -69,6 +68,9 @@ class FleetspeakGRRFEServerTest(flow_test_lib.FlowTestsBaseclass):
     client_data = data_store.REL_DB.MultiReadClientMetadata([client_id])
     self.assertEqual(client_data[client_id].ping,
                      rdfvalue.RDFDatetime.FromSecondsSinceEpoch(123))
+    self.assertEqual(
+        client_data[client_id].last_fleetspeak_validation_info.ToStringDict(),
+        {"foo": "bar"})
 
     flow_data = data_store.REL_DB.ReadAllFlowRequestsAndResponses(
         client_id, flow_id)
@@ -111,6 +113,7 @@ class FleetspeakGRRFEServerTest(flow_test_lib.FlowTestsBaseclass):
         source=fs_common_pb2.Address(
             client_id=fs_client_id, service_name=FS_SERVICE_NAME))
     fs_message.data.Pack(packed_messages.AsPrimitiveProto())
+    fs_message.validation_info.tags["foo"] = "bar"
 
     with test_lib.FakeTime(rdfvalue.RDFDatetime.FromSecondsSinceEpoch(123)):
       fs_server.Process(fs_message, None)
@@ -119,6 +122,9 @@ class FleetspeakGRRFEServerTest(flow_test_lib.FlowTestsBaseclass):
     client_data = data_store.REL_DB.MultiReadClientMetadata([client_id])
     self.assertEqual(client_data[client_id].ping,
                      rdfvalue.RDFDatetime.FromSecondsSinceEpoch(123))
+    self.assertEqual(
+        client_data[client_id].last_fleetspeak_validation_info.ToStringDict(),
+        {"foo": "bar"})
 
     flow_data = data_store.REL_DB.ReadAllFlowRequestsAndResponses(
         client_id, flow_id)
@@ -189,7 +195,7 @@ class ListProcessesFleetspeakTest(flow_test_lib.FlowTestsBaseclass):
         flow_processes.ListProcesses.__name__,
         client_mock,
         client_id=client_id,
-        token=self.token)
+        creator=self.test_username)
 
     processes = flow_test_lib.GetFlowResults(client_id, flow_id)
     self.assertLen(processes, 1)

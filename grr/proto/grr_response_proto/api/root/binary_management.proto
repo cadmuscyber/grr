@@ -4,6 +4,7 @@ import "grr_response_proto/api/config.proto";
 import "grr_response_proto/jobs.proto";
 import "grr_response_proto/semantic.proto";
 
+package grr;
 
 message ApiUploadGrrBinaryArgs {
   optional ApiGrrBinary.Type type = 1 [(sem_type) = {

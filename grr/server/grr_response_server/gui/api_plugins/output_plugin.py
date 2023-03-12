@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """API handlers for dealing with output_plugins."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import itertools
 
@@ -80,7 +76,7 @@ class ApiListOutputPluginDescriptorsHandler(
 
     return items
 
-  def Handle(self, unused_args, token=None):
+  def Handle(self, unused_args, context=None):
     result = ApiListOutputPluginDescriptorsResult()
     result.items = itertools.chain(
         self._GetPlugins(output_plugin.OutputPlugin),

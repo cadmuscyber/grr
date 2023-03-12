@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Centralized import point for client plugins.
 
 This acts as a centralized point for modules that need to be loaded for
@@ -9,9 +8,6 @@ register them.
 This also acts as a sensible single place to add deployment specific plugin
 modules that have been customized for your deployment.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import sys
 
@@ -29,3 +25,8 @@ elif "linux" in sys.platform:
 from grr_response_client import comms
 from grr_response_client import local
 # pylint: enable=g-import-not-at-top,unused-import,g-bad-import-order
+
+
+def RegisterPlugins():
+  if sys.platform == "win32":
+    windows_registry_init.RegisterPlugins()

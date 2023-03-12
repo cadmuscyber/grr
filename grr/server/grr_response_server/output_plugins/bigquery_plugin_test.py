@@ -1,27 +1,24 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for BigQuery output plugin."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
+import base64
 import gzip
+import io
+import json
 import os
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr_response_core.lib.util.compat import json
 from grr_response_server import bigquery
 from grr_response_server.output_plugins import bigquery_plugin
+from grr.test_lib import export_test_lib
 from grr.test_lib import flow_test_lib
 from grr.test_lib import test_lib
 
@@ -30,7 +27,7 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
   """Tests BigQuery hunt output plugin."""
 
   def setUp(self):
-    super(BigQueryOutputPluginTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
     self.source_id = rdf_client.ClientURN(
         self.client_id).Add("Results").RelativeName("aff4:/")
@@ -41,7 +38,7 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
                        process_responses_separately=False):
     plugin_cls = bigquery_plugin.BigQueryOutputPlugin
     plugin, plugin_state = plugin_cls.CreatePluginAndDefaultState(
-        source_urn=self.source_id, args=plugin_args, token=self.token)
+        source_urn=self.source_id, args=plugin_args)
 
     messages = []
     for response in responses:
@@ -64,7 +61,8 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
   def CompareSchemaToKnownGood(self, schema):
     expected_schema_path = os.path.join(config.CONFIG["Test.data_dir"],
                                         "bigquery", "ExportedFile.schema")
-    expected_schema_data = json.ReadFromPath(expected_schema_path)
+    with open(expected_schema_path, mode="rt", encoding="utf-8") as file:
+      expected_schema_data = json.load(file)
 
     # It's easier to just compare the two dicts but even a change to the proto
     # description requires you to fix the json so we just compare field names
@@ -80,6 +78,7 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
     self.assertEqual(schema_fields, expected_fields)
     self.assertEqual(schema_metadata_fields, expected_metadata_fields)
 
+  @export_test_lib.WithAllExportConverters
   def testBigQueryPluginWithValuesOfSameType(self):
     responses = []
     for i in range(10):
@@ -96,7 +95,8 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
               st_size=0,
               st_atime=1336469177,
               st_mtime=1336129892,
-              st_ctime=1336129892))
+              st_ctime=1336129892,
+              st_btime=1338111338))
 
     output = self.ProcessResponses(
         plugin_args=bigquery_plugin.BigQueryOutputPluginArgs(),
@@ -125,10 +125,68 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
     for actual, expected in zip(actual_fd, expected_fd):
       actual = actual.decode("utf-8")
       expected = expected.decode("utf-8")
-      self.assertEqual(json.Parse(actual), json.Parse(expected))
+      self.assertEqual(json.loads(actual), json.loads(expected))
       counter += 1
 
     self.assertEqual(counter, 10)
+
+  @export_test_lib.WithAllExportConverters
+  def testMissingTimestampSerialization(self):
+    response = rdf_client_fs.StatEntry()
+    response.pathspec.pathtype = rdf_paths.PathSpec.PathType.OS
+    response.pathspec.path = "/foo/bar"
+    response.st_mtime = None
+
+    args = bigquery_plugin.BigQueryOutputPluginArgs()
+
+    output = self.ProcessResponses(plugin_args=args, responses=[response])
+    self.assertLen(output, 1)
+
+    _, filedesc, _, _ = output[0]
+    with gzip.GzipFile(mode="r", fileobj=filedesc) as filedesc:
+      filedesc = io.TextIOWrapper(filedesc)
+      content = json.load(filedesc)
+
+    self.assertIsNone(content["st_mtime"])
+
+  @export_test_lib.WithAllExportConverters
+  def testBinaryDataExportDisabled(self):
+    response = rdf_client_fs.BlobImageChunkDescriptor()
+    response.digest = b"\x00\xff\x00\xff\x00"
+
+    args = bigquery_plugin.BigQueryOutputPluginArgs()
+    args.base64_bytes_export = False
+
+    output = self.ProcessResponses(plugin_args=args, responses=[response])
+
+    self.assertLen(output, 1)
+    _, filedesc, _, _ = output[0]
+
+    with gzip.GzipFile(mode="r", fileobj=filedesc) as filedesc:
+      filedesc = io.TextIOWrapper(filedesc)
+      content = json.load(filedesc)
+
+    self.assertNotIn("digest", content)
+
+  @export_test_lib.WithAllExportConverters
+  def testBinaryDataExportEnabled(self):
+    response = rdf_client_fs.BlobImageChunkDescriptor()
+    response.digest = b"\x00\xff\x00"
+
+    args = bigquery_plugin.BigQueryOutputPluginArgs()
+    args.base64_bytes_export = True
+
+    output = self.ProcessResponses(plugin_args=args, responses=[response])
+
+    self.assertLen(output, 1)
+    _, filedesc, _, _ = output[0]
+
+    with gzip.GzipFile(mode="r", fileobj=filedesc) as filedesc:
+      filedesc = io.TextIOWrapper(filedesc)
+      content = json.load(filedesc)
+
+    self.assertIn("digest", content)
+    self.assertEqual(base64.b64decode(content["digest"]), b"\x00\xff\x00")
 
   def _parseOutput(self, name, stream):
     content_fd = gzip.GzipFile(None, "r", 9, stream)
@@ -139,7 +197,7 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
 
     for item in content_fd:
       counter += 1
-      row = json.Parse(item.decode("utf-8"))
+      row = json.loads(item.decode("utf-8"))
 
       if name == "ExportedFile":
         self.assertEqual(row["metadata"]["client_urn"],
@@ -160,6 +218,7 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
 
     self.assertEqual(counter, 1)
 
+  @export_test_lib.WithAllExportConverters
   def testBigQueryPluginWithValuesOfMultipleTypes(self):
     output = self.ProcessResponses(
         plugin_args=bigquery_plugin.BigQueryOutputPluginArgs(),
@@ -180,6 +239,7 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
       ])
       self._parseOutput(name, stream)
 
+  @export_test_lib.WithAllExportConverters
   def testBigQueryPluginWithEarlyFlush(self):
     responses = []
     for i in range(10):
@@ -196,7 +256,8 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
               st_size=0,
               st_atime=1336469177,
               st_mtime=1336129892,
-              st_ctime=1336129892))
+              st_ctime=1336129892,
+              st_btime=1338111338))
 
     sizes = [37, 687, 722, 755, 788, 821, 684, 719, 752, 785]
 
@@ -207,7 +268,7 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
     # metadata is a dict with unpredictable order so we make up the file sizes
     # such that there is one flush during processing.
     with test_lib.ConfigOverrider({"BigQuery.max_file_post_size": 800}):
-      with utils.Stubber(os.path, "getsize", GetSize):
+      with mock.patch.object(os.path, "getsize", GetSize):
         output = self.ProcessResponses(
             plugin_args=bigquery_plugin.BigQueryOutputPluginArgs(),
             responses=responses)
@@ -232,7 +293,7 @@ class BigQueryOutputPluginTest(flow_test_lib.FlowTestsBaseclass):
       for actual, expected in zip(actual_fd, expected_fd):
         actual = actual.decode("utf-8")
         expected = expected.decode("utf-8")
-        self.assertEqual(json.Parse(actual), json.Parse(expected))
+        self.assertEqual(json.loads(actual), json.loads(expected))
         counter += 1
 
     self.assertEqual(counter, 10)

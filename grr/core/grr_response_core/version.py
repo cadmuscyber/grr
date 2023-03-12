@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """GRR Rapid Response Framework."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import configparser
 import os
@@ -33,7 +29,7 @@ def Version():
 
   version_ini = VersionPath()
 
-  config = configparser.SafeConfigParser()
+  config = configparser.ConfigParser()
   config.read(version_ini)
   return dict(
       packageversion=config.get("Version", "packageversion"),

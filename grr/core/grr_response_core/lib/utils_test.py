@@ -1,23 +1,17 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for utility classes."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
+import contextlib
 import io
+import os
 import threading
+from unittest import mock
 import zipfile
 
 from absl import app
 from absl.testing import absltest
 
-
-import mock
-
 from grr_response_core.lib import utils
-from grr_response_core.lib.util import compatibility
 from grr.test_lib import test_lib
 
 # Test method names don't conform with Google style
@@ -87,7 +81,7 @@ class StoreTests(test_lib.GRRBaseTest):
     tested_cache = utils.TimeBasedCache(max_age=50)
     with test_lib.FakeTime(100):
 
-      # Stop the housekeeper thread - we test it explicitely here
+      # Stop the housekeeper thread - we test it explicitly here
       tested_cache.exit = True
       tested_cache.Put(key, "hello")
 
@@ -286,7 +280,7 @@ class RollingMemoryStreamTest(test_lib.GRRBaseTest):
   """Tests for RollingMemoryStream."""
 
   def setUp(self):
-    super(RollingMemoryStreamTest, self).setUp()
+    super().setUp()
     self.stream = utils.RollingMemoryStream()
 
   def testGetValueAndResetReturnsSingleWrittenValue(self):
@@ -314,7 +308,7 @@ class RunOnceTest(absltest.TestCase):
 
   def testDecoratedFunctionIsCalledAtLeastOnce(self):
     mock_fn = mock.Mock()
-    mock_fn.__name__ = compatibility.NativeStr("MockFunction")
+    mock_fn.__name__ = "MockFunction"
     fn = utils.RunOnce(mock_fn)
     mock_fn.assert_not_called()
     fn()
@@ -322,7 +316,7 @@ class RunOnceTest(absltest.TestCase):
 
   def testDecoratedFunctionIsCalledAtMostOnce(self):
     mock_fn = mock.Mock(side_effect=[None, AssertionError()])
-    mock_fn.__name__ = compatibility.NativeStr("MockFunction")
+    mock_fn.__name__ = "MockFunction"
     fn = utils.RunOnce(mock_fn)
     fn()
     fn()
@@ -331,28 +325,28 @@ class RunOnceTest(absltest.TestCase):
 
   def testArgumentsArePassedThrough(self):
     mock_fn = mock.Mock()
-    mock_fn.__name__ = compatibility.NativeStr("MockFunction")
+    mock_fn.__name__ = "MockFunction"
     fn = utils.RunOnce(mock_fn)
     fn(1, 2, foo="bar")
     mock_fn.assert_called_once_with(1, 2, foo="bar")
 
   def testReturnValueIsPassedThrough(self):
     mock_fn = mock.Mock(return_value="bar")
-    mock_fn.__name__ = compatibility.NativeStr("MockFunction")
+    mock_fn.__name__ = "MockFunction"
     fn = utils.RunOnce(mock_fn)
     self.assertEqual("bar", fn())
 
   def testReturnValueForFollowingCallsIsCached(self):
     result = object()
     mock_fn = mock.Mock(side_effect=[result])
-    mock_fn.__name__ = compatibility.NativeStr("MockFunction")
+    mock_fn.__name__ = "MockFunction"
     fn = utils.RunOnce(mock_fn)
     self.assertIs(fn(), result)
     self.assertIs(fn(), result)
 
   def testExceptionsArePassedThrough(self):
     mock_fn = mock.Mock(side_effect=ValueError())
-    mock_fn.__name__ = compatibility.NativeStr("MockFunction")
+    mock_fn.__name__ = "MockFunction"
     fn = utils.RunOnce(mock_fn)
     with self.assertRaises(ValueError):
       fn()
@@ -361,9 +355,9 @@ class RunOnceTest(absltest.TestCase):
 
   def testWrapsFunctionProperly(self):
     mock_fn = mock.Mock()
-    mock_fn.__name__ = compatibility.NativeStr("MockFunction")
+    mock_fn.__name__ = "MockFunction"
     fn = utils.RunOnce(mock_fn)
-    self.assertEqual(fn.__name__, compatibility.NativeStr("MockFunction"))
+    self.assertEqual(fn.__name__, "MockFunction")
 
 
 class StreamingZipGeneratorTest(absltest.TestCase):
@@ -440,6 +434,46 @@ class StreamingZipGeneratorTest(absltest.TestCase):
 
     with zipfile.ZipFile(output, mode="r") as zipdesc:
       self.assertEqual(zipdesc.read("quux"), filedesc.getvalue())
+
+
+class MergeDirectoriesTest(absltest.TestCase):
+
+  def testMergeDirectories(self):
+    stack = contextlib.ExitStack()
+    self.addCleanup(stack.close)
+
+    src_dir = stack.enter_context(utils.TempDirectory())
+    dst_dir = stack.enter_context(utils.TempDirectory())
+
+    def SrcPath(*components):
+      return os.path.join(src_dir, *components)
+
+    def DstPath(*components):
+      return os.path.join(dst_dir, *components)
+
+    def WriteFile(path, contents):
+      utils.EnsureDirExists(os.path.dirname(path))
+      with open(path, "w") as f:
+        f.write(contents)
+
+    def ReadFile(path):
+      with open(path) as f:
+        return f.read()
+
+    WriteFile(SrcPath("a", "b", "c", "file1.txt"), "file1")
+    WriteFile(SrcPath("a", "b", "c", "file2.txt"), "file2")
+    WriteFile(SrcPath("file3.txt"), "file3")
+
+    WriteFile(DstPath("a", "file4.txt"), "file4")
+    WriteFile(DstPath("file5.txt"), "file5")
+
+    utils.MergeDirectories(src_dir, dst_dir)
+
+    self.assertEqual(ReadFile(DstPath("a", "b", "c", "file1.txt")), "file1")
+    self.assertEqual(ReadFile(DstPath("a", "b", "c", "file2.txt")), "file2")
+    self.assertEqual(ReadFile(DstPath("file3.txt")), "file3")
+    self.assertEqual(ReadFile(DstPath("a", "file4.txt")), "file4")
+    self.assertEqual(ReadFile(DstPath("file5.txt")), "file5")
 
 
 def main(argv):

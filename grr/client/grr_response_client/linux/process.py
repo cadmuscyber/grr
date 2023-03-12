@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """A class to read process memory on Linux.
 
 This code is based on the memorpy project:
 https://github.com/n1nj4sec/memorpy
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import ctypes
 import errno
@@ -60,22 +56,32 @@ class Process(object):
       r"([0-9A-Fa-f]+)-([0-9A-Fa-f]+)\s+([-rwpsx]+)\s+"
       r"([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+:[0-9A-Fa-f]+)\s+([0-9]+)\s*(.*)")
 
-  def __init__(self, pid=None):
+  def __init__(self, pid=None, mem_fd=None):
     """Creates a process for reading memory."""
     super().__init__()
-    if pid is None:
-      raise process_error.ProcessError("No pid given.")
+    if pid is None and mem_fd is None:
+      raise process_error.ProcessError("No pid or mem_fd given.")
     self.pid = pid
+    self._existing_mem_fd = mem_fd
 
     self.mem_file = None
 
   def Open(self):
+    if self.pid is not None:
+      self._OpenPid()
+    else:
+      self._OpenMemFd()
+
+  def _OpenPid(self):
     path = "/proc/{}/mem".format(self.pid)
     cpath = ctypes.create_string_buffer(path.encode("utf-8"))
     try:
       self.mem_file = open64(ctypes.byref(cpath), os.O_RDONLY)
     except OSError as e:
       raise process_error.ProcessError(e)
+
+  def _OpenMemFd(self):
+    self.mem_file = os.dup(self._existing_mem_fd)
 
   def Close(self):
     if self.mem_file:
@@ -136,3 +142,12 @@ class Process(object):
       return os.read(self.mem_file, num_bytes)
     except OSError:
       return ""
+
+  @property
+  def serialized_file_descriptor(self) -> int:
+    return self.mem_file
+
+  @classmethod
+  def CreateFromSerializedFileDescriptor(
+      cls, serialized_file_descriptor: int) -> "Process":
+    return Process(mem_fd=serialized_file_descriptor)

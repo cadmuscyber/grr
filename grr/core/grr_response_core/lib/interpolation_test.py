@@ -1,9 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl.testing import absltest
 
@@ -101,7 +96,7 @@ class SubstitutionTest(absltest.TestCase):
     pattern = "%%foo%% %%quux.bar%% %%quux.baz%%"
     self.assertEqual(subst.Substitute(pattern), "FOO BAR BAZ")
 
-  def testMultipleVariableOccurences(self):
+  def testMultipleVariableOccurrences(self):
     var_config = {vid("foo"): 42}
     subst = interpolation.Substitution(var_config=var_config, scope_config={})
     self.assertEqual(subst.Substitute("%%foo%% %%foo%% %%foo%%"), "42 42 42")

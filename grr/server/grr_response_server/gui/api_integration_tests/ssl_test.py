@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for API client + HTTPS server integration."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import datetime
 from http import server as http_server
@@ -96,12 +92,12 @@ class ApiSslServerTestBase(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
     ApiSslServerTestBase._api_set_up_done = True
 
   def setUp(self):
-    super(ApiSslServerTestBase, self).setUp()
+    super().setUp()
 
     api_auth_manager.InitializeApiAuthManager(
         api_call_router_without_checks.ApiCallRouterWithoutChecks)
-    self.token.username = "api_test_robot_user"
-    webauth.WEBAUTH_MANAGER.SetUserName(self.token.username)
+    self.test_username = "api_test_robot_user"
+    webauth.WEBAUTH_MANAGER.SetUserName(self.test_username)
 
 
 class ApiSslE2ETestMixin(object):
@@ -143,7 +139,9 @@ class ApiSslWithoutCABundleTest(ApiSslServerTestBase):
   def testConnectionFails(self):
     client_id = self.SetupClient(0)
 
-    api = grr_api.InitHttp(api_endpoint=self.__class__.ssl_endpoint)
+    # TODO: Enable version validation.
+    api = grr_api.InitHttp(
+        api_endpoint=self.__class__.ssl_endpoint, validate_version=False)
     with self.assertRaises(requests.exceptions.SSLError):
       api.Client(client_id=client_id).Get()
 
@@ -153,8 +151,11 @@ class ApiSslWithEnvVarWithoutMergingTest(ApiSslServerTestBase):
   def testConnectionFails(self):
     client_id = self.SetupClient(0)
 
+    # TODO: Enable version validation.
     api = grr_api.InitHttp(
-        api_endpoint=self.__class__.ssl_endpoint, trust_env=False)
+        api_endpoint=self.__class__.ssl_endpoint,
+        trust_env=False,
+        validate_version=False)
     with self.assertRaises(requests.exceptions.SSLError):
       api.Client(client_id=client_id).Get()
 
@@ -163,7 +164,7 @@ class ApiSslWithConfigurationInEnvVarsE2ETest(ApiSslServerTestBase,
                                               ApiSslE2ETestMixin):
 
   def setUp(self):
-    super(ApiSslWithConfigurationInEnvVarsE2ETest, self).setUp()
+    super().setUp()
 
     prev_environ = dict(os.environ)
 
@@ -181,7 +182,7 @@ class ApiSslWithWithVerifyFalseE2ETest(ApiSslServerTestBase,
                                        ApiSslE2ETestMixin):
 
   def setUp(self):
-    super(ApiSslWithWithVerifyFalseE2ETest, self).setUp()
+    super().setUp()
 
     self.api = grr_api.InitHttp(
         api_endpoint=self.__class__.ssl_endpoint, verify=False)
@@ -191,7 +192,7 @@ class ApiSslWithWithVerifyPointingToCABundleTest(ApiSslServerTestBase,
                                                  ApiSslE2ETestMixin):
 
   def setUp(self):
-    super(ApiSslWithWithVerifyPointingToCABundleTest, self).setUp()
+    super().setUp()
 
     self.api = grr_api.InitHttp(
         api_endpoint=self.__class__.ssl_endpoint,
@@ -213,7 +214,7 @@ class TCPServerV6(socketserver.TCPServer):
 class ApiSslProxyTest(ApiSslServerTestBase):
 
   def setUp(self):
-    super(ApiSslProxyTest, self).setUp()
+    super().setUp()
     attempts_count = 0
     self.proxy_server = None
     while self.proxy_server is None:
@@ -232,9 +233,11 @@ class ApiSslProxyTest(ApiSslServerTestBase):
   def testProxyConnection(self):
     client_id = self.SetupClient(0)
 
+    # TODO: Enable version validation.
     api = grr_api.InitHttp(
         api_endpoint=self.__class__.ssl_endpoint,
-        proxies={"https": "localhost:%d" % self.proxy_port})
+        proxies={"https": "http://localhost:%d" % self.proxy_port},
+        validate_version=False)
     with self.assertRaises(requests.exceptions.ConnectionError):
       api.Client(client_id=client_id).Get()
 

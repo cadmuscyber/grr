@@ -55,6 +55,10 @@ Target:Darwin:
   Client.install_path: |
     /usr/local/lib/%(Client.name)/%(ClientRepacker.output_basename)
 
+  Client.unprivileged_user: nobody
+  Client.unprivileged_group: nobody
+  Client.use_filesystem_sandboxing: True
+
   ClientBuilder.build_dest: "%(Client.name)-build"
 
   ClientBuilder.build_root_dir: /Users/%(USER|env)/mac-build
@@ -66,6 +70,9 @@ Target:Darwin:
   ClientBuilder.package_maker_organization: com.google.code
 
   ClientBuilder.template_extension: .xar.zip
+
+  ClientBuilder.fleetspeak_plist_path: /Library/LaunchDaemons/com.google.code.fleetspeak.plist
+  ClientBuilder.fleetspeak_service_dir: /etc/fleetspeak-client/textservices
 
   Logging.path: /var/log
 
@@ -115,6 +122,11 @@ Target:Linux:
   PyInstaller.distpath: |
     %(PyInstaller.dpkg_root)/debian/
 
+  Client.unprivileged_user: _%(Client.name)
+  Client.unprivileged_group: _%(Client.name)
+  Client.use_filesystem_sandboxing: True
+  Client.use_memory_sandboxing: True
+
   Target:LinuxRpm:
     ClientBuilder.output_extension: .rpm
 
@@ -125,6 +137,11 @@ Target:Linux:
 
     Client.install_path: |
       /usr/lib64/%(Client.name)/%(ClientRepacker.output_basename)
+
+    ClientBuilder.fleetspeak_service_dir: |
+      /etc/fleetspeak-client/textservices
+
+    Client.fleetspeak_service_name: fleetspeak-client
 
   # This indicates that we are building a client for debugging. It needs to
   # be nested deeper than the Client context so it always takes precedence
@@ -156,6 +173,14 @@ Target:Windows:
   ClientBuilder.output_extension: .exe
 
   ClientBuilder.template_extension: .exe.zip
+
+  Client.use_filesystem_sandboxing: True
+  Client.use_memory_sandboxing: True
+
+  Target:WindowsMsi:
+    ClientBuilder.output_extension: .msi
+
+    ClientBuilder.template_extension: .msi.zip
 
   # This indicates that we are building a client for debugging. It needs to
   # be nested deeper than the Client context so it always takes precedence

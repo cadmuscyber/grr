@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Test the flow_management interface."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -16,16 +12,16 @@ class TestCrashView(gui_test_lib.GRRSeleniumHuntTest):
   """Tests the crash view."""
 
   def setUp(self):
-    super(TestCrashView, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
 
   def SetUpCrashedFlow(self):
-    client = flow_test_lib.CrashClientMock(self.client_id, self.token)
+    client = flow_test_lib.CrashClientMock(self.client_id)
     flow_test_lib.TestFlowHelper(
         flow_test_lib.FlowWithOneClientRequest.__name__,
         client,
         client_id=self.client_id,
-        token=self.token,
+        creator=self.test_username,
         check_flow_errors=False)
 
   def testOpeningCrashesOfUnapprovedClientRedirectsToHostInfoPage(self):

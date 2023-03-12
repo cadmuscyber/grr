@@ -1,11 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """API handlers for accessing artifacts."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
-
 from grr_response_core.lib import parsers
 from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
@@ -46,8 +40,7 @@ class ApiListArtifactsHandler(api_call_handler_base.ApiCallHandler):
           is_custom=artifact_val.loaded_from.startswith("datastore:"))
 
       factory = parsers.ArtifactParserFactory(str(artifact_val.name))
-      for parser in factory.AllParsers():
-        parser_cls = type(parser)
+      for parser_cls in factory.AllParserTypes():
         descriptor.processors.append(
             rdf_artifacts.ArtifactProcessorDescriptor.FromParser(parser_cls))
 
@@ -55,7 +48,7 @@ class ApiListArtifactsHandler(api_call_handler_base.ApiCallHandler):
 
     return result
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     """Get available artifact information for rendering."""
 
     # Get all artifacts that aren't Bootstrap and aren't the base class.
@@ -84,7 +77,7 @@ class ApiUploadArtifactHandler(api_call_handler_base.ApiCallHandler):
 
   args_type = ApiUploadArtifactArgs
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     artifact.UploadArtifactYamlFile(
         args.artifact, overwrite=True, overwrite_system_artifacts=False)
 
@@ -98,5 +91,5 @@ class ApiDeleteArtifactsHandler(api_call_handler_base.ApiCallHandler):
 
   args_type = ApiDeleteArtifactsArgs
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     artifact_registry.DeleteArtifactsFromDatastore(set(args.names))

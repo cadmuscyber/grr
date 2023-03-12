@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for report plugins."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import math
 
@@ -88,8 +84,7 @@ class ClientReportPluginsTest(test_lib.GRRBaseTest):
 
     api_report_data = report.GetReportData(
         stats_api.ApiGetReportArgs(
-            name=report.__class__.__name__, client_label="All"),
-        token=self.token)
+            name=report.__class__.__name__, client_label="All"))
 
     self.assertEqual(
         api_report_data.representation_type,
@@ -110,8 +105,7 @@ class ClientReportPluginsTest(test_lib.GRRBaseTest):
 
     api_report_data = report.GetReportData(
         stats_api.ApiGetReportArgs(
-            name=report.__class__.__name__, client_label="All"),
-        token=self.token)
+            name=report.__class__.__name__, client_label="All"))
 
     self.assertEqual(
         api_report_data,
@@ -130,8 +124,7 @@ class ClientReportPluginsTest(test_lib.GRRBaseTest):
 
     api_report_data = report.GetReportData(
         stats_api.ApiGetReportArgs(
-            name=report.__class__.__name__, client_label="All"),
-        token=self.token)
+            name=report.__class__.__name__, client_label="All"))
 
     self.assertEqual(
         api_report_data.representation_type,
@@ -157,8 +150,7 @@ class ClientReportPluginsTest(test_lib.GRRBaseTest):
 
     api_report_data = report.GetReportData(
         stats_api.ApiGetReportArgs(
-            name=report.__class__.__name__, client_label="All"),
-        token=self.token)
+            name=report.__class__.__name__, client_label="All"))
 
     self.assertEqual(
         api_report_data.representation_type,
@@ -186,8 +178,7 @@ class ClientReportPluginsTest(test_lib.GRRBaseTest):
 
     api_report_data = report.GetReportData(
         stats_api.ApiGetReportArgs(
-            name=report.__class__.__name__, client_label="All"),
-        token=self.token)
+            name=report.__class__.__name__, client_label="All"))
 
     self.assertEqual(
         api_report_data,
@@ -203,8 +194,7 @@ class ClientReportPluginsTest(test_lib.GRRBaseTest):
 
     api_report_data = report.GetReportData(
         stats_api.ApiGetReportArgs(
-            name=report.__class__.__name__, client_label="All"),
-        token=self.token)
+            name=report.__class__.__name__, client_label="All"))
 
     self.assertEqual(
         api_report_data,
@@ -224,8 +214,7 @@ class ClientReportPluginsTest(test_lib.GRRBaseTest):
 
     api_report_data = report.GetReportData(
         stats_api.ApiGetReportArgs(
-            name=report.__class__.__name__, client_label="All"),
-        token=self.token)
+            name=report.__class__.__name__, client_label="All"))
 
     self.assertEqual(
         api_report_data,
@@ -242,8 +231,7 @@ class ClientReportPluginsTest(test_lib.GRRBaseTest):
 
     api_report_data = report.GetReportData(
         stats_api.ApiGetReportArgs(
-            name=report.__class__.__name__, client_label="Linux--buster/sid"),
-        token=self.token)
+            name=report.__class__.__name__, client_label="Linux--buster/sid"))
 
     self.assertEqual(
         api_report_data,
@@ -324,8 +312,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=start,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(api_report_data.representation_type,
                      RepresentationType.AUDIT_CHART)
@@ -361,8 +348,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=now - month_duration,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(
         api_report_data,
@@ -393,8 +379,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=start,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(api_report_data.representation_type,
                      RepresentationType.AUDIT_CHART)
@@ -426,8 +411,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=now - month_duration,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(
         api_report_data,
@@ -468,8 +452,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=start,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(
         api_report_data.representation_type,
@@ -516,8 +499,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=now - month_duration,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(api_report_data.representation_type,
                      RepresentationType.AUDIT_CHART)
@@ -557,8 +539,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=start,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(
         api_report_data.representation_type,
@@ -596,8 +577,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=now - month_duration,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(api_report_data.representation_type,
                      RepresentationType.AUDIT_CHART)
@@ -630,8 +610,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
           stats_api.ApiGetReportArgs(
               name=report.__class__.__name__,
               start_time=now - month_duration,
-              duration=month_duration),
-          token=self.token)
+              duration=month_duration))
 
       self.assertEqual(
           api_report_data,
@@ -654,8 +633,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=now - month_duration,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(api_report_data.representation_type,
                      RepresentationType.PIE_CHART)
@@ -707,8 +685,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=start,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(
         api_report_data,
@@ -736,8 +713,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=now - month_duration,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(
         api_report_data,
@@ -771,8 +747,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=start_time,
-            duration=duration),
-        token=self.token)
+            duration=duration))
 
     self.assertEqual(
         api_report_data,
@@ -806,8 +781,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=start_time,
-            duration=duration),
-        token=self.token)
+            duration=duration))
 
     self.assertEqual(
         api_report_data,
@@ -860,8 +834,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=start,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(
         api_report_data,
@@ -889,8 +862,7 @@ class ServerReportPluginsTest(test_lib.GRRBaseTest):
         stats_api.ApiGetReportArgs(
             name=report.__class__.__name__,
             start_time=now - month_duration,
-            duration=month_duration),
-        token=self.token)
+            duration=month_duration))
 
     self.assertEqual(
         api_report_data,

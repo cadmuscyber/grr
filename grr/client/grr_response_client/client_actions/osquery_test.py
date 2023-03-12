@@ -1,12 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """A module with client action for talking with osquery."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
-import collections
 import hashlib
 import io
 import os
@@ -132,7 +125,7 @@ class OsqueryTest(absltest.TestCase):
       self.assertEqual(list(table.Column("size")), [str(size)])
 
   def testIncorrectQuery(self):
-    with self.assertRaises(osquery.QueryError):
+    with self.assertRaises(osquery.Error):
       _Query("FROM foo SELECT bar;")
 
   def testEmptyQuery(self):
@@ -225,39 +218,26 @@ class FakeOsqueryTest(absltest.TestCase):
     self.assertEqual(list(table.Column("foo")), ["bar", "baz"])
     self.assertEqual(list(table.Column("quux")), ["norf", "thud"])
 
-  def testError(self):
+  def testErrorOutput(self):
     stderr = "Error: near 'FROM': syntax error"
     with osquery_test_lib.FakeOsqueryiOutput(stdout="", stderr=stderr):
-      with self.assertRaises(osquery.QueryError):
+      with self.assertRaises(osquery.Error) as context:
         _Query("FROM bar SELECT foo;")
+
+    self.assertIn(stderr, str(context.exception))
+
+  def testErrorCode(self):
+    stderr = "Error: permission error"
+    with osquery_test_lib.FakeOsqueryiError(stderr=stderr):
+      with self.assertRaises(osquery.Error) as context:
+        _Query("SELECT * FROM processes;")
+
+    self.assertIn(stderr, str(context.exception))
 
   def testTimeout(self):
     with osquery_test_lib.FakeOsqueryiSleep(1.0):
       with self.assertRaises(osquery.TimeoutError):
         _Query("SELECT * FROM processes;", timeout_millis=0)
-
-  def testIgnoreStderrErrors(self):
-    query = "SELECT foo, bar, baz FROM blargh;"
-    stdout = """
-    [
-      { "foo": "quux", "bar": "norf", "baz": "thud" }
-    ]
-    """
-    stderr = "Warning: near 'FROM': table 'blargh' might be very large"
-    with osquery_test_lib.FakeOsqueryiOutput(stdout=stdout, stderr=stderr):
-      results = _Query(query, ignore_stderr_errors=True)
-
-    self.assertLen(results, 1)
-    self.assertEqual(results[0].stderr, stderr)
-
-    table = results[0].table
-    self.assertLen(table.header.columns, 3)
-    self.assertEqual(table.header.columns[0].name, "foo")
-    self.assertEqual(table.header.columns[1].name, "bar")
-    self.assertEqual(table.header.columns[2].name, "baz")
-    self.assertEqual(list(table.Column("foo")), ["quux"])
-    self.assertEqual(list(table.Column("bar")), ["norf"])
-    self.assertEqual(list(table.Column("baz")), ["thud"])
 
 
 class ChunkTableTest(absltest.TestCase):
@@ -269,8 +249,7 @@ class ChunkTableTest(absltest.TestCase):
     table.query = "SELECT * FROM quux;"
 
     chunks = list(osquery.ChunkTable(table, max_chunk_size=1024 * 1024 * 1024))
-    self.assertLen(chunks, 1)
-    self.assertEqual(chunks[0], table)
+    self.assertEmpty(chunks)
 
   def testSingleRowChunks(self):
     table = rdf_osquery.OsqueryTable()
@@ -365,7 +344,7 @@ class ParseTableTest(absltest.TestCase):
     self.assertEmpty(table.rows)
 
   def testSingleRow(self):
-    row = collections.OrderedDict()
+    row = dict()
     row["foo"] = "quux"
     row["bar"] = "thud"
     row["baz"] = "norf"
@@ -381,17 +360,17 @@ class ParseTableTest(absltest.TestCase):
     self.assertEqual(table.rows[0].values, ["quux", "thud", "norf"])
 
   def testMultiRow(self):
-    row0 = collections.OrderedDict()
+    row0 = dict()
     row0["A"] = "foo"
     row0["B"] = "bar"
     row0["C"] = "baz"
 
-    row1 = collections.OrderedDict()
+    row1 = dict()
     row1["A"] = "quux"
     row1["B"] = "norf"
     row1["C"] = "thud"
 
-    row2 = collections.OrderedDict()
+    row2 = dict()
     row2["A"] = "blargh"
     row2["B"] = "plugh"
     row2["C"] = "ztesch"
@@ -409,11 +388,11 @@ class ParseTableTest(absltest.TestCase):
     self.assertEqual(table.rows[2].values, ["blargh", "plugh", "ztesch"])
 
   def testIncompatibleRows(self):
-    row0 = collections.OrderedDict()
+    row0 = dict()
     row0["A"] = "foo"
     row0["B"] = "bar"
 
-    row1 = collections.OrderedDict()
+    row1 = dict()
     row1["A"] = "quux"
     row1["C"] = "thud"
 
@@ -428,7 +407,7 @@ class ParseHeaderTest(absltest.TestCase):
     self.assertEmpty(header.columns, 0)
 
   def testSingleRow(self):
-    row = collections.OrderedDict()
+    row = dict()
     row["foo"] = "quux"
     row["bar"] = "thud"
     row["baz"] = "norf"
@@ -441,12 +420,12 @@ class ParseHeaderTest(absltest.TestCase):
     self.assertEqual(header.columns[2].name, "baz")
 
   def testMultiRow(self):
-    row0 = collections.OrderedDict()
+    row0 = dict()
     row0["foo"] = "quux"
     row0["bar"] = "thud"
     row0["baz"] = "norf"
 
-    row1 = collections.OrderedDict()
+    row1 = dict()
     row1["foo"] = "blargh"
     row1["bar"] = "plugh"
     row1["baz"] = "ztesch"
@@ -459,11 +438,11 @@ class ParseHeaderTest(absltest.TestCase):
     self.assertEqual(header.columns[2].name, "baz")
 
   def testIncompatibleRows(self):
-    row0 = collections.OrderedDict()
+    row0 = dict()
     row0["foo"] = "quux"
     row0["bar"] = "thud"
 
-    row1 = collections.OrderedDict()
+    row1 = dict()
     row1["baz"] = "thud"
     row1["bar"] = "blargh"
 

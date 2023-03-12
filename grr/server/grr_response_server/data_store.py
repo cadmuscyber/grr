@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
 """The main data store abstraction.
 
 The data store is responsible for storing AFF4 objects permanently. This file
@@ -34,10 +33,6 @@ More complex types should be encoded into bytes and stored in the data store as
 bytes. The data store can then treat the type as an opaque type (and will not be
 able to filter it directly).
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
 import logging
 import sys
@@ -52,14 +47,11 @@ from grr_response_server.databases import registry_init
 
 flags.DEFINE_bool("list_storage", False, "List all storage subsystems present.")
 
-# TODO(user): Move access to functions that never return None but raise
-# instead.
-
 # The global relational db handle.
-REL_DB = None  # type: Optional[db.Database]
+REL_DB: Optional[db.Database] = None
 
 # The global blobstore handle.
-BLOBS = None  # type: Optional[blob_store.BlobStore]
+BLOBS: Optional[blob_store.BlobStore] = None
 
 
 def _ListStorageOptions():
@@ -79,17 +71,11 @@ def InitializeDataStore():
     _ListStorageOptions()
     sys.exit(0)
 
-  # Initialize the blobstore.
-  blobstore_name = config.CONFIG.Get("Blobstore.implementation")
-  try:
-    cls = blob_store.REGISTRY[blobstore_name]
-  except KeyError:
-    raise ValueError("No blob store %s found." % blobstore_name)
-  BLOBS = blob_store.BlobStoreValidationWrapper(cls())
-
   # Initialize the relational DB.
   rel_db_name = config.CONFIG["Database.implementation"]
   if not rel_db_name:
+    # TODO(hanuszczak): I think we should raise here instead of silently doing
+    # nothing.
     return
 
   try:
@@ -98,3 +84,13 @@ def InitializeDataStore():
     raise ValueError("Database %s not found." % rel_db_name)
   logging.info("Using database implementation %s", rel_db_name)
   REL_DB = db.DatabaseValidationWrapper(cls())
+
+  # Initialize the blobstore. This has to be done after the database has been
+  # already initialized as it might be possible that users want to use the data-
+  # base-backed blobstore implementation.
+  blobstore_name = config.CONFIG.Get("Blobstore.implementation")
+  try:
+    cls = blob_store.REGISTRY[blobstore_name]
+  except KeyError:
+    raise ValueError("No blob store %s found." % blobstore_name)
+  BLOBS = blob_store.BlobStoreValidationWrapper(cls())

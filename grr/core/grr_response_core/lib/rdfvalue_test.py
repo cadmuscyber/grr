@@ -1,11 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for utility classes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import datetime
 import sys
@@ -186,6 +181,48 @@ class RDFDateTimeTest(absltest.TestCase):
   def testFloorExact(self):
     dt = rdfvalue.RDFDatetime.FromHumanReadable("2011-11-11 12:34:56")
     self.assertEqual(dt.Floor(rdfvalue.Duration.From(1, rdfvalue.SECONDS)), dt)
+
+  def testAsDatetime_Epoch(self):
+    py_datetime = rdfvalue.RDFDatetime(0).AsDatetime()
+
+    self.assertIsNone(py_datetime.tzinfo)
+    self.assertEqual(py_datetime.year, 1970)
+    self.assertEqual(py_datetime.month, 1)
+    self.assertEqual(py_datetime.day, 1)
+    self.assertEqual(py_datetime.hour, 0)
+    self.assertEqual(py_datetime.minute, 0)
+
+  def testAsDatetime_Normal(self):
+    rdf_datetime = rdfvalue.RDFDatetime.FromHumanReadable("1992-09-06 08:00")
+    py_datetime = rdf_datetime.AsDatetime()
+
+    self.assertIsNone(py_datetime.tzinfo)
+    self.assertEqual(py_datetime.year, 1992)
+    self.assertEqual(py_datetime.month, 9)
+    self.assertEqual(py_datetime.day, 6)
+    self.assertEqual(py_datetime.hour, 8)
+    self.assertEqual(py_datetime.minute, 0)
+
+  def testAsDatetimeUTC_Epoch(self):
+    py_datetime = rdfvalue.RDFDatetime(0).AsDatetimeUTC()
+
+    self.assertEqual(py_datetime.tzinfo, datetime.timezone.utc)
+    self.assertEqual(py_datetime.year, 1970)
+    self.assertEqual(py_datetime.month, 1)
+    self.assertEqual(py_datetime.day, 1)
+    self.assertEqual(py_datetime.hour, 0)
+    self.assertEqual(py_datetime.minute, 0)
+
+  def testAsDatetimeUTC_Normal(self):
+    rdf_datetime = rdfvalue.RDFDatetime.FromHumanReadable("1992-09-06 08:00")
+    py_datetime = rdf_datetime.AsDatetimeUTC()
+
+    self.assertEqual(py_datetime.tzinfo, datetime.timezone.utc)
+    self.assertEqual(py_datetime.year, 1992)
+    self.assertEqual(py_datetime.month, 9)
+    self.assertEqual(py_datetime.day, 6)
+    self.assertEqual(py_datetime.hour, 8)
+    self.assertEqual(py_datetime.minute, 0)
 
 
 class RDFDatetimeSecondsTest(absltest.TestCase):

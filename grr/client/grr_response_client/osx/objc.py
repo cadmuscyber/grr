@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Interface to Objective C libraries on OS X."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
 import ctypes
 import ctypes.util
 from typing import Text
@@ -49,7 +44,52 @@ def FilterFnTable(fn_table, symbol):
   return new_table
 
 
-def SetCTypesForLibrary(libname, fn_table):
+_LOADED_SHARED_LIBRARIES = frozenset({'c'})
+
+
+def LoadLibrary(libname: str) -> ctypes.CDLL:
+  """Loads a CDLL by searching for the library name in well-known locations."""
+  # macOS 11 introduced a bug when trying to locate and load shared libraries,
+  # see https://bugs.python.org/issue41179. This function contains workarounds
+  # to work properly on affected and unaffected macOS and Python versions.
+
+  # As fallback, try to load the library directly from well-known locations.
+  # This fixes loading "Foundation" on unfixed Python on macOS 11.
+  paths = [
+      '/System/Library/Frameworks/{0}.framework/{0}'.format(libname),
+      '/usr/lib/{0}.dylib'.format(libname),
+  ]
+
+  found_path = ctypes.util.find_library(libname)
+
+  if found_path is not None:
+    # This allows locating arbitrary libraries on macOS < 11 and future Python
+    # versions that fix find_library on macOS 11.
+    paths.insert(0, found_path)
+  elif libname in _LOADED_SHARED_LIBRARIES:
+    # If we try loading a library that has not been found by find_library due to
+    # the Big Sur bug, but likely has been loaded by the current program, try
+    # `ctypes.cdll.LoadLibrary(None)` as fallback. This returns shared objects
+    # loaded at program startup per DLOPEN(3). Ultimately, this fixes loading
+    # libc on Big Sur. See: https://stackoverflow.com/questions/49878901/.
+    paths.append(None)
+  else:
+    # If the library is not found by find_library and likely not loaded already,
+    # try to load the raw library name by letting ctypes.cdll.LoadLibrary
+    # resolve the library location. This could allow loading some libraries in a
+    # future, fixed Python version again.
+    paths.insert(0, libname)
+
+  for libpath in paths:
+    try:
+      return ctypes.cdll.LoadLibrary(libpath)
+    except OSError:
+      pass
+
+  raise ErrorLibNotFound('Library {} not found'.format(libname))
+
+
+def _SetCTypesForLibrary(libname, fn_table):
   """Set function argument types and return types for an ObjC library.
 
   Args:
@@ -60,11 +100,7 @@ def SetCTypesForLibrary(libname, fn_table):
   Raises:
     ErrorLibNotFound: Can't find specified lib
   """
-  libpath = ctypes.util.find_library(libname)
-  if not libpath:
-    raise ErrorLibNotFound('Library %s not found' % libname)
-
-  lib = ctypes.cdll.LoadLibrary(libpath)
+  lib = LoadLibrary(libname)
 
   # We need to define input / output parameters for all functions we use
   for (function, args, result) in fn_table:
@@ -81,10 +117,10 @@ class Foundation(object):
   dll = None
 
   @classmethod
-  def LoadLibrary(cls, libname, cftable):
+  def _LoadLibrary(cls, libname, cftable):
     # Cache the library to only load it once.
     if cls.dll is None:
-      cls.dll = SetCTypesForLibrary(libname, cftable)
+      cls.dll = _SetCTypesForLibrary(libname, cftable)
 
   def __init__(self):
     self.cftable = [
@@ -122,7 +158,7 @@ class Foundation(object):
          ctypes.c_void_p)
     ]  # pyformat: disable
 
-    self.LoadLibrary('Foundation', self.cftable)
+    self._LoadLibrary('Foundation', self.cftable)
 
   def CFStringToPystring(self, value) -> Text:
     length = (self.dll.CFStringGetLength(value) * 4) + 1
@@ -195,7 +231,7 @@ class SystemConfiguration(Foundation):
     self.cftable.append(('SCDynamicStoreCopyProxies', [ctypes.c_void_p],
                          ctypes.c_void_p))
 
-    self.dll = SetCTypesForLibrary('SystemConfiguration', self.cftable)
+    self.dll = _SetCTypesForLibrary('SystemConfiguration', self.cftable)
 
 
 class ServiceManagement(Foundation):
@@ -211,7 +247,7 @@ class ServiceManagement(Foundation):
         # Only available 10.6 and later
         ('SMCopyAllJobDictionaries', [ctypes.c_void_p], ctypes.c_void_p),)
 
-    self.dll = SetCTypesForLibrary('ServiceManagement', self.cftable)
+    self.dll = _SetCTypesForLibrary('ServiceManagement', self.cftable)
 
   def SMGetJobDictionaries(self, domain='kSMDomainSystemLaunchd'):
     """Copy all Job Dictionaries from the ServiceManagement.
@@ -267,9 +303,6 @@ class CFBoolean(CFType):
 
   def __bool__(self):
     return self.value
-
-  # TODO: Remove after support for Python 2 is dropped.
-  __nonzero__ = __bool__
 
   def __repr__(self):
     return str(self.value)

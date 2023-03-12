@@ -1,24 +1,19 @@
 #!/usr/bin/env python
-# Lint as: python3
 """The GRR frontend server."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
 import logging
 import time
 
-from grr_response_core.lib import communicator
+from typing import Iterable
+
 from grr_response_core.lib import queues
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_network as rdf_client_network
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.util import collection
 from grr_response_core.lib.util import random
 from grr_response_core.stats import metrics
-from grr_response_server import access_control
+from grr_response_server import communicator
 from grr_response_server import data_store
 from grr_response_server import events
 from grr_response_server import message_handlers
@@ -49,8 +44,9 @@ FRONTEND_REQUEST_LATENCY = metrics.Event(
 GRR_FRONTENDSERVER_HANDLE_TIME = metrics.Event("grr_frontendserver_handle_time")
 GRR_FRONTENDSERVER_HANDLE_NUM = metrics.Counter("grr_frontendserver_handle_num")
 GRR_MESSAGES_SENT = metrics.Counter("grr_messages_sent")
-GRR_PUB_KEY_CACHE = metrics.Counter("grr_pub_key_cache", fields=[("type", str)])
 GRR_UNIQUE_CLIENTS = metrics.Counter("grr_unique_clients")
+
+FRONTEND_USERNAME = "GRRFrontEnd"
 
 
 class ServerCommunicator(communicator.Communicator):
@@ -58,18 +54,10 @@ class ServerCommunicator(communicator.Communicator):
 
   def __init__(self, certificate, private_key):
     super().__init__(certificate=certificate, private_key=private_key)
-    self.pub_key_cache = utils.FastStore(max_size=50000)
     self.common_name = self.certificate.GetCN()
 
   def _GetRemotePublicKey(self, common_name):
     remote_client_id = common_name.Basename()
-    try:
-      # See if we have this client already cached.
-      remote_key = self.pub_key_cache.Get(remote_client_id)
-      GRR_PUB_KEY_CACHE.Increment(fields=["hits"])
-      return remote_key
-    except KeyError:
-      GRR_PUB_KEY_CACHE.Increment(fields=["misses"])
 
     try:
       md = data_store.REL_DB.ReadClientMetadata(remote_client_id)
@@ -85,9 +73,7 @@ class ServerCommunicator(communicator.Communicator):
       logging.error("Stored cert mismatch for %s", common_name)
       raise communicator.UnknownClientCertError("Stored cert mismatch")
 
-    pub_key = cert.GetPublicKey()
-    self.pub_key_cache.Put(common_name, pub_key)
-    return pub_key
+    return cert.GetPublicKey()
 
   def VerifyMessageSignature(self, response_comms, packed_message_list, cipher,
                              cipher_verified, api_version, remote_public_key):
@@ -193,11 +179,6 @@ class FrontEndServer(object):
                max_queue_size=50,
                message_expiry_time=120,
                max_retransmission_time=10):
-    # Identify ourselves as the server.
-    self.token = access_control.ACLToken(
-        username="GRRFrontEnd", reason="Implied.")
-    self.token.supervisor = True
-
     self._communicator = ServerCommunicator(
         certificate=certificate, private_key=private_key)
 
@@ -322,7 +303,8 @@ class FrontEndServer(object):
         client_id, first_seen=now, fleetspeak_enabled=True, last_ping=now)
 
     # Publish the client enrollment message.
-    events.Events.PublishEvent("ClientEnrollment", client_urn, token=self.token)
+    events.Events.PublishEvent(
+        "ClientEnrollment", client_urn, username=FRONTEND_USERNAME)
     return True
 
   legacy_well_known_session_ids = set([
@@ -337,7 +319,8 @@ class FrontEndServer(object):
   # logic depends on blobs being in the blob store to do file hashing.
   _SHORTCUT_HANDLERS = frozenset([transfer.BlobHandler.handler_name])
 
-  def ReceiveMessages(self, client_id, messages):
+  def ReceiveMessages(self, client_id: str,
+                      messages: Iterable[rdf_flows.GrrMessage]):
     """Receives and processes the messages.
 
     For each message we update the request object, and place the
@@ -356,29 +339,35 @@ class FrontEndServer(object):
 
     msgs_by_session_id = collection.Group(messages, lambda m: m.session_id)
     for session_id, msgs in msgs_by_session_id.items():
+      try:
+        for msg in msgs:
+          if (msg.auth_state != msg.AuthorizationState.AUTHENTICATED and
+              msg.session_id != self.unauth_allowed_session_id):
+            dropped_count += 1
+            continue
 
-      for msg in msgs:
-        if (msg.auth_state != msg.AuthorizationState.AUTHENTICATED and
-            msg.session_id != self.unauth_allowed_session_id):
-          dropped_count += 1
-          continue
-
-        session_id_str = str(session_id)
-        if session_id_str in message_handlers.session_id_map:
-          request = rdf_objects.MessageHandlerRequest(
-              client_id=msg.source.Basename(),
-              handler_name=message_handlers.session_id_map[session_id],
-              request_id=msg.response_id or random.UInt32(),
-              request=msg.payload)
-          if request.handler_name in self._SHORTCUT_HANDLERS:
-            frontend_message_handler_requests.append(request)
+          session_id_str = str(session_id)
+          if session_id_str in message_handlers.session_id_map:
+            request = rdf_objects.MessageHandlerRequest(
+                client_id=msg.source.Basename(),
+                handler_name=message_handlers.session_id_map[session_id],
+                request_id=msg.response_id or random.UInt32(),
+                request=msg.payload)
+            if request.handler_name in self._SHORTCUT_HANDLERS:
+              frontend_message_handler_requests.append(request)
+            else:
+              worker_message_handler_requests.append(request)
+          elif session_id_str in self.legacy_well_known_session_ids:
+            logging.debug(
+                "Dropping message for legacy well known session id %s",
+                session_id)
           else:
-            worker_message_handler_requests.append(request)
-        elif session_id_str in self.legacy_well_known_session_ids:
-          logging.debug("Dropping message for legacy well known session id %s",
-                        session_id)
-        else:
-          unprocessed_msgs.append(msg)
+            unprocessed_msgs.append(msg)
+      except ValueError:
+        logging.exception(
+            "Unpacking error in at least one of %d messages for session id %s",
+            len(msgs), session_id)
+        raise
 
     if dropped_count:
       logging.info("Dropped %d unauthenticated messages for %s", dropped_count,
@@ -409,7 +398,7 @@ class FrontEndServer(object):
                 nanny_status=stat.nanny_status,
                 timestamp=rdfvalue.RDFDatetime.Now())
             events.Events.PublishEvent(
-                "ClientCrash", crash_details, token=self.token)
+                "ClientCrash", crash_details, username=FRONTEND_USERNAME)
 
     if worker_message_handler_requests:
       data_store.REL_DB.WriteMessageHandlerRequests(

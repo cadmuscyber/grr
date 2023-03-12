@@ -1,23 +1,12 @@
 #!/usr/bin/env python
 """setup.py file for a GRR Colab library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
+import configparser
 import os
 import shutil
-import sys
 
 from setuptools import setup
 from setuptools.command.sdist import sdist
-
-# TODO: Fix this import once support for Python 2 is dropped.
-# pylint: disable=g-import-not-at-top
-if sys.version_info.major == 2:
-  import ConfigParser as configparser
-else:
-  import configparser
-# pylint: enable=g-import-not-at-top
 
 THIS_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
@@ -36,7 +25,7 @@ def get_config():
     if not os.path.exists(ini_path):
       raise RuntimeError("Couldn't find version.ini")
 
-  config = configparser.SafeConfigParser()
+  config = configparser.ConfigParser()
   config.read(ini_path)
   return config
 
@@ -70,9 +59,8 @@ setup(
     install_requires=[
         "grr_api_client==%s" % VERSION.get("Version", "packagedepends"),
         "grr_response_proto==%s" % VERSION.get("Version", "packagedepends"),
-        "humanize==0.5.1",
-        "ipaddress==1.0.22",
-        "ipython==%s" % ("5.0.0" if sys.version_info < (3, 0) else "7.2.0"),
-        "numpy==1.16.4",
-        "pandas==0.24.1",
+        "humanize==2.4.0",
+        "ipython==7.15.0",
+        "numpy==1.21.5",
+        "pandas==1.1.5",
     ])

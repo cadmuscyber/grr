@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Contains tests for api_call_handler_utils."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -17,7 +12,7 @@ class FilterListTest(test_lib.GRRBaseTest):
   """Test for FilterList."""
 
   def setUp(self):
-    super(FilterListTest, self).setUp()
+    super().setUp()
 
     self.l = []
     for i in range(10):

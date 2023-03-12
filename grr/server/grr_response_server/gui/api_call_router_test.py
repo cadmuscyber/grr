@@ -1,13 +1,11 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for API call routers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
-from grr_response_core.lib.util import compatibility
+from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_proto import tests_pb2
+from grr_response_server import access_control
 from grr_response_server.gui import api_call_router
 from grr.test_lib import test_lib
 
@@ -16,14 +14,18 @@ class SingleMethodDummyApiCallRouter(api_call_router.ApiCallRouter):
   """Dummy ApiCallRouter implementation overriding just a single method."""
 
   @api_call_router.Http("GET", "/api/foo/bar")
-  def SomeRandomMethod(self, args, token=None):
+  def SomeRandomMethod(self, args, context=None):
     pass
 
-  def CreateFlow(self, args, token=None):
+  def CreateFlow(self, args, context=None):
     pass
 
 
 class SingleMethodDummyApiCallRouterChild(SingleMethodDummyApiCallRouter):
+  pass
+
+
+class EmptyRouter(api_call_router.ApiCallRouterStub):
   pass
 
 
@@ -32,11 +34,11 @@ class ApiCallRouterTest(test_lib.GRRBaseTest):
 
   def testAllAnnotatedMethodsAreNotImplemented(self):
     # We can't initialize ApiCallRouter directly because it's abstract.
-    router = api_call_router.DisabledApiCallRouter()
+    router = EmptyRouter()
 
     for name in api_call_router.ApiCallRouter.GetAnnotatedMethods():
       with self.assertRaises(NotImplementedError):
-        getattr(router, name)(None, token=None)
+        getattr(router, name)(None, context=None)
 
   def testGetAnnotatedMethodsReturnsNonEmptyDict(self):
     methods = api_call_router.ApiCallRouterStub.GetAnnotatedMethods()
@@ -65,9 +67,9 @@ class ApiCallRouterTest(test_lib.GRRBaseTest):
         self.assertIn(
             name, valid_parameters,
             "Parameter {} in route {} is not found in {}. "
-            "Valid parameters are {}.".format(
-                name, method.name, compatibility.GetName(method.args_type),
-                valid_parameters))
+            "Valid parameters are {}.".format(name, method.name,
+                                              method.args_type.__name__,
+                                              valid_parameters))
 
   def testRouterMethodNamesAreInLengthLimit(self):
     for name in api_call_router.ApiCallRouterStub.GetAnnotatedMethods():
@@ -77,16 +79,44 @@ class ApiCallRouterTest(test_lib.GRRBaseTest):
               name))
 
 
+class DisabledApiCallRouterTest(test_lib.GRRBaseTest):
+  """Tests for ApiCallRouter."""
+
+  def testRaisesUnauthorizedAccess(self):
+    router = api_call_router.DisabledApiCallRouter()
+
+    with self.assertRaises(access_control.UnauthorizedAccess):
+      router.SearchClients(None)
+
+
+class ApiSingleStringArgument(rdf_structs.RDFProtoStruct):
+  protobuf = tests_pb2.ApiSingleStringArgument
+
+
 class RouterMethodMetadataTest(test_lib.GRRBaseTest):
   """Tests for RouterMethodMetadata."""
 
-  def testGetQueryParamsNamesReturnsEmptyListOnEmptyMetadata(self):
+  def testGetQueryParamsNamesReturnsEmptyListsOnEmptyMetadata(self):
     m = api_call_router.RouterMethodMetadata("SomeMethod")
     self.assertEqual(m.GetQueryParamsNames(), [])
 
-  def testGetQueryParamsNamesWorksCorrectly(self):
+  def testGetQueryParamsNamesReturnsMandaotryParamsCorrectly(self):
     m = api_call_router.RouterMethodMetadata(
-        "SomeMethod", http_methods=[("GET", "/a/<foo>/<bar:zoo>", {})])
+        "SomeMethod", http_methods=[("GET", "/a/<arg>/<bar:zoo>", {})])
+    self.assertEqual(m.GetQueryParamsNames(), ["arg", "zoo"])
+
+  def testGetQueryParamsNamesReturnsOptionalParamsForGET(self):
+    m = api_call_router.RouterMethodMetadata(
+        "SomeMethod",
+        args_type=ApiSingleStringArgument,
+        http_methods=[("GET", "/a/<foo>/<bar:zoo>", {})])
+    self.assertEqual(m.GetQueryParamsNames(), ["foo", "zoo", "arg"])
+
+  def testGetQueryParamsNamesReturnsNoOptionalParamsForPOST(self):
+    m = api_call_router.RouterMethodMetadata(
+        "SomeMethod",
+        args_type=ApiSingleStringArgument,
+        http_methods=[("POST", "/a/<foo>/<bar:zoo>", {})])
     self.assertEqual(m.GetQueryParamsNames(), ["foo", "zoo"])
 
 

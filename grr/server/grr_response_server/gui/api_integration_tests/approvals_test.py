@@ -1,16 +1,11 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for API client and approvals-related API calls."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import threading
 import time
 
 from absl import app
 
-from grr_response_core.lib.util import compatibility
 from grr_response_server.gui import api_auth_manager
 from grr_response_server.gui import api_call_router_with_approval_checks
 from grr_response_server.gui import api_integration_test_lib
@@ -22,13 +17,13 @@ class ApiClientLibApprovalsTest(api_integration_test_lib.ApiIntegrationTest,
                                 hunt_test_lib.StandardHuntTestMixin):
 
   def setUp(self):
-    super(ApiClientLibApprovalsTest, self).setUp()
+    super().setUp()
 
     cls = api_call_router_with_approval_checks.ApiCallRouterWithApprovalChecks
     cls.ClearCache()
 
     config_overrider = test_lib.ConfigOverrider(
-        {"API.DefaultRouter": compatibility.GetName(cls)})
+        {"API.DefaultRouter": cls.__name__})
     config_overrider.Start()
     self.addCleanup(config_overrider.Stop)
 
@@ -59,7 +54,7 @@ class ApiClientLibApprovalsTest(api_integration_test_lib.ApiIntegrationTest,
       time.sleep(1)
       self.GrantClientApproval(
           client_id,
-          requestor=self.token.username,
+          requestor=self.test_username,
           approval_id=approval.approval_id,
           approver=u"foo")
 
@@ -94,7 +89,7 @@ class ApiClientLibApprovalsTest(api_integration_test_lib.ApiIntegrationTest,
       time.sleep(1)
       self.GrantHuntApproval(
           h_id,
-          requestor=self.token.username,
+          requestor=self.test_username,
           approval_id=approval.approval_id,
           approver=u"approver")
 

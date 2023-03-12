@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """API handler for rendering descriptors of GRR data structures."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 
 from grr_response_core.lib import rdfvalue
@@ -37,8 +33,8 @@ class ApiGetRDFValueDescriptorHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiGetRDFValueDescriptorArgs
   result_type = api_value_renderers.ApiRDFValueDescriptor
 
-  def Handle(self, args, token=None):
-    _ = token
+  def Handle(self, args, context=None):
+    _ = context
 
     rdfvalue_class = _GetAllTypes()[args.type]
     return api_value_renderers.BuildTypeDescriptor(rdfvalue_class)
@@ -57,7 +53,7 @@ class ApiListRDFValuesDescriptorsHandler(ApiGetRDFValueDescriptorHandler):
   args_type = None
   result_type = ApiListRDFValueDescriptorsResult
 
-  def Handle(self, unused_args, token=None):
+  def Handle(self, unused_args, context=None):
     result = ApiListRDFValueDescriptorsResult()
 
     all_types = _GetAllTypes()
@@ -118,14 +114,12 @@ class ApiListApiMethodsResult(rdf_structs.RDFProtoStruct):
 class ApiListApiMethodsHandler(api_call_handler_base.ApiCallHandler):
   """Renders HTTP API docs sources."""
 
-  TYPE_URL_PATTERN = "type.googleapis.com/%s"
-
   result_type = ApiListApiMethodsResult
 
   def __init__(self, router):
     self.router = router
 
-  def Handle(self, unused_args, token=None):
+  def Handle(self, unused_args, context=None):
     router_methods = self.router.__class__.GetAnnotatedMethods()
 
     result = ApiListApiMethodsResult()

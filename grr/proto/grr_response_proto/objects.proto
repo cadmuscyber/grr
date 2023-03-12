@@ -6,6 +6,7 @@ import "grr_response_proto/semantic.proto";
 import "grr_response_proto/sysinfo.proto";
 import "grr_response_proto/user.proto";
 
+package grr;
 
 message ClientLabel {
   optional string name = 1;
@@ -19,7 +20,13 @@ message StringMapEntry {
   optional string value = 2;
 }
 
-// Next field: 17
+message ClientSnapshotMetadata {
+  optional string source_flow_id = 1 [(sem_type) = {
+    description: "The Flow ID that created this ClientSnapshot.",
+  }];
+}
+
+// Next field: 20
 message ClientSnapshot {
   optional string client_id = 1 [(sem_type) = {
     description: "The client id of this client.",
@@ -71,6 +78,13 @@ message ClientSnapshot {
   optional StartupInfo startup_info = 16 [(sem_type) = {
     description: "Information about the GRR client.",
   }];
+
+  // Information about EDR agents present on the client.
+  repeated EdrAgent edr_agents = 17;
+
+  optional FleetspeakValidationInfo fleetspeak_validation_info = 18;
+
+  optional ClientSnapshotMetadata metadata = 19;
 }
 
 message ClientMetadata {
@@ -105,6 +119,7 @@ message ClientMetadata {
     description: "Timestamp for the latest change of startup information for "
                  "this client.",
   }];
+  optional FleetspeakValidationInfo last_fleetspeak_validation_info = 10;
 }
 
 message ClientFullInfo {

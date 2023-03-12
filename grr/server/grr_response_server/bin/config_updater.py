@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Util for modifying the GRR server configuration."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
 import io
 import sys
@@ -14,7 +9,6 @@ from absl.flags import argparse_flags
 
 # pylint: disable=unused-import,g-bad-import-order
 from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
-from grr_response_server import server_plugins
 # pylint: enable=g-bad-import-order,unused-import
 
 from grr_response_client_builder import repacking
@@ -22,13 +16,13 @@ from grr_response_core import config as grr_config
 from grr_response_core.config import contexts
 from grr_response_core.config import server as config_server
 from grr_response_core.lib import config_lib
+from grr_response_proto.api import config_pb2
 from grr_response_server import artifact
 from grr_response_server import artifact_registry
 from grr_response_server import maintenance_utils
 from grr_response_server import server_startup
 from grr_response_server.bin import config_updater_keys_util
 from grr_response_server.bin import config_updater_util
-from grr_response_server.rdfvalues import objects as rdf_objects
 
 parser = argparse_flags.ArgumentParser(
     description=("Set configuration parameters for the GRR Server."
@@ -135,6 +129,11 @@ parser_initialize.add_argument(
     help="Name of GRR's MySQL database (only applies if --noprompt is set).")
 
 parser_initialize.add_argument(
+    "--mysql_fleetspeak_db",
+    help="Name of Fleetspeak's MySQL database (only applies if --noprompt is set)."
+)
+
+parser_initialize.add_argument(
     "--mysql_username",
     help="Name of GRR MySQL database user (only applies if --noprompt is set).")
 
@@ -162,6 +161,12 @@ parser_initialize.add_argument(
     action="store_true",
     help="Use the new-generation datastore (REL_DB). Deprecated, REL_DB is now "
     "the only available choice.")
+
+parser_initialize.add_argument(
+    "--use_fleetspeak",
+    default=False,
+    action="store_true",
+    help="Use the new-generation communication framework (Fleetspeak).")
 
 parser_set_var.add_argument("var", help="Variable to set.")
 parser_set_var.add_argument("val", help="Value to set.")
@@ -289,7 +294,9 @@ def main(args):
           mysql_client_cert_path=args.mysql_client_cert_path,
           mysql_ca_cert_path=args.mysql_ca_cert_path,
           redownload_templates=args.redownload_templates,
-          repack_templates=not args.norepack_templates)
+          repack_templates=not args.norepack_templates,
+          use_fleetspeak=args.use_fleetspeak,
+          mysql_fleetspeak_db=args.mysql_fleetspeak_db)
     else:
       config_updater_util.Initialize(
           grr_config.CONFIG,
@@ -340,14 +347,14 @@ def main(args):
   elif args.subparser_name == "upload_python":
     config_updater_util.UploadSignedBinary(
         args.file,
-        rdf_objects.SignedBinaryID.BinaryType.PYTHON_HACK,
+        config_pb2.ApiGrrBinary.Type.PYTHON_HACK,
         args.platform,
         upload_subdirectory=args.upload_subdirectory)
 
   elif args.subparser_name == "upload_exe":
     config_updater_util.UploadSignedBinary(
         args.file,
-        rdf_objects.SignedBinaryID.BinaryType.EXECUTABLE,
+        config_pb2.ApiGrrBinary.Type.EXECUTABLE,
         args.platform,
         upload_subdirectory=args.upload_subdirectory)
 
@@ -402,6 +409,11 @@ You are about to rotate the server key. Note that:
 
       maintenance_utils.RotateServerKey(
           cn=args.common_name, keylength=keylength)
+
+      if grr_config.CONFIG["Server.fleetspeak_enabled"]:
+        config_updater_util.FleetspeakConfig().RotateKey()
+        print("Fleetspeak server key rotated, "
+              "please restart fleetspeak-server.")
 
 
 def Run():

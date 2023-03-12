@@ -1,16 +1,12 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Helper classes for flows-related testing."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 import sys
-from typing import Text
+from typing import ContextManager, Iterable, Optional, Text, Type, List
+from unittest import mock
 
-import mock
-
+from grr_response_client import actions
 from grr_response_client.client_actions import standard
 
 from grr_response_core.lib import rdfvalue
@@ -20,6 +16,7 @@ from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
 from grr_response_core.lib.util import precondition
 from grr_response_proto import tests_pb2
+from grr_response_server import action_registry
 from grr_response_server import data_store
 from grr_response_server import events
 from grr_response_server import fleetspeak_connector
@@ -66,21 +63,21 @@ class CPULimitFlow(flow_base.FlowBase):
 
   def Start(self):
     self.CallClient(
-        server_stubs.ClientActionStub.classes["Store"],
+        action_registry.ACTION_STUB_BY_ID["Store"],
         string="Hey!",
         next_state="State1")
 
   def State1(self, responses):
     del responses
     self.CallClient(
-        server_stubs.ClientActionStub.classes["Store"],
+        action_registry.ACTION_STUB_BY_ID["Store"],
         string="Hey!",
         next_state="State2")
 
   def State2(self, responses):
     del responses
     self.CallClient(
-        server_stubs.ClientActionStub.classes["Store"],
+        action_registry.ACTION_STUB_BY_ID["Store"],
         string="Hey!",
         next_state="Done")
 
@@ -210,22 +207,26 @@ class FlowTestsBaseclass(test_lib.GRRBaseTest):
   """The base class for all flow tests."""
 
   def setUp(self):
-    super(FlowTestsBaseclass, self).setUp()
+    super().setUp()
 
     # Set up emulation for an in-memory Fleetspeak service.
     conn_patcher = mock.patch.object(fleetspeak_connector, "CONN")
     mock_conn = conn_patcher.start()
     self.addCleanup(conn_patcher.stop)
     mock_conn.outgoing.InsertMessage.side_effect = (
-        fleetspeak_test_lib.StoreMessage)
+        lambda msg, **_: fleetspeak_test_lib.StoreMessage(msg))
+
+    # Some tests run with fake time and leak into the last_progress_time. To
+    # prevent getting negative durations, we clean up here.
+    actions.ActionPlugin.last_progress_time = (
+        rdfvalue.RDFDatetime.FromSecondsSinceEpoch(0))
 
 
 class CrashClientMock(action_mocks.ActionMock):
   """Client mock that simulates a client crash."""
 
-  def __init__(self, client_id=None, token=None):
+  def __init__(self, client_id=None):
     self.client_id = client_id
-    self.token = token
 
   def HandleMessage(self, message):
     """Handle client messages."""
@@ -239,7 +240,8 @@ class CrashClientMock(action_mocks.ActionMock):
     self.flow_id = message.session_id
     # This is normally done by the FrontEnd when a CLIENT_KILLED message is
     # received.
-    events.Events.PublishEvent("ClientCrash", crash_details, token=self.token)
+    events.Events.PublishEvent(
+        "ClientCrash", crash_details, username="GRRFrontEnd")
     return []
 
 
@@ -251,7 +253,7 @@ class MockClient(object):
   library.
   """
 
-  def __init__(self, client_id, client_mock, token=None):
+  def __init__(self, client_id, client_mock):
     if client_mock is None:
       client_mock = action_mocks.InvalidActionMock()
     else:
@@ -259,7 +261,6 @@ class MockClient(object):
 
     self.client_id = client_id
     self.client_mock = client_mock
-    self.token = token
     self._is_fleetspeak_client = fleetspeak_utils.IsFleetspeakEnabledClient(
         client_id)
 
@@ -291,7 +292,7 @@ class MockClient(object):
         request_id=message.response_id,
         request=message.payload)
 
-    handler_cls(token=self.token).ProcessMessages([handler_request])
+    handler_cls().ProcessMessages([handler_request])
 
   def PushToStateQueue(self, message, **kw):
     """Push given message to the state queue."""
@@ -351,7 +352,7 @@ def TestFlowHelper(flow_urn_or_cls_name,
                    client_mock=None,
                    client_id=None,
                    check_flow_errors=True,
-                   token=None,
+                   creator=None,
                    **kwargs):
   """Build a full test harness: client - worker + start flow.
 
@@ -363,7 +364,7 @@ def TestFlowHelper(flow_urn_or_cls_name,
     client_id: Client id of an emulated client.
     check_flow_errors: If True, TestFlowHelper will raise on errors during flow
       execution.
-    token: Security token.
+    creator: Username of the flow creator.
     **kwargs: Arbitrary args that will be passed to flow.StartFlow().
 
   Returns:
@@ -373,7 +374,7 @@ def TestFlowHelper(flow_urn_or_cls_name,
 
   return StartAndRunFlow(
       flow_cls,
-      creator=token.username,
+      creator=creator,
       client_mock=client_mock,
       client_id=client_id,
       check_flow_errors=check_flow_errors,
@@ -441,13 +442,13 @@ class TestWorker(worker_lib.GRRWorker):
   """The same class as the real worker but logs all processed flows."""
 
   def __init__(self, *args, **kw):
-    super(TestWorker, self).__init__(*args, **kw)
+    super().__init__(*args, **kw)
     self.processed_flows = []
 
   def ProcessFlow(self, flow_processing_request):
     key = (flow_processing_request.client_id, flow_processing_request.flow_id)
     self.processed_flows.append(key)
-    super(TestWorker, self).ProcessFlow(flow_processing_request)
+    super().ProcessFlow(flow_processing_request)
 
   def ResetProcessedFlows(self):
     processed_flows = self.processed_flows
@@ -505,6 +506,7 @@ def RunFlow(client_id,
       test_worker.Shutdown()
 
 
+# TODO(user): Rename into GetFlowResultsPayloads.
 def GetFlowResults(client_id, flow_id):
   """Gets flow results for a given flow.
 
@@ -513,11 +515,25 @@ def GetFlowResults(client_id, flow_id):
     flow_id: String with a flow_id.
 
   Returns:
-    List with flow results values (i.e. with payloads).
+    List with flow results payloads.
   """
   results = data_store.REL_DB.ReadFlowResults(client_id, flow_id, 0,
                                               sys.maxsize)
   return [r.payload for r in results]
+
+
+def GetRawFlowResults(client_id: str,
+                      flow_id: str) -> Iterable[rdf_flow_objects.FlowResult]:
+  """Gets raw flow results for a given flow.
+
+  Args:
+    client_id: String with a client id.
+    flow_id: String with a flow_id.
+
+  Returns:
+    Iterable with FlowResult objects read from the data store.
+  """
+  return data_store.REL_DB.ReadFlowResults(client_id, flow_id, 0, sys.maxsize)
 
 
 def GetFlowResultsByTag(client_id, flow_id):
@@ -550,3 +566,61 @@ def GetFlowState(client_id, flow_id):
 def GetFlowObj(client_id, flow_id):
   rdf_flow = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
   return rdf_flow
+
+
+def GetFlowProgress(client_id, flow_id):
+  flow_obj = GetFlowObj(client_id, flow_id)
+  flow_cls = registry.FlowRegistry.FlowClassByName(flow_obj.flow_class_name)
+  return flow_cls(flow_obj).GetProgress()
+
+
+def AddResultsToFlow(client_id: str,
+                     flow_id: str,
+                     payloads: Iterable[rdf_structs.RDFProtoStruct],
+                     tag: Optional[str] = None) -> None:
+  """Adds results with given payloads to a given flow."""
+  data_store.REL_DB.WriteFlowResults([
+      rdf_flow_objects.FlowResult(
+          client_id=client_id, flow_id=flow_id, tag=tag, payload=payload)
+      for payload in payloads
+  ])
+
+
+def FlowProgressOverride(
+    flow_cls: Type[flow_base.FlowBase],
+    value: rdf_structs.RDFProtoStruct) -> ContextManager[None]:
+  """Returns a context manager overriding flow class's progress reporting."""
+  return mock.patch.object(flow_cls, "GetProgress", return_value=value)
+
+
+def FlowResultMetadataOverride(
+    flow_cls: Type[flow_base.FlowBase],
+    value: rdf_flow_objects.FlowResultMetadata) -> ContextManager[None]:
+  """Returns a context manager overriding flow class's result metadata."""
+  return mock.patch.object(
+      flow_cls,
+      flow_base.FlowBase.GetResultMetadata.__name__,
+      return_value=value)
+
+
+def MarkFlowAsFinished(client_id: str, flow_id: str) -> None:
+  """Marks the given flow as finished without executing it."""
+  flow_obj = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+  flow_obj.flow_state = flow_obj.FlowState.FINISHED
+  data_store.REL_DB.WriteFlowObject(flow_obj)
+
+
+def MarkFlowAsFailed(client_id: str,
+                     flow_id: str,
+                     error_message: Optional[str] = None) -> None:
+  """Marks the given flow as finished without executing it."""
+  flow_obj = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+  flow_obj.flow_state = flow_obj.FlowState.ERROR
+  if error_message is not None:
+    flow_obj.error_message = error_message
+  data_store.REL_DB.WriteFlowObject(flow_obj)
+
+
+def ListAllFlows(client_id: str) -> List[rdf_flow_objects.Flow]:
+  """Returns all flows in the given client."""
+  return data_store.REL_DB.ReadAllFlowObjects(client_id=client_id)

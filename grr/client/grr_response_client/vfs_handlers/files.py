@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Implements VFSHandlers for files on the client."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 import os
@@ -12,7 +8,7 @@ import re
 import sys
 import threading
 
-from typing import Text
+from typing import Text, Optional
 
 from grr_response_client import client_utils
 from grr_response_client.vfs_handlers import base as vfs_base
@@ -20,27 +16,6 @@ from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.util import filesystem
-
-# File handles are cached here. After expiration, the file handle is garbage
-# collected, which implicitly unlocks the file on Windows. Although a cache is
-# not optimal, it is currently the best solution: TSK as example mounts Windows
-# drives using the OS handler and performs frequent reads to read the file
-# tables. Since VFSHandlers have no de-facto support for context managers, it is
-# hard to determine when the file can be freed again, thus this caching is hard
-# to remove.
-FILE_HANDLE_CACHE = utils.TimeBasedCache(max_age=30)
-
-
-# TODO: Globbing uses VFS handlers which cache file handles causing
-# the files to get locked. Because of that, at least on Windows, it is not
-# possible to remove the directory with locked files, causing issues e.g. during
-# test clean-up. Once this terrible caching is removed (as it should be), this
-# method can be removed but for now, we have to empty the cache manually.
-def FlushHandleCache() -> None:
-  """Flushes the handle cache closing all cached files and releasing locks."""
-  for _, [_, filedesc] in FILE_HANDLE_CACHE:
-    filedesc.Close()
-  FILE_HANDLE_CACHE.Flush()
 
 
 class LockedFileHandle(object):
@@ -65,8 +40,37 @@ class LockedFileHandle(object):
       self.fd.close()
 
 
+class FileHandleCache(utils.TimeBasedCache):
+  """Cache that closes file descriptors when they're no longer needed."""
+
+  def KillObject(self, obj: utils.TimeBasedCacheEntry[LockedFileHandle]):
+    obj.value.Close()
+
+
+# File handles are cached here. After expiration, the file handle is garbage
+# collected, which implicitly unlocks the file on Windows. Although a cache is
+# not optimal, it is currently the best solution: TSK as example mounts Windows
+# drives using the OS handler and performs frequent reads to read the file
+# tables. Since VFSHandlers have no de-facto support for context managers, it is
+# hard to determine when the file can be freed again, thus this caching is hard
+# to remove.
+FILE_HANDLE_CACHE = FileHandleCache(max_age=30)
+
+
+# TODO: Globbing uses VFS handlers which cache file handles causing
+# the files to get locked. Because of that, at least on Windows, it is not
+# possible to remove the directory with locked files, causing issues e.g. during
+# test clean-up. Once this terrible caching is removed (as it should be), this
+# method can be removed but for now, we have to empty the cache manually.
+def FlushHandleCache() -> None:
+  """Flushes the handle cache closing all cached files and releasing locks."""
+  for _, entry in FILE_HANDLE_CACHE:
+    entry.value.Close()
+  FILE_HANDLE_CACHE.Flush()
+
+
 class FileHandleManager(object):
-  """An exclusive accesssor for a filehandle."""
+  """An exclusive accessor for a filehandle."""
 
   def __init__(self, filename):
     self.filename = filename
@@ -359,6 +363,10 @@ class File(vfs_base.VFSHandler):
       path = os.path.dirname(path)
 
     return path
+
+  @property
+  def native_path(self) -> Optional[str]:
+    return self.filename
 
 
 class TempFile(File):

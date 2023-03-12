@@ -1,23 +1,16 @@
 #!/usr/bin/env python
-# Lint as: python3
 """rdf value representation for artifact collector parameters."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
-import collections
+import json
 from typing import Type
 
+import yaml
 
 from grr_response_core.lib import parsers
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import client as rdf_client
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_core.lib.util import compatibility
-from grr_response_core.lib.util.compat import json
-from grr_response_core.lib.util.compat import yaml
 from grr_response_proto import artifact_pb2
 from grr_response_proto import flows_pb2
 
@@ -107,6 +100,9 @@ class ArtifactSource(rdf_structs.RDFProtoStruct):
           "required_attributes": ["paths", "content_regex_list"],
           "output_type": "BufferReference"
       },
+      # TODO(hanuszczak): `DIRECTORY` is deprecated [1], it should be removed.
+      #
+      # [1]: https://github.com/ForensicArtifacts/artifacts/pull/475
       artifact_pb2.ArtifactSource.DIRECTORY: {
           "required_attributes": ["paths"],
           "output_type": "StatEntry"
@@ -254,7 +250,9 @@ class Artifact(rdf_structs.RDFProtoStruct):
       "urls",
       # List of strings that describe knowledge_base entries that this artifact
       # can supply.
-      "provides"
+      "provides",
+      # List of alternate names.
+      "aliases"
   ]
 
   # These labels represent the full set of labels that an Artifact can have.
@@ -267,41 +265,49 @@ class Artifact(rdf_structs.RDFProtoStruct):
       "Authentication": "Authentication artifacts.",
       "Browser": "Web Browser artifacts.",
       "Cloud": "Cloud applications artifacts.",
-      "Cloud Storage": "Cloud Storage artifacts.",
+      "Cloud Storage": "Cloud storage artifacts.",
       "Configuration Files": "Configuration files artifacts.",
+      "Containerd": "Containerd artifacts",
       "Docker": "Docker artifacts.",
       "Execution": "Contain execution events.",
-      "ExternalAccount": ("Information about any users\' account, e.g."
-                          " username, account ID, etc."),
-      "External Media": "Contain external media data / events e.g. USB drives.",
+      "ExternalAccount": ("Information about any user accounts e.g. username, "
+                          "account ID, etc."),
+      "External Media":
+          ("Contain external media data or events e.g. USB drives."),
       "Hadoop": "Hadoop artifacts.",
-      "History Files": "History files artifacts e.g. .bash_history.",
       "IM": "Instant Messaging / Chat applications artifacts.",
       "iOS": "Artifacts related to iOS devices connected to the system.",
-      "KnowledgeBase": "Artifacts used in knowledgebase generation.",
+      "History Files": "History files artifacts e.g. .bash_history.",
+      "KnowledgeBase": "Artifacts used in knowledge base generation.",
+      "Kubernetes": "Kubernetes artifacts",
       "Logs": "Contain log files.",
       "Mail": "Mail client applications artifacts.",
-      "Memory": "Artifacts retrieved from Memory.",
+      "Memory": "Artifacts retrieved from memory.",
       "Network": "Describe networking state.",
+      "Plist": "Artifact that is a plist.",
       "Processes": "Describe running processes.",
-      "Software": "Installed software.",
-      "System": "Core system artifacts.",
-      "Users": "Information about users.",
       "Rekall": "Artifacts using the Rekall memory forensics framework.",
+      "Software": "Installed software.",
+      "SQLiteDB": "Artifact that is a SQLite database.",
+      "System": "Core system artifacts.",
+      "Users": "Information about users."
   }
 
   SUPPORTED_OS_LIST = ["Windows", "Linux", "Darwin"]
 
+  # GRR does not support ESXi.
+  IGNORE_OS_LIST = ("ESXi",)
+
   def ToJson(self):
     artifact_dict = self.ToPrimitiveDict()
-    return json.Dump(artifact_dict)
+    return json.dumps(artifact_dict)
 
   def ToDict(self):
     return self.ToPrimitiveDict()
 
   def ToPrimitiveDict(self):
     """Handle dict generation specifically for Artifacts."""
-    artifact_dict = super(Artifact, self).ToPrimitiveDict()
+    artifact_dict = super().ToPrimitiveDict()
 
     # ArtifactName is not JSON-serializable, so convert name to string.
     artifact_dict["name"] = str(self.name)
@@ -338,12 +344,12 @@ class Artifact(rdf_structs.RDFProtoStruct):
 
     # Do some clunky stuff to put the name and doc first in the YAML.
     # Unfortunately PYYaml makes doing this difficult in other ways.
-    ordered_artifact_dict = collections.OrderedDict()
+    ordered_artifact_dict = dict()
     ordered_artifact_dict["name"] = artifact_dict.pop("name")
     ordered_artifact_dict["doc"] = artifact_dict.pop("doc")
     ordered_artifact_dict.update(artifact_dict)
 
-    return yaml.Dump(ordered_artifact_dict)
+    return yaml.safe_dump(ordered_artifact_dict)
 
 
 class ArtifactProcessorDescriptor(rdf_structs.RDFProtoStruct):
@@ -352,8 +358,8 @@ class ArtifactProcessorDescriptor(rdf_structs.RDFProtoStruct):
   protobuf = artifact_pb2.ArtifactProcessorDescriptor
 
   @classmethod
-  def FromParser(cls, parser_cls: Type[parsers.Parser]
-                ) -> "ArtifactProcessorDescriptor":
+  def FromParser(
+      cls, parser_cls: Type[parsers.Parser]) -> "ArtifactProcessorDescriptor":
     """Creates a descriptor corresponding to the given parser.
 
     Args:
@@ -369,10 +375,11 @@ class ArtifactProcessorDescriptor(rdf_structs.RDFProtoStruct):
     else:
       description = ""
 
+    output_types = [t.__name__ for t in parser_cls.output_types]
     return cls(
         name=parser_cls.__name__,
         description=description,
-        output_types=map(compatibility.GetName, parser_cls.output_types))
+        output_types=output_types)
 
 
 class ArtifactDescriptor(rdf_structs.RDFProtoStruct):
@@ -410,16 +417,21 @@ class ArtifactCollectorFlowArgs(rdf_structs.RDFProtoStruct):
       rdf_client.KnowledgeBase,
   ]
 
-  @property
-  def path_type(self):
-    if self.use_tsk:
-      return rdf_paths.PathSpec.PathType.TSK
-    else:
-      return rdf_paths.PathSpec.PathType.OS
-
   def Validate(self):
     if not self.artifact_list:
       raise ValueError("No artifacts to collect.")
+
+
+class ArtifactProgress(rdf_structs.RDFProtoStruct):
+  """Collection progress of an Artifact."""
+  protobuf = flows_pb2.ArtifactProgress
+  rdf_deps = []
+
+
+class ArtifactCollectorFlowProgress(rdf_structs.RDFProtoStruct):
+  """Collection progress of ArtifactCollectorFlow."""
+  protobuf = flows_pb2.ArtifactCollectorFlowProgress
+  rdf_deps = [ArtifactProgress]
 
 
 class ClientArtifactCollectorArgs(rdf_structs.RDFProtoStruct):

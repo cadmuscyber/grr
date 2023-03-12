@@ -1,16 +1,12 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Test Chipsec client actions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import collections
 import sys
+from unittest import mock
 
 from absl import app
 from chipsec.helper import oshelper
-import mock
 
 from grr_response_client import vfs
 # If grr_response_client.components.chipsec_support.actions.grr_chipsec is
@@ -61,7 +57,7 @@ class GRRChipsecTest(client_test_lib.EmptyActionTest):
   """Generic test class for GRR-Chipsec actions."""
 
   def setUp(self):
-    super(GRRChipsecTest, self).setUp()
+    super().setUp()
     # Mock the interface for Chipsec
     self.chipsec_mock = mock.MagicMock()
     self.chipsec_mock.chipset = mock.MagicMock()
@@ -74,9 +70,7 @@ class GRRChipsecTest(client_test_lib.EmptyActionTest):
         "chipsec.hal": self.chipsec_mock.hal,
     }
 
-    chipsec_patch = mock.patch.dict(sys.modules, mock_modules)
-    chipsec_patch.start()
-    self.addCleanup(chipsec_patch.stop)
+    self.enter_context(mock.patch.dict(sys.modules, mock_modules))
 
     # Import the ClientAction to test with the Chipsec mock in place.
     # pylint: disable=g-import-not-at-top, unused-variable
@@ -93,9 +87,10 @@ class TestChipsecDumpFlashImage(vfs_test_lib.VfsTestCase, GRRChipsecTest):
   """Test the client dump flash image action."""
 
   def setUp(self):
-    super(TestChipsecDumpFlashImage, self).setUp()
-    self.chipsec_mock.hal.spi = mock.MagicMock()
-    self.chipsec_mock.hal.spi.SPI = MockSPI
+    super().setUp()
+    mock_spi = self.chipsec_mock.hal.spi.SPI.return_value
+    mock_spi.get_SPI_region.return_value = [0, 0xffff, 0]
+    mock_spi.read_spi.side_effect = lambda _, size: [0xff] * size
     self.grr_chipsec_module.spi = self.chipsec_mock.hal.spi
 
   def testDumpFlashImage(self):
@@ -183,7 +178,7 @@ class MockACPIReadingRestrictedArea(object):
 class TestDumpACPITable(GRRChipsecTest):
 
   def setUp(self):
-    super(TestDumpACPITable, self).setUp()
+    super().setUp()
     self.chipsec_mock.hal.acpi = mock.MagicMock()
     self.chipsec_mock.hal.acpi.ACPI = MockACPI
 

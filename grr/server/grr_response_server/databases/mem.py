@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """An in memory database implementation used for testing."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import collections
 import sys
@@ -14,6 +10,7 @@ from grr_response_core.lib import utils
 from grr_response_core.lib.util import precondition
 from grr_response_server.databases import db
 from grr_response_server.databases import mem_artifacts
+from grr_response_server.databases import mem_blob_keys
 from grr_response_server.databases import mem_blobs
 from grr_response_server.databases import mem_client_reports
 from grr_response_server.databases import mem_clients
@@ -31,6 +28,7 @@ from grr_response_server.rdfvalues import objects as rdf_objects
 
 # pyformat: disable
 class InMemoryDB(mem_artifacts.InMemoryDBArtifactsMixin,
+                 mem_blob_keys.InMemoryDBBlobKeysMixin,
                  mem_blobs.InMemoryDBBlobsMixin,
                  mem_client_reports.InMemoryDBClientReportsMixin,
                  mem_clients.InMemoryDBClientMixin,
@@ -55,10 +53,11 @@ class InMemoryDB(mem_artifacts.InMemoryDBArtifactsMixin,
   def _Init(self):
     self.artifacts = {}
     self.approvals_by_username = {}
+    self.blob_keys: dict[rdf_objects.BlobID, str] = {}
     self.clients = {}
     self.client_action_requests = {}
     self.client_action_request_leases = {}
-    self.client_stats = collections.defaultdict(collections.OrderedDict)
+    self.client_stats = collections.defaultdict(dict)
     self.crash_history = {}
     self.cronjob_leases = {}
     self.cronjobs = {}
@@ -70,7 +69,7 @@ class InMemoryDB(mem_artifacts.InMemoryDBArtifactsMixin,
     self.metadatas = {}
     self.notifications_by_username = {}
     self.startup_history = {}
-    # TODO(hanuszczak): Consider chaning this to nested dicts for improved
+    # TODO(hanuszczak): Consider changing this to nested dicts for improved
     # debugging experience.
     # Maps (client_id, path_type, components) to a path record.
     self.path_records = {}
@@ -97,6 +96,8 @@ class InMemoryDB(mem_artifacts.InMemoryDBArtifactsMixin,
     self.flow_processing_requests = {}
     # Maps (client_id, flow_id) to [FlowResult].
     self.flow_results = {}
+    # Maps (client_id, flow_id) to [FlowError].
+    self.flow_errors = {}
     # Maps (client_id, flow_id) to [FlowLogEntry].
     self.flow_log_entries = {}
     self.flow_output_plugin_log_entries = {}
@@ -109,6 +110,8 @@ class InMemoryDB(mem_artifacts.InMemoryDBArtifactsMixin,
     self.hunt_output_plugins_states = {}
     self.signed_binary_references = {}
     self.client_graph_series = {}
+    # Maps (client_id, creator, scheduled_flow_id) to ScheduledFlow.
+    self.scheduled_flows = {}
 
   @utils.Synchronized
   def ClearTestDB(self):
@@ -153,3 +156,7 @@ class InMemoryDB(mem_artifacts.InMemoryDBArtifactsMixin,
     precondition.AssertType(obj, rdfvalue.RDFValue)
 
     return obj.__class__.FromSerializedBytes(obj.SerializeToBytes())
+
+  def Now(self) -> rdfvalue.RDFDatetime:
+    del self  # Unused.
+    return rdfvalue.RDFDatetime.Now()

@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 """VFS-related test classes."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
 import time
+from unittest import mock
 
 from absl.testing import absltest
-import mock
 
 from typing import Iterable, Tuple
 
@@ -64,7 +61,7 @@ class FakeTestDataVFSOverrider(VFSOverrider):
           self).__init__(rdf_paths.PathSpec.PathType.OS, FakeTestDataVFSHandler)
 
   def __enter__(self):
-    super(FakeTestDataVFSOverrider, self).__enter__()
+    super().__enter__()
 
     def Open(path, *args, **kwagrs):
       path = FakeTestDataVFSHandler.FakeRootPath(path)
@@ -74,7 +71,7 @@ class FakeTestDataVFSOverrider(VFSOverrider):
     os.open = Open
 
   def __exit__(self, exc_type, exc_value, trace):
-    super(FakeTestDataVFSOverrider, self).__exit__(exc_type, exc_value, trace)
+    super().__exit__(exc_type, exc_value, trace)
     os.open = self._os_open
 
 
@@ -121,7 +118,7 @@ class ClientVFSHandlerFixture(ClientVFSHandlerFixtureBase):
                handlers=None,
                pathspec=None,
                progress_callback=None):
-    super(ClientVFSHandlerFixture, self).__init__(
+    super().__init__(
         base_fd,
         handlers=handlers,
         pathspec=pathspec,
@@ -171,7 +168,7 @@ class ClientVFSHandlerFixture(ClientVFSHandlerFixtureBase):
   def _NormalizeCaseForPath(self, path, vfs_name):
     """Handle casing differences for different filesystems."""
     # Special handling for case sensitivity of registry keys.
-    # This mimicks the behavior of the operating system.
+    # This mimics the behavior of the operating system.
     if self.supported_pathtype == rdf_paths.PathSpec.PathType.REGISTRY:
       self.path = self.path.replace("\\", "/")
       parts = path.split("/")
@@ -278,7 +275,7 @@ class FakeTestDataVFSHandler(ClientVFSHandlerFixtureBase):
                prefix=None,
                pathspec=None,
                progress_callback=None):
-    super(FakeTestDataVFSHandler, self).__init__(
+    super().__init__(
         base_fd,
         handlers=handlers,
         pathspec=pathspec,
@@ -468,6 +465,8 @@ class RegistryVFSStubber(object):
     from grr_response_client.vfs_handlers import registry
     # pylint: enable=g-import-not-at-top
 
+    self._supported_pathtype = registry.RegistryFile.supported_pathtype
+
     fixture = RegistryFake()
 
     self.stubber = utils.MultiStubber(
@@ -480,14 +479,20 @@ class RegistryVFSStubber(object):
     self.stubber.Start()
 
     # Add the Registry handler to the vfs.
-    vfs.VFS_HANDLERS[
-        registry.RegistryFile.supported_pathtype] = registry.RegistryFile
+    self._original_handler = vfs.VFS_HANDLERS.get(self._supported_pathtype,
+                                                  None)
+    vfs.VFS_HANDLERS[self._supported_pathtype] = registry.RegistryFile
 
   def Stop(self):
     """Uninstall the stubs."""
 
     self.module_patcher.stop()
     self.stubber.Stop()
+
+    # Remove the Registry handler from the vfs.
+    del vfs.VFS_HANDLERS[self._supported_pathtype]
+    if self._original_handler is not None:
+      vfs.VFS_HANDLERS[self._supported_pathtype] = self._original_handler
 
 
 def CreateFile(client_path, content=b""):
@@ -504,8 +509,9 @@ def CreateFile(client_path, content=b""):
 
   stat_entry = rdf_client_fs.StatEntry(
       pathspec=rdf_paths.PathSpec(
-          pathtype=client_path.path_type,
-          path="/".join(client_path.components)),
+          pathtype=rdf_objects.PathInfo.PathTypeToPathspecPathType(
+              client_path.path_type),
+          path="/" + "/".join(client_path.components)),
       st_mode=33206,
       st_size=len(content))
 
@@ -604,6 +610,6 @@ class VfsTestCase(absltest.TestCase):
   """Mixin that resets VFS caches after tests."""
 
   def tearDown(self):
-    super(VfsTestCase, self).tearDown()
+    super().tearDown()
     vfs.files.FlushHandleCache()
     vfs.sleuthkit.DEVICE_CACHE.Flush()

@@ -1,16 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Windows specific utils."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import ctypes
 import logging
 import os
 import re
-import sys
-import time
 
 import ntsecuritycon
 import pywintypes
@@ -29,6 +23,9 @@ from grr_response_core.lib.rdfvalues import paths as rdf_paths
 
 DACL_PRESENT = 1
 DACL_DEFAULT = 0
+
+
+CreateProcessFromSerializedFileDescriptor = process.Process.CreateFromSerializedFileDescriptor
 
 
 def CanonicalPathToLocalPath(path):
@@ -222,8 +219,8 @@ def GetRawDevice(path):
 
   if not path.startswith(mount_point):
     stripped_mp = mount_point.rstrip("\\")
-    if not path.startswith(stripped_mp):
-      raise IOError("path %s is not mounted under %s" % (path, mount_point))
+    if not path.lower().startswith(stripped_mp.lower()):
+      raise IOError("Path %s is not mounted under %s" % (path, mount_point))
 
   corrected_path = LocalPathToCanonicalPath(path[len(mount_point):])
   corrected_path = utils.NormalizePath(corrected_path)
@@ -257,48 +254,6 @@ def _GetServiceKey():
   return _service_key
 
 
-class NannyController(object):
-  """Controls communication with the nanny."""
-
-  def Heartbeat(self):
-    """Writes a heartbeat to the registry."""
-    service_key = _GetServiceKey()
-    try:
-      winreg.SetValueEx(service_key, "Nanny.heartbeat", 0, winreg.REG_DWORD,
-                        int(time.time()))
-    except OSError as e:
-      logging.debug("Failed to heartbeat nanny at %s: %s", service_key, e)
-
-  def GetNannyStatus(self):
-    try:
-      value, _ = winreg.QueryValueEx(_GetServiceKey(), "Nanny.status")
-    except OSError:
-      return None
-
-    return value
-
-  def GetNannyMessage(self):
-    try:
-      value, _ = winreg.QueryValueEx(_GetServiceKey(), "Nanny.message")
-    except OSError:
-      return None
-
-    return value
-
-  def ClearNannyMessage(self):
-    """Wipes the nanny message."""
-    try:
-      winreg.DeleteValue(_GetServiceKey(), "Nanny.message")
-    except OSError:
-      pass
-
-  def StartNanny(self):
-    """Not used for the Windows nanny."""
-
-  def StopNanny(self):
-    """Not used for the Windows nanny."""
-
-
 class Kernel32(object):
   """An accessor class for loaded `Kernel32.dll` library."""
 
@@ -306,19 +261,7 @@ class Kernel32(object):
 
   def __init__(self):
     if not Kernel32._kernel32:
-      # TODO(hanuszczak): We use binary literal here because of apparent issues
-      # with passing a unicode literal in Python 2.7.13 [1, 2] and Python 2.7.16
-      # (ends up in "Failed to load dynlib/dll" error).
-      #
-      # This should be reverted to unicode literal once support for 2.7
-      # is officially dropped.
-      #
-      # [1]: https://bugs.python.org/issue29082
-      # [2]: https://bugs.python.org/issue29294
-      if sys.version_info[0:2] == (2, 7):
-        Kernel32._kernel32 = ctypes.windll.LoadLibrary(b"Kernel32.dll")
-      else:
-        Kernel32._kernel32 = ctypes.windll.LoadLibrary("Kernel32.dll")
+      Kernel32._kernel32 = ctypes.windll.LoadLibrary("Kernel32.dll")
 
   @property
   def kernel32(self):
@@ -393,7 +336,7 @@ def RtlGetVersion(os_version_info_struct):
                             ctypes.sizeof(self).
 
   Raises:
-    OSError: if the underlaying routine fails.
+    OSError: if the underlying routine fails.
 
   See: https://msdn.microsoft.com/en-us/library/
   windows/hardware/ff561910(v=vs.85).aspx .

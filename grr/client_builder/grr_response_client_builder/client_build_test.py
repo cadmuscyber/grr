@@ -1,15 +1,12 @@
 #!/usr/bin/env python
 """Tests for grr_response_client.client_build."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import multiprocessing
 import os
+from unittest import mock
 
 from absl.testing import absltest
-import mock
 
 from grr_response_client_builder import client_build
 from grr_response_core.lib.util import temp
@@ -18,7 +15,7 @@ from grr_response_core.lib.util import temp
 class MultiRepackTest(absltest.TestCase):
 
   def setUp(self):
-    super(MultiRepackTest, self).setUp()
+    super().setUp()
     self.pool_obj = mock.MagicMock()
     pool_patcher = mock.patch.object(
         multiprocessing, "Pool", return_value=self.pool_obj)

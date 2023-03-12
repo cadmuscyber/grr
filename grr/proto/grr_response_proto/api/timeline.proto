@@ -1,5 +1,6 @@
 syntax = "proto2";
 
+package grr;
 
 import "grr_response_proto/semantic.proto";
 
@@ -43,6 +44,9 @@ message ApiGetCollectedTimelineArgs {
 
   // A format in which to retrieve timeline entries.
   optional Format format = 3;
+
+  // Options for timelines exported in the body file format.
+  optional ApiTimelineBodyOpts body_opts = 4;
 }
 
 // A message representing arguments for the API method that exports results of
@@ -50,4 +54,67 @@ message ApiGetCollectedTimelineArgs {
 message ApiGetCollectedHuntTimelinesArgs {
   // An identifier of the hunt for which to retrieve results.
   optional string hunt_id = 1;
+
+  // A format in which to retrieve timeline entries.
+  optional ApiGetCollectedTimelineArgs.Format format = 2;
+
+  // Options for timelines exported in the body file format.
+  optional ApiTimelineBodyOpts body_opts = 4;
+}
+
+// A message with various options that configure shape of exported timelines in
+// the body file format.
+message ApiTimelineBodyOpts {
+  // Whether to use floating point subsecond precision for timestamps.
+  optional bool timestamp_subsecond_precision = 1;
+
+  // Whether to use the NTFS file reference format for inode values.
+  //
+  // The NTFS file reference is a pair of the file record number in the MFT and
+  // its sequence number [1]. A textual representation of it is a dash-delimited
+  // string of these two values (e.g. `1337-42`).
+  //
+  // TODO: Deprecate this field as we are able to automatically
+  // detect the filesystem now.
+  //
+  // [1]: https://flatcap.org/linux-ntfs/ntfs/concepts/file_reference.html
+  optional bool inode_ntfs_file_reference_format = 2;
+
+  // Whether backslashes (e.g. in Windows paths) should be escaped.
+  //
+  // By default, backslashes are not escaped and are passed as is. This makes it
+  // more natural to read things like Windows paths. However, some tools treat
+  // backslashes in special way and it makes processing Windows paths actually
+  // harder or even impossible.
+  //
+  // This flag will cause each backslash in the original path to be prepended
+  // with one extra backslash.
+  optional bool backslash_escape = 3;
+
+  // Whether carriage return character [1] should be escaped.
+  //
+  // By default, carriage return character is not escaped and is emitted in the
+  // output as is. This is because the official specification does not specify
+  // what to do with it and tools in general should not assume much about bytes
+  // in the path. However, sometimes (e.g. for Windows-specific tools) it might
+  // be more appropriate to actually escape this character.
+  //
+  // The flag will cause the carriage return byte (0x0D) to be replaced with
+  // '\r' (a backslash followed by the 'r' character).
+  //
+  // [1]: https://en.wikipedia.org/wiki/Carriage_return
+  optional bool carriage_return_escape = 4;
+
+  // Whether non-printable ASCII characters [1] should be escaped.
+  //
+  // Some tools have problems with correctly displaying the body file when the
+  // output contains ASCII control characters (e.g. null, escape or delete).
+  // This option can be used to bypass these limitations.
+  //
+  // The flag will cause all non-printable characters to be displayed using the
+  // '\x##' format (e.g. the cancel character with codepoint 0x18 will show up
+  // as '\x18'.
+  //
+  // [1]: https://en.wikipedia.org/wiki/ASCII#Control_characters
+  optional bool non_printable_escape = 5;
 }

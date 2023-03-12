@@ -1,11 +1,7 @@
 #!/usr/bin/env python
 """A script to prepare the source tree for building."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
-# This script must have no special requirements because it wont be able to
+# This script must have no special requirements because it won't be able to
 # import any GRR stuff until the protos are built.
 
 import argparse
@@ -20,6 +16,11 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Clean compiled protos.")
+
+parser.add_argument(
+    "--mypy-protobuf",
+    default="",
+    help="A path to the mypy protobuf generator plugin.")
 
 args = parser.parse_args()
 
@@ -45,7 +46,11 @@ def MakeProto():
 
   # Find all the .proto files.
   protos_to_compile = []
-  for (root, _, files) in os.walk(cwd):
+  for (root, dirs, files) in os.walk(cwd):
+    # Make sure an accidental .eggs cache is ignored.
+    if ".eggs" in dirs:
+      dirs.remove(".eggs")
+
     for filename in files:
       full_filename = os.path.join(root, filename)
       if full_filename.endswith(".proto"):
@@ -74,6 +79,12 @@ def MakeProto():
           "--proto_path=%s" % ROOT,
           proto
       ]
+
+      if args.mypy_protobuf:
+        mypy_protobuf = os.path.realpath(args.mypy_protobuf)
+        command.append(f"--plugin=protoc-gen-mypy={mypy_protobuf}")
+        command.append(f"--mypy_out={ROOT}")
+
       print(
           "Compiling %s with (cwd: %s): %s" % (proto, ROOT, " ".join(command)))
       # The protoc compiler is too dumb to deal with full paths - it expects a

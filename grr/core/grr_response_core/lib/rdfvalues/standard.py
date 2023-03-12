@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Standard RDFValues."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import re
 from typing import Text
@@ -102,7 +98,7 @@ class PersistenceFile(rdf_structs.RDFProtoStruct):
 
 
 class URI(rdf_structs.RDFProtoStruct):
-  """Represets a URI with its individual components seperated."""
+  """Represets a URI with its individual components separated."""
   protobuf = sysinfo_pb2.URI
 
   def __init__(self, initializer=None, **kwargs):

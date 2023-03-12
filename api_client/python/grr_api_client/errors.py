@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """API errors definitions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+from typing import Tuple
+
+VersionTuple = Tuple[int, int, int, int]
 
 
 class Error(RuntimeError):
@@ -15,6 +16,12 @@ class ResourceNotFoundError(Error):
 
 class AccessForbiddenError(Error):
   """Raised when resource access is forbidden."""
+
+
+# Conceptually ResourceExhaustedError is still an AccessForbiddenError, as
+# it means that the access to resource was forbidden due to the lack of quota.
+class ResourceExhaustedError(AccessForbiddenError):
+  """Raised when resource can't be accessed due to exhausted quota."""
 
 
 class ApiNotImplementedError(Error):
@@ -35,3 +42,20 @@ class FlowFailedError(Error):
 
 class InvalidArgumentError(Error):
   """Raised when invalid argument(s) is/are passed to the API call."""
+
+
+class VersionMismatchError(Error):
+  """Raised when API client version is incompatible with the server."""
+
+  def __init__(
+      self,
+      server_version: VersionTuple,
+      api_client_version: VersionTuple,
+  ):
+    message = "GRR server is {server}, but API client is only {client}"
+    message = message.format(server=server_version, client=api_client_version)
+
+    super().__init__(message)
+
+    self.server_version = server_version
+    self.api_client_version = api_client_version

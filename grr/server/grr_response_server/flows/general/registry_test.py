@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for the registry flows."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
 
@@ -31,7 +26,7 @@ from grr.test_lib import vfs_test_lib
 class RegistryFlowTest(flow_test_lib.FlowTestsBaseclass):
 
   def setUp(self):
-    super(RegistryFlowTest, self).setUp()
+    super().setUp()
     vfs_overrider = vfs_test_lib.VFSOverrider(
         rdf_paths.PathSpec.PathType.REGISTRY,
         vfs_test_lib.FakeRegistryVFSHandler)
@@ -64,7 +59,7 @@ class TestFakeRegistryFinderFlow(RegistryFlowTest):
         client_id=client_id,
         keys_paths=keys_paths,
         conditions=conditions,
-        token=self.token)
+        creator=self.test_username)
 
     return session_id
 
@@ -312,7 +307,7 @@ class TestRegistryFlows(RegistryFlowTest):
           artifact.KnowledgeBaseInitializationFlow.__name__,
           client_mock,
           client_id=client_id,
-          token=self.token)
+          creator=self.test_username)
 
       kb = flow_test_lib.GetFlowResults(client_id, session_id)[0]
 
@@ -327,7 +322,7 @@ class TestRegistryFlows(RegistryFlowTest):
             registry.CollectRunKeyBinaries.__name__,
             client_mock,
             client_id=client_id,
-            token=self.token)
+            creator=self.test_username)
 
         # Check MultiGetFile got called for our runkey file
         download_requested = False

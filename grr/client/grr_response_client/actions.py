@@ -1,25 +1,22 @@
 #!/usr/bin/env python
-# Lint as: python3
 """This file contains common grr jobs."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import gc
 import logging
 import pdb
 import traceback
+from typing import NamedTuple
 
 from absl import flags
 
 import psutil
 
 from grr_response_client import client_utils
+from grr_response_client.unprivileged import communication
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
-from grr_response_core.lib.util import compatibility
 
 # Our first response in the session is this:
 INITIAL_RESPONSE_ID = 1
@@ -39,6 +36,35 @@ class NetworkBytesExceededError(Error):
 
 class RuntimeExceededError(Error):
   """Exceeded the maximum allowed runtime."""
+
+
+class _CpuUsed(NamedTuple):
+  cpu_time: float
+  sys_time: float
+
+
+class _CpuTimes:
+  """Accounting of used CPU time."""
+
+  def __init__(self):
+    self.proc = psutil.Process()
+    self.cpu_start = self.proc.cpu_times()
+    self.unprivileged_cpu_start = communication.TotalServerCpuTime()
+    self.unprivileged_sys_start = communication.TotalServerSysTime()
+
+  @property
+  def cpu_used(self) -> _CpuUsed:
+    end = self.proc.cpu_times()
+    unprivileged_cpu_end = communication.TotalServerCpuTime()
+    unprivileged_sys_end = communication.TotalServerSysTime()
+    return _CpuUsed((end.user - self.cpu_start.user + unprivileged_cpu_end -
+                     self.unprivileged_cpu_start),
+                    (end.system - self.cpu_start.system + unprivileged_sys_end -
+                     self.unprivileged_sys_start))
+
+  @property
+  def total_cpu_used(self) -> float:
+    return sum(self.cpu_used)
 
 
 class ActionPlugin(object):
@@ -88,14 +114,12 @@ class ActionPlugin(object):
     self.grr_worker = grr_worker
     self.response_id = INITIAL_RESPONSE_ID
     self.cpu_used = None
-    self.nanny_controller = None
     self.status = rdf_flows.GrrStatus(
         status=rdf_flows.GrrStatus.ReturnedStatus.OK)
     self._last_gc_run = rdfvalue.RDFDatetime.Now()
     self._gc_frequency = rdfvalue.Duration.From(
         config.CONFIG["Client.gc_frequency"], rdfvalue.SECONDS)
-    self.proc = psutil.Process()
-    self.cpu_start = self.proc.cpu_times()
+    self.cpu_times = _CpuTimes()
     self.cpu_limit = rdf_flows.GrrMessage().cpu_limit
     self.start_time = None
     self.runtime_limit = None
@@ -140,7 +164,7 @@ class ActionPlugin(object):
         raise RuntimeError("Message for %s was not Authenticated." %
                            self.message.name)
 
-      self.cpu_start = self.proc.cpu_times()
+      self.cpu_times = _CpuTimes()
       self.cpu_limit = self.message.cpu_limit
 
       if getattr(flags.FLAGS, "debug_client_actions", False):
@@ -154,9 +178,7 @@ class ActionPlugin(object):
 
       # Ensure we always add CPU usage even if an exception occurred.
       finally:
-        used = self.proc.cpu_times()
-        self.cpu_used = (used.user - self.cpu_start.user,
-                         used.system - self.cpu_start.system)
+        self.cpu_used = self.cpu_times.cpu_used
         self.status.runtime_us = rdfvalue.RDFDatetime.Now() - self.start_time
 
     except NetworkBytesExceededError as e:
@@ -181,7 +203,6 @@ class ActionPlugin(object):
                      "%r: %s" % (e, e), traceback.format_exc())
 
       if flags.FLAGS.pdb_post_mortem:
-        self.DisableNanny()
         pdb.post_mortem()
 
     if self.status.status != rdf_flows.GrrStatus.ReturnedStatus.OK:
@@ -298,7 +319,7 @@ class ActionPlugin(object):
 
     if self.runtime_limit and now - self.start_time > self.runtime_limit:
       raise RuntimeExceededError("{} exceeded runtime limit of {}.".format(
-          compatibility.GetName(type(self)), self.runtime_limit))
+          type(self).__name__, self.runtime_limit))
 
     ActionPlugin.last_progress_time = now
 
@@ -307,13 +328,7 @@ class ActionPlugin(object):
 
     self.grr_worker.Heartbeat()
 
-    user_start = self.cpu_start.user
-    system_start = self.cpu_start.system
-    cpu_times = self.proc.cpu_times()
-    user_end = cpu_times.user
-    system_end = cpu_times.system
-
-    used_cpu = user_end - user_start + system_end - system_start
+    used_cpu = self.cpu_times.total_cpu_used
 
     if used_cpu > self.cpu_limit:
       raise CPUExceededError("Action exceeded cpu limit.")
@@ -330,12 +345,6 @@ class ActionPlugin(object):
   def ChargeBytesToSession(self, length):
     self.grr_worker.ChargeBytesToSession(
         self.message.session_id, length, limit=self.network_bytes_limit)
-
-  def DisableNanny(self):
-    try:
-      self.nanny_controller.nanny.Stop()
-    except AttributeError:
-      logging.info("Can't disable Nanny on this OS.")
 
   @property
   def session_id(self):

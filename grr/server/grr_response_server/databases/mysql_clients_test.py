@@ -1,9 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
 from absl import app
 from absl.testing import absltest
 
@@ -14,7 +9,11 @@ from grr.test_lib import test_lib
 
 class MysqlClientsTest(db_clients_test.DatabaseTestClientsMixin,
                        mysql_test.MysqlTestBase, absltest.TestCase):
-  pass
+
+  # TODO: Enforce foreign key constraint on the `users` table.
+  def testMultiAddClientLabelsUnknownUser(self):
+    self.skipTest("Foreign key constraint on the `users` table not enforced.")
+    super().testMultiAddClientLabelsUnknownUser()
 
 
 if __name__ == "__main__":

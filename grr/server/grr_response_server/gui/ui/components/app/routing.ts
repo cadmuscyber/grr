@@ -1,10 +1,20 @@
 import {NgModule} from '@angular/core';
 import {RouterModule, Routes} from '@angular/router';
 
+import {HuntOverviewPage} from '../hunt/hunt_overview_page/hunt_overview_page';
+
+import {NotFoundPage} from './not_found_page';
+
 const routes: Routes = [
-  {path: 'v2', redirectTo: 'v2/home', pathMatch: 'full'},
-  // TODO(user): Change to error page.
-  {path: '**', redirectTo: 'v2/home'},
+  {
+    path: 'hunts',
+    pathMatch: 'full',
+    component: HuntOverviewPage,
+  },
+  {
+    path: '**',
+    component: NotFoundPage,
+  },
 ];
 
 @NgModule({

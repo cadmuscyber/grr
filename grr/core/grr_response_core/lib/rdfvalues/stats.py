@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """RDFValue instances related to the statistics collection."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import bisect
 import math
@@ -216,9 +212,6 @@ class Graph(rdf_structs.RDFProtoStruct):
 
   def __bool__(self):
     return bool(self.data)
-
-  # TODO: Remove after support for Python 2 is dropped.
-  __nonzero__ = __bool__
 
   def __getitem__(self, item):
     return Sample(self.data[item])

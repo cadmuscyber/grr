@@ -1,12 +1,8 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Queue definitions.
 
 This module defines the queues where a worker may look for work.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 
 from grr_response_core.lib import rdfvalue

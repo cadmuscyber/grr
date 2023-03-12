@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """A module for registering all known parsers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core.lib import parsers
 from grr_response_core.lib.parsers import chrome_history
@@ -114,6 +110,9 @@ def Register():
   # Registry multi-parsers.
   parsers.MULTI_RESPONSE_PARSER_FACTORY.Register(
       "WinUserSpecialDirs", windows_registry_parser.WinUserSpecialDirs)
+  parsers.MULTI_RESPONSE_PARSER_FACTORY.Register(
+      "WindowsRegistryInstalledSoftware",
+      windows_registry_parser.WindowsRegistryInstalledSoftwareParser)
 
   # Artifact file multi-parsers.
   parsers.MULTI_RESPONSE_PARSER_FACTORY.Register(
@@ -159,6 +158,7 @@ def Register():
     from debian import deb822  # pylint: disable=g-import-not-at-top
     parsers.SINGLE_FILE_PARSER_FACTORY.Register(
         "DpkgStatusParser",
+        linux_software_parser.DebianPackagesStatusParser,
         lambda: linux_software_parser.DebianPackagesStatusParser(deb822))
   except ImportError:
     pass

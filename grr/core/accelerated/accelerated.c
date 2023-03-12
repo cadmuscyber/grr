@@ -5,12 +5,10 @@
 //
 // author: Michael Cohen <scudette@gmail.com>
 
-
+// See https://docs.python.org/3/c-api/intro.html#include-files
+#define PY_SSIZE_T_CLEAN
 #include <Python.h>
-
-#if PY_MAJOR_VERSION >= 3
-#define IS_PY3K
-#endif
+#include <limits.h>
 
 // Number of bits used to hold type info in a proto tag.
 #define TAG_TYPE_BITS 3
@@ -66,11 +64,7 @@ PyObject *py_varint_encode(PyObject *self, PyObject *args) {
   unsigned char buffer[100];
   Py_ssize_t index = sizeof(buffer);
   unsigned PY_LONG_LONG value;
-#ifdef IS_PY3K
   const char *fmt = "y#";
-#else
-  const char *fmt = "s#";
-#endif
 
   if (!PyArg_ParseTuple(args, "K", &value))
     return NULL;
@@ -108,7 +102,7 @@ int varint_decode(unsigned PY_LONG_LONG *result,
     }
 
     shift += 7;
-  } while (shift < 64);
+  }
 
   // Error decoding varint - buffer too short.
   return 0;
@@ -120,11 +114,7 @@ PyObject *py_varint_decode(PyObject *self, PyObject *args) {
   Py_ssize_t pos = 0;
   Py_ssize_t length = 0;
   unsigned PY_LONG_LONG result = 0;
-#ifdef IS_PY3K
   const char *fmt = "y#n";
-#else
-  const char *fmt = "s#n";
-#endif
 
   if (!PyArg_ParseTuple(args, fmt, &buffer, &length, &pos))
     return NULL;
@@ -133,7 +123,7 @@ PyObject *py_varint_decode(PyObject *self, PyObject *args) {
     return Py_BuildValue("Kn", result, pos + length);
   }
 
-  PyErr_SetString(PyExc_RuntimeError, "Too many bytes when decoding varint.");
+  PyErr_SetString(PyExc_ValueError, "Too many bytes when decoding varint.");
   return NULL;
 }
 
@@ -145,19 +135,17 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
   Py_ssize_t index = 0;
   static const char *kwlist[] = {"buffer", "index", "length", NULL};
   PyObject *encoded_tag = NULL;
-
-  PyObject *result = PyList_New(0);
-  if (!result)
-    return NULL;
+  PyObject *result = NULL;
 
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|nn", (char **)kwlist,
-                                   &buffer, &buffer_len, &index, &length))
-    return NULL;
+                                   &buffer, &buffer_len, &index, &length)) {
+    goto error;
+  }
 
   if (index < 0 || length < 0 || index > buffer_len) {
     PyErr_SetString(
         PyExc_ValueError, "Invalid parameters.");
-    return NULL;
+    goto error;
   }
 
   // Advance the buffer to the required start index.
@@ -168,6 +156,11 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
     length = buffer_len - index;
   }
 
+  result = PyList_New(0);
+  if (!result) {
+    goto error;
+  }
+
   // We advance the buffer and decrement the length until there is no more
   // buffer space left.
   while (length > 0) {
@@ -176,7 +169,23 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
     int tag_type;
 
     // Read the tag off the buffer.
-    varint_decode(&tag, buffer, length, &decoded_length);
+    if (!varint_decode(&tag, buffer, length, &decoded_length)) {
+      PyErr_SetString(
+          PyExc_ValueError, "Broken tag encountered.");
+      goto error;
+    }
+
+    if (decoded_length == 0) {
+      // NOTE: this code is unreachable - decoded length should never be 0,
+      // as the current implementation of varint_decode always sets
+      // decoded_length to non-zero on success.
+      //
+      // Keeping the check here, just in case (i.e. in case varint_decode
+      // implementation changes).
+      PyErr_SetString(
+          PyExc_ValueError, "Zero-length tag encountered.");
+      goto error;
+    }
 
     // Prepare to pass the encoded tag into the result tuple.
     encoded_tag = PyBytes_FromStringAndSize(buffer, decoded_length);
@@ -191,7 +200,11 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
         Py_ssize_t tag_length = 0;
         PyObject *entry = NULL;
 
-        varint_decode(&tag, buffer, length, &tag_length);
+        if (!varint_decode(&tag, buffer, length, &tag_length)) {
+          PyErr_SetString(
+              PyExc_ValueError, "Broken varint tag encountered.");
+          goto error;
+        }
 
         // Create an entry to add to the result set. Note: We use
         // PyTuple_SetItem which steals the references here instead of
@@ -199,6 +212,7 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
         entry = PyTuple_New(3);
         PyTuple_SET_ITEM(
             entry, 0, encoded_tag);
+        encoded_tag = NULL; // Ensure it doesn't get accidentally dereferenced.
 
         // Empty string "".
         PyTuple_SET_ITEM(
@@ -222,9 +236,16 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
         // Fixed size data.
         Py_ssize_t tag_length = 8;
 
+        if (length < tag_length) {
+          PyErr_SetString(
+              PyExc_ValueError, "Fixed64 tag exceeds available buffer.");
+          goto error;
+        }
+
         PyObject *entry = PyTuple_New(3);
         PyTuple_SET_ITEM(
             entry, 0, encoded_tag);
+        encoded_tag = NULL; // Ensure it doesn't get accidentally dereferenced.
 
         // Empty string "".
         PyTuple_SET_ITEM(
@@ -248,9 +269,16 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
         // Fixed size data.
         Py_ssize_t tag_length = 4;
 
+        if (length < tag_length) {
+          PyErr_SetString(
+              PyExc_ValueError, "Fixed32 tag exceeds available buffer.");
+          goto error;
+        }
+
         PyObject *entry = PyTuple_New(3);
         PyTuple_SET_ITEM(
             entry, 0, encoded_tag);
+        encoded_tag = NULL; // Ensure it doesn't get accidentally dereferenced.
 
         // Empty string "".
         PyTuple_SET_ITEM(
@@ -277,19 +305,29 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
         unsigned PY_LONG_LONG data_size;
         PyObject *entry = NULL;
 
-        varint_decode(&data_size, buffer, length, &decoded_length);
+        if (!varint_decode(&data_size, buffer, length, &decoded_length)) {
+          PyErr_SetString(
+              PyExc_ValueError, "Broken length_delimited tag encountered.");
+          goto error;
+        }
+
+        if (data_size > INT_MAX) {
+          PyErr_SetString(
+              PyExc_ValueError, "Length delimited exceeds limits.");
+          goto error;
+        }
 
         // Check that we do not exceed the available buffer here.
         if (data_size + decoded_length > (unsigned int)length) {
           PyErr_SetString(
               PyExc_ValueError, "Length tag exceeds available buffer.");
-
           goto error;
         }
 
         entry = PyTuple_New(3);
         PyTuple_SET_ITEM(
             entry, 0, encoded_tag);
+        encoded_tag = NULL; // Ensure it doesn't get accidentally dereferenced.
 
         // Empty string "".
         PyTuple_SET_ITEM(
@@ -312,7 +350,6 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
       default:
         PyErr_SetString(
             PyExc_ValueError, "Unexpected Tag");
-
         goto error;
     }
   }
@@ -320,7 +357,9 @@ PyObject *py_split_buffer(PyObject *self, PyObject *args, PyObject *kwargs) {
   return result;
 
 error:
-  Py_DECREF(encoded_tag);
+  Py_XDECREF(result);
+  Py_XDECREF(encoded_tag);
+
   return NULL;
 }
 
@@ -348,7 +387,7 @@ static PyMethodDef _semantic_methods[] = {
     {"varint_decode",
      (PyCFunction)py_varint_decode,
      METH_VARARGS,
-     "Decode a varing from a buffer."},
+     "Decode a varint from a buffer."},
 
     {"split_buffer",
      (PyCFunction)py_split_buffer,
@@ -359,7 +398,6 @@ static PyMethodDef _semantic_methods[] = {
 };
 
 
-#ifdef IS_PY3K
 static struct PyModuleDef cSemanticMod =
 {
     PyModuleDef_HEAD_INIT,
@@ -372,9 +410,4 @@ static struct PyModuleDef cSemanticMod =
 PyMODINIT_FUNC PyInit__semantic(void) {
   return PyModule_Create(&cSemanticMod);
 }
-#else
-PyMODINIT_FUNC init_semantic(void) {
-  Py_InitModule3("_semantic", _semantic_methods,
-                 "Semantic Protobuf accelerator.");
-}
-#endif
+

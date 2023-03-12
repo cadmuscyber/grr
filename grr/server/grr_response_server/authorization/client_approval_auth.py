@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Client label approvals authorization manager."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 
@@ -105,15 +101,13 @@ class ClientApprovalAuthorizationManager(auth_manager.AuthorizationManager):
       for user in approval_spec.users:
         self.AuthorizeUser(user, approval_spec.label)
 
-  def CheckApproversForLabel(self, token, client_id, requester, approvers,
-                             label):
+  def CheckApproversForLabel(self, client_id, requester, approvers, label):
     """Checks if requester and approvers have approval privileges for labels.
 
     Checks against list of approvers for each label defined in approvers.yaml to
     determine if the list of approvers is sufficient.
 
     Args:
-      token: user token
       client_id: Client ID of the client
       requester: username string of person requesting approval.
       approvers: list of username strings that have approved this client.
@@ -132,8 +126,7 @@ class ClientApprovalAuthorizationManager(auth_manager.AuthorizationManager):
         raise access_control.UnauthorizedAccess(
             "User %s not in %s or groups:%s for %s" %
             (requester, auth.users, auth.groups, label),
-            subject=client_id,
-            requested_access=token.requested_access)
+            subject=client_id)
 
     approved_count = 0
     for approver in approvers:
@@ -144,8 +137,7 @@ class ClientApprovalAuthorizationManager(auth_manager.AuthorizationManager):
       raise access_control.UnauthorizedAccess(
           "Found %s approvers for %s, needed %s" %
           (approved_count, label, auth.num_approvers_required),
-          subject=client_id,
-          requested_access=token.requested_access)
+          subject=client_id)
     return True
 
 

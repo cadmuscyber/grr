@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """This file contains utility classes related to maintenance used by GRR."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 import sys
@@ -13,10 +9,10 @@ from grr_api_client import api
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
-from grr_response_server import access_control
 from grr_response_server import key_utils
 from grr_response_server import signed_binary_utils
 from grr_response_server.bin import api_shell_raw_access_lib
+from grr_response_server.gui import api_call_context
 
 SUPPORTED_PLATFORMS = ["windows", "linux", "darwin"]
 SUPPORTED_ARCHITECTURES = ["i386", "amd64"]
@@ -29,7 +25,7 @@ def InitGRRRootAPI():
 
   return api.GrrApi(
       connector=api_shell_raw_access_lib.RawConnector(
-          token=access_control.ACLToken(username="GRRConfigUpdater"),
+          context=api_call_context.ApiCallContext(username="GRRConfigUpdater"),
           page_size=_GRR_API_PAGE_SIZE)).root
 
 

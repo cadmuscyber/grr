@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for YAML instant output plugin."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
 import zipfile
@@ -17,6 +12,7 @@ from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_server.output_plugins import test_plugins
 from grr_response_server.output_plugins import yaml_plugin
+from grr.test_lib import export_test_lib
 from grr.test_lib import test_lib
 
 
@@ -32,6 +28,7 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
     file_basename, _ = os.path.splitext(os.path.basename(fd_path))
     return zipfile.ZipFile(fd_path), file_basename
 
+  @export_test_lib.WithAllExportConverters
   def testYamlPluginWithValuesOfSameType(self):
     responses = []
     for i in range(10):
@@ -58,7 +55,7 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
             "%s/ExportedFile/from_StatEntry.yaml" % prefix
         })
 
-    parsed_manifest = yaml.load(zip_fd.read("%s/MANIFEST" % prefix))
+    parsed_manifest = yaml.safe_load(zip_fd.read("%s/MANIFEST" % prefix))
     self.assertEqual(parsed_manifest,
                      {"export_stats": {
                          "StatEntry": {
@@ -66,7 +63,7 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
                          }
                      }})
 
-    parsed_output = yaml.load(
+    parsed_output = yaml.safe_load(
         zip_fd.read("%s/ExportedFile/from_StatEntry.yaml" % prefix))
     self.assertLen(parsed_output, 10)
     for i in range(10):
@@ -93,6 +90,7 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
       self.assertEqual(parsed_output[i]["st_rdev"], "0")
       self.assertEqual(parsed_output[i]["symlink"], "")
 
+  @export_test_lib.WithAllExportConverters
   def testYamlPluginWithValuesOfMultipleTypes(self):
     zip_fd, prefix = self.ProcessValuesToZip({
         rdf_client_fs.StatEntry: [
@@ -108,7 +106,7 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
             "%s/ExportedProcess/from_Process.yaml" % prefix
         })
 
-    parsed_manifest = yaml.load(zip_fd.read("%s/MANIFEST" % prefix))
+    parsed_manifest = yaml.safe_load(zip_fd.read("%s/MANIFEST" % prefix))
     self.assertEqual(
         parsed_manifest, {
             "export_stats": {
@@ -121,7 +119,7 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
             }
         })
 
-    parsed_output = yaml.load(
+    parsed_output = yaml.safe_load(
         zip_fd.read("%s/ExportedFile/from_StatEntry.yaml" % prefix))
     self.assertLen(parsed_output, 1)
 
@@ -135,11 +133,12 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
     self.assertEqual(parsed_output[0]["urn"],
                      "aff4:/%s/fs/os/foo/bar" % self.client_id)
 
-    parsed_output = yaml.load(
+    parsed_output = yaml.safe_load(
         zip_fd.read("%s/ExportedProcess/from_Process.yaml" % prefix))
     self.assertLen(parsed_output, 1)
     self.assertEqual(parsed_output[0]["pid"], "42")
 
+  @export_test_lib.WithAllExportConverters
   def testYamlPluginWritesUnicodeValuesCorrectly(self):
     zip_fd, prefix = self.ProcessValuesToZip({
         rdf_client_fs.StatEntry: [
@@ -153,13 +152,14 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
             "%s/ExportedFile/from_StatEntry.yaml" % prefix
         })
 
-    parsed_output = yaml.load(
+    parsed_output = yaml.safe_load(
         zip_fd.open("%s/ExportedFile/from_StatEntry.yaml" % prefix))
 
     self.assertLen(parsed_output, 1)
     self.assertEqual(parsed_output[0]["urn"],
                      "aff4:/%s/fs/os/中国新闻网新闻中" % self.client_id)
 
+  @export_test_lib.WithAllExportConverters
   def testYamlPluginWritesMoreThanOneBatchOfRowsCorrectly(self):
     num_rows = self.__class__.plugin_cls.ROW_BATCH * 2 + 1
 
@@ -172,7 +172,7 @@ class YamlInstantOutputPluginTest(test_plugins.InstantOutputPluginTestBase):
 
     zip_fd, prefix = self.ProcessValuesToZip(
         {rdf_client_fs.StatEntry: responses})
-    parsed_output = yaml.load(
+    parsed_output = yaml.safe_load(
         zip_fd.open("%s/ExportedFile/from_StatEntry.yaml" % prefix))
     self.assertLen(parsed_output, num_rows)
     for i in range(num_rows):

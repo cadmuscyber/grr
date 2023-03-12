@@ -1,19 +1,15 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for clients with special approval logic."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
+from unittest import mock
 
 from absl import app
 
 from grr_api_client import errors as grr_api_errors
-from grr_response_core.lib import utils
-from grr_response_core.lib.util import compatibility
 from grr_response_server.authorization import client_approval_auth
 from grr_response_server.gui import api_auth_manager
+from grr_response_server.gui import api_call_context
 from grr_response_server.gui import api_call_router_with_approval_checks
 from grr_response_server.gui import api_integration_test_lib
 from grr_response_server.gui import gui_test_lib
@@ -27,7 +23,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
     gui_test_lib.CreateFileVersion(client_id=client_id, path=path)
 
   def setUp(self):
-    super(ApprovalByLabelE2ETest, self).setUp()
+    super().setUp()
 
     self.client_nolabel_id = self.SetupClient(0)
     self.client_legal_id = self.SetupClient(1, labels=[u"legal_approval"])
@@ -38,7 +34,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
     cls.ClearCache()
     approver = test_lib.ConfigOverrider({
         "API.DefaultRouter":
-            compatibility.GetName(cls),
+            cls.__name__,
         "ACL.approvers_config_file":
             os.path.join(self.base_path, "approvers.yaml")
     })
@@ -46,11 +42,11 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
     self.addCleanup(approver.Stop)
 
     # Get a fresh approval manager object and reload with test approvers.
-    approval_manager_stubber = utils.Stubber(
+    approval_manager_stubber = mock.patch.object(
         client_approval_auth, "CLIENT_APPROVAL_AUTH_MGR",
         client_approval_auth.ClientApprovalAuthorizationManager())
-    approval_manager_stubber.Start()
-    self.addCleanup(approval_manager_stubber.Stop)
+    approval_manager_stubber.start()
+    self.addCleanup(approval_manager_stubber.stop)
 
     # Force creation of new APIAuthorizationManager, so that configuration
     # changes are picked up.
@@ -66,7 +62,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
     # approvers.yaml rules don't get checked because this client has no
     # labels. Regular approvals still required.
     self.RequestAndGrantClientApproval(
-        self.client_nolabel_id, requestor=self.token.username)
+        self.client_nolabel_id, requestor=self.context.username)
 
     # Check we now have access
     self.api.Client(self.client_nolabel_id).File("fs/os/foo").Get()
@@ -80,7 +76,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
         self.api.Client(self.client_legal_id).File("fs/os/foo").Get)
 
     approval_id = self.RequestAndGrantClientApproval(
-        self.client_legal_id, requestor=self.token.username)
+        self.client_legal_id, requestor=self.context.username)
     # This approval isn't enough, we need one from legal, so it should still
     # fail.
     self.assertRaises(
@@ -91,7 +87,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
     # approvers.yaml
     self.GrantClientApproval(
         self.client_legal_id,
-        requestor=self.token.username,
+        requestor=self.context.username,
         approval_id=approval_id,
         approver=u"legal1")
 
@@ -106,8 +102,8 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
     """
     self.TouchFile(self.client_prod_id, "fs/os/foo")
 
-    self.token.username = u"prod1"
-    webauth.WEBAUTH_MANAGER.SetUserName(self.token.username)
+    self.context = api_call_context.ApiCallContext("prod1")
+    webauth.WEBAUTH_MANAGER.SetUserName(self.context.username)
 
     # No approvals yet, this should fail.
     self.assertRaises(
@@ -115,7 +111,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
         self.api.Client(self.client_prod_id).File("fs/os/foo").Get)
 
     approval_id = self.RequestAndGrantClientApproval(
-        self.client_prod_id, requestor=self.token.username)
+        self.client_prod_id, requestor=self.context.username)
 
     # This approval from "approver" isn't enough.
     self.assertRaises(
@@ -126,7 +122,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
     # approvers.yaml
     self.GrantClientApproval(
         self.client_prod_id,
-        requestor=self.token.username,
+        requestor=self.context.username,
         approval_id=approval_id,
         approver=u"legal1")
 
@@ -139,7 +135,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
     # approvers.yaml
     self.GrantClientApproval(
         self.client_prod_id,
-        requestor=self.token.username,
+        requestor=self.context.username,
         approval_id=approval_id,
         approver=u"prod2")
 
@@ -150,7 +146,7 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
 
     self.GrantClientApproval(
         self.client_prod_id,
-        requestor=self.token.username,
+        requestor=self.context.username,
         approval_id=approval_id,
         approver=u"prod3")
 
@@ -169,20 +165,20 @@ class ApprovalByLabelE2ETest(api_integration_test_lib.ApiIntegrationTest):
 
     # Grant all the necessary approvals
     approval_id = self.RequestAndGrantClientApproval(
-        self.client_prod_id, requestor=self.token.username)
+        self.client_prod_id, requestor=self.context.username)
     self.GrantClientApproval(
         self.client_prod_id,
-        requestor=self.token.username,
+        requestor=self.context.username,
         approval_id=approval_id,
         approver=u"legal1")
     self.GrantClientApproval(
         self.client_prod_id,
-        requestor=self.token.username,
+        requestor=self.context.username,
         approval_id=approval_id,
         approver=u"prod2")
     self.GrantClientApproval(
         self.client_prod_id,
-        requestor=self.token.username,
+        requestor=self.context.username,
         approval_id=approval_id,
         approver=u"prod3")
 

@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Output plugins used for testing."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
 
@@ -32,14 +28,13 @@ class InstantOutputPluginTestBase(test_lib.GRRBaseTest):
   plugin_cls = None
 
   def setUp(self):
-    super(InstantOutputPluginTestBase, self).setUp()
+    super().setUp()
 
     self.client_id = self.SetupClient(0)
     self.results_urn = rdf_client.ClientURN(self.client_id).Add("foo/bar")
 
     # pylint: disable=not-callable
-    self.plugin = self.__class__.plugin_cls(
-        source_urn=self.results_urn, token=self.token)
+    self.plugin = self.__class__.plugin_cls(source_urn=self.results_urn)
     # pylint: enable=not-callable
 
   def ProcessValues(self, values_by_cls):

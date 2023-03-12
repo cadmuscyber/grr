@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 """Classes for hunt-related testing."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import hashlib
 import sys
@@ -12,8 +9,9 @@ from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr_response_server import access_control
+from grr_response_core.lib.rdfvalues import structs as rdf_structs
 from grr_response_server import data_store
+from grr_response_server import flow
 from grr_response_server import foreman
 from grr_response_server import foreman_rules
 from grr_response_server import hunt
@@ -37,7 +35,7 @@ class SampleHuntMock(action_mocks.ActionMock):
                user_cpu_time=None,
                system_cpu_time=None,
                network_bytes_sent=None):
-    super(SampleHuntMock, self).__init__()
+    super().__init__()
     self.responses = 0
     self.data = data
     self.failrate = failrate
@@ -120,7 +118,6 @@ class SampleHuntMock(action_mocks.ActionMock):
 
 
 def TestHuntHelperWithMultipleMocks(client_mocks,
-                                    token=None,
                                     iteration_limit=None,
                                     worker=None):
   """Runs a hunt with a given set of clients mocks.
@@ -130,7 +127,6 @@ def TestHuntHelperWithMultipleMocks(client_mocks,
       objects are used to handle client actions. Methods names of a client mock
       object correspond to client actions names. For an example of a client mock
       object, see SampleHuntMock.
-    token: An instance of access_control.ACLToken security token.
     iteration_limit: If None, hunt will run until it's finished. Otherwise,
       worker_mock.Next() will be called iteration_limit number of times. Every
       iteration processes worker's message queue. If new messages are sent to
@@ -142,15 +138,8 @@ def TestHuntHelperWithMultipleMocks(client_mocks,
     A number of iterations complete.
   """
 
-  if token is None:
-    token = access_control.ACLToken(username="test")
-
-  # Worker always runs with absolute privileges, therefore making the token
-  # SetUID().
-  token = token.SetUID()
-
   client_mocks = [
-      flow_test_lib.MockClient(client_id, client_mock, token=token)
+      flow_test_lib.MockClient(client_id, client_mock)
       for client_id, client_mock in client_mocks.items()
   ]
 
@@ -188,7 +177,6 @@ def TestHuntHelperWithMultipleMocks(client_mocks,
 
 def TestHuntHelper(client_mock,
                    client_ids,
-                   token=None,
                    iteration_limit=None,
                    worker=None):
   """Runs a hunt with a given client mock on given clients.
@@ -199,7 +187,6 @@ def TestHuntHelper(client_mock,
       example of a client mock object, see SampleHuntMock.
     client_ids: List of clients ids. Hunt will run on these clients. client_mock
       will be used for every client id.
-    token: An instance of access_control.ACLToken security token.
     iteration_limit: If None, hunt will run until it's finished. Otherwise,
       worker_mock.Next() will be called iteration_limit number of tiems. Every
       iteration processes worker's message queue. If new messages are sent to
@@ -213,8 +200,7 @@ def TestHuntHelper(client_mock,
   return TestHuntHelperWithMultipleMocks(
       dict([(client_id, client_mock) for client_id in client_ids]),
       iteration_limit=iteration_limit,
-      worker=worker,
-      token=token)
+      worker=worker)
 
 
 class StandardHuntTestMixin(acl_test_lib.AclTestMixin):
@@ -252,10 +238,9 @@ class StandardHuntTestMixin(acl_test_lib.AclTestMixin):
 
     client_rule_set = (client_rule_set or self._CreateForemanClientRuleSet())
 
-    hunt_args = rdf_hunt_objects.HuntArguments(
-        hunt_type=rdf_hunt_objects.HuntArguments.HuntType.STANDARD,
-        standard=rdf_hunt_objects.HuntArgumentsStandard(
-            flow_name=flow_runner_args.flow_name, flow_args=flow_args))
+    hunt_args = rdf_hunt_objects.HuntArguments.Standard(
+        flow_name=flow_runner_args.flow_name,
+        flow_args=rdf_structs.AnyValue.Pack(flow_args))
 
     hunt_obj = rdf_hunt_objects.Hunt(
         creator=creator,
@@ -275,7 +260,7 @@ class StandardHuntTestMixin(acl_test_lib.AclTestMixin):
       hunt.StartHunt(hunt_id)
     return hunt_id
 
-  def FindForemanRules(self, hunt_obj, token=None):
+  def FindForemanRules(self, hunt_obj):
     rules = data_store.REL_DB.ReadAllForemanRules()
     return [
         rule for rule in rules
@@ -312,24 +297,23 @@ class StandardHuntTestMixin(acl_test_lib.AclTestMixin):
           client_mock,
           client_ids or self.client_ids,
           iteration_limit=iteration_limit,
-          worker=test_worker,
-          token=self.token)
+          worker=test_worker)
 
   def RunHuntWithClientCrashes(self, client_ids):
     with flow_test_lib.TestWorker() as test_worker:
-      client_mocks = dict([
-          (client_id, flow_test_lib.CrashClientMock(client_id, self.token))
-          for client_id in client_ids
-      ])
+      client_mocks = dict([(client_id, flow_test_lib.CrashClientMock(client_id))
+                           for client_id in client_ids])
       self.AssignTasksToClients(client_ids=client_ids, worker=test_worker)
-      return TestHuntHelperWithMultipleMocks(client_mocks, self.token)
+      return TestHuntHelperWithMultipleMocks(client_mocks)
 
   def _EnsureClientHasHunt(self, client_id, hunt_id):
     try:
       data_store.REL_DB.ReadFlowObject(client_id, hunt_id)
     except db.UnknownFlowError:
       flow_test_lib.StartFlow(
-          transfer.GetFile, client_id=client_id, parent_hunt_id=hunt_id)
+          transfer.GetFile,
+          client_id=client_id,
+          parent=flow.FlowParent.FromHuntID(hunt_id))
 
     return hunt_id
 
@@ -348,13 +332,12 @@ class StandardHuntTestMixin(acl_test_lib.AclTestMixin):
   def AddLogToHunt(self, hunt_id, client_id, message):
     flow_id = self._EnsureClientHasHunt(client_id, hunt_id)
 
-    data_store.REL_DB.WriteFlowLogEntries([
+    data_store.REL_DB.WriteFlowLogEntry(
         rdf_flow_objects.FlowLogEntry(
             client_id=client_id,
             flow_id=flow_id,
             hunt_id=hunt_id,
-            message=message)
-    ])
+            message=message))
 
   def AddErrorToHunt(self, hunt_id, client_id, message, backtrace):
     flow_id = self._EnsureClientHasHunt(client_id, hunt_id)
@@ -406,11 +389,11 @@ class StatefulDummyHuntOutputPlugin(output_plugin.OutputPlugin):
   data = []
 
   def __init__(self, *args, **kwargs):
-    super(StatefulDummyHuntOutputPlugin, self).__init__(*args, **kwargs)
+    super().__init__(*args, **kwargs)
     self.delta = 0
 
   def InitializeState(self, state):
-    super(StatefulDummyHuntOutputPlugin, self).InitializeState(state)
+    super().InitializeState(state)
     state.index = 0
 
   def ProcessResponses(self, state, responses):

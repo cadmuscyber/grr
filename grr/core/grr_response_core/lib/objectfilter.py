@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
 # Copyright 2012 Google Inc. All Rights Reserved.
 """Classes to perform filtering of objects based on their data members.
 
@@ -87,21 +86,18 @@ filter is easy. Three basic filter implementations are given:
   to the given object. So "a.b" expands the object obj to obj["a"]["b"]
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import abc
 import binascii
-import collections
+from collections.abc import Mapping
 import re
 from typing import Text
 
 
 from grr_response_core.lib import lexer
 from grr_response_core.lib import utils
-from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
+from grr_response_core.lib.util import text
 
 
 class Error(Exception):
@@ -433,7 +429,7 @@ class Context(Operator):
     if len(arguments) != 2:
       raise InvalidNumberOfOperands("Context accepts only 2 operands.")
     super().__init__(arguments=arguments, **kwargs)
-    self.context, self.condition = self.args
+    self.context, self.condition = self.args  # pytype: disable=bad-unpacking
 
   def Matches(self, obj):
     for object_list in self.value_expander.Expand(obj, self.context):
@@ -476,12 +472,12 @@ class ValueExpander(object):
     return path[0]
 
   def _GetValue(self, obj, attr_name):
-    """Returns the value of tha attribute attr_name."""
+    """Returns the value of that attribute attr_name."""
     raise NotImplementedError()
 
   def _AtLeaf(self, attr_value):
     """Called when at a leaf value. Should yield a value."""
-    if isinstance(attr_value, collections.Mapping):
+    if isinstance(attr_value, Mapping):
       # If the result is a dict, return each key/value pair as a new dict.
       for k, v in attr_value.items():
         yield {k: v}
@@ -491,7 +487,7 @@ class ValueExpander(object):
   def _AtNonLeaf(self, attr_value, path):
     """Called when at a non-leaf value. Should recurse and yield values."""
     try:
-      if isinstance(attr_value, collections.Mapping):
+      if isinstance(attr_value, Mapping):
         # If it's dictionary-like, treat the dict key as the attribute..
         sub_obj = attr_value.get(path[1])
         if len(path) > 2:
@@ -500,7 +496,7 @@ class ValueExpander(object):
         if isinstance(sub_obj, str):
           # If it is a string, stop here
           yield sub_obj
-        elif isinstance(sub_obj, collections.Mapping):
+        elif isinstance(sub_obj, Mapping):
           # If the result is a dict, return each key/value pair as a new dict.
           for k, v in sub_obj.items():
             yield {k: v}
@@ -554,7 +550,7 @@ class AttributeValueExpander(ValueExpander):
   """An expander that gives values based on object attribute names."""
 
   def _GetValue(self, obj, attr_name):
-    if isinstance(obj, collections.Mapping):
+    if isinstance(obj, Mapping):
       return obj.get(attr_name)
     return getattr(obj, attr_name, None)
 
@@ -774,9 +770,9 @@ class Parser(lexer.SearchParser):
     # characters (e.g. \*) or special sequences (e.g. \w) can be used in
     # objectfilter.
     if self.current_expression.operator == "regexp":
-      self.string += compatibility.UnescapeString(string)
+      self.string += text.Unescape(string)
     elif match.group(1) in "\\'\"rnbt":
-      self.string += compatibility.UnescapeString(string)
+      self.string += text.Unescape(string)
     else:
       raise ParseError("Invalid escape character %s." % string)
 
@@ -785,12 +781,7 @@ class Parser(lexer.SearchParser):
     hex_string = match.group(1)
     try:
       self.string += binascii.unhexlify(hex_string).decode("utf-8")
-    # TODO: In Python 2 `binascii` throws `TypeError` for invalid
-    # input values (for whathever reason). This behaviour is fixed in Python 3
-    # where `binascii.Error` (a subclass of `ValueError`) is raised. Once we do
-    # not have to support Python 2 anymore, this `TypeError` catch should be
-    # removed.
-    except (binascii.Error, TypeError) as error:
+    except binascii.Error as error:
       raise ParseError("Invalid hex escape '{}': {}".format(hex_string, error))
 
   def ContextOperator(self, string="", **_):
@@ -804,7 +795,7 @@ class Parser(lexer.SearchParser):
 
     length = len(self.stack)
     while length > 1:
-      # Precendence order
+      # Precedence order
       self._CombineParenthesis()
       self._CombineBinaryExpressions("and")
       self._CombineBinaryExpressions("or")

@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test flows results UI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -20,7 +15,7 @@ class TestFlowResults(gui_test_lib.GRRSeleniumTest):
   """Test the flow results UI."""
 
   def setUp(self):
-    super(TestFlowResults, self).setUp()
+    super().setUp()
 
     self.client_id = self.SetupClient(0)
     self.RequestAndGrantClientApproval(self.client_id)

@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """This file defines the entry points for typical installations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -43,3 +39,13 @@ def Worker():
 def AdminUI():
   from grr_response_server.gui import admin_ui
   app.run(admin_ui.main)
+
+
+def Grrafana():
+  from grr_response_server.bin import grrafana
+  app.run(grrafana.main)
+
+
+def FleetspeakServer():
+  from grr_response_server.bin import fleetspeak_server_wrapper
+  app.run(fleetspeak_server_wrapper.main)

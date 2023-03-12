@@ -1,11 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test RDFStruct implementations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import base64
 import random
@@ -24,7 +19,7 @@ from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
 from grr_response_core.lib.rdfvalues import test_base as rdf_test_base
-from grr_response_core.lib.util import compatibility
+from grr_response_proto import tests_pb2
 from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
 from grr.test_lib import test_lib
 
@@ -100,6 +95,32 @@ TestStruct.AddDescriptor(
     rdf_structs.ProtoList(
         rdf_structs.ProtoEmbedded(
             name="repeat_nested", field_number=5, nested=TestStruct)),)
+
+
+class VersionedTestStructV1(rdf_structs.RDFProtoStruct):
+  """A test struct object."""
+
+  type_description = type_info.TypeDescriptorSet(
+      rdf_structs.ProtoBoolean(
+          name="bool1",
+          field_number=1,
+          default=False,
+      ))
+
+
+class VersionedTestStructV2(rdf_structs.RDFProtoStruct):
+  """A test struct object."""
+
+  type_description = type_info.TypeDescriptorSet(
+      rdf_structs.ProtoBoolean(
+          name="bool1",
+          field_number=1,
+          default=False,
+      ), rdf_structs.ProtoBoolean(
+          name="bool2",
+          field_number=2,
+          default=False,
+      ))
 
 
 class TestStructWithBool(rdf_structs.RDFProtoStruct):
@@ -249,7 +270,7 @@ class RDFStructsTest(rdf_test_base.RDFValueTestMixin, test_lib.GRRBaseTest):
     sample_copy = sample.Copy()
     sample_copy.float = None
 
-    super(RDFStructsTest, self).CheckRDFValue(value_copy, sample_copy)
+    super().CheckRDFValue(value_copy, sample_copy)
 
   def GenerateSample(self, number=1):
     return self.rdfvalue_class(
@@ -270,14 +291,7 @@ class RDFStructsTest(rdf_test_base.RDFValueTestMixin, test_lib.GRRBaseTest):
     # Test serialization/deserialization.
     serialized = test_pb.SerializeToBytes()
     self.assertEqual(DynamicTypeTest.FromSerializedBytes(serialized), test_pb)
-
-    # TODO: In Python 2 unicode string representation has an extra
-    # 'u' prefix and there is nothing we can do about that. Once support for
-    # Python 2 is dropped, this can be removed.
-    if compatibility.PY2:
-      test_struct_class_repr = "u'TestStruct'"
-    else:
-      test_struct_class_repr = "'TestStruct'"
+    test_struct_class_repr = "'TestStruct'"
 
     expected_emitted_proto = """\
 message DynamicTypeTest {{
@@ -447,7 +461,7 @@ message DynamicTypeTest {{
   def testRDFStruct(self):
     tested = TestStruct()
 
-    # cant set integers for string attributes.
+    # can't set integers for string attributes.
     self.assertRaises(type_info.TypeValueError, setattr, tested, "foobar", 1)
 
     # This is a string so a string assignment is good:
@@ -661,12 +675,12 @@ message DynamicTypeTest {{
     # An empty protobuf.
     tested_non_union = TestStruct()
 
-    # Raises if union-casting is attemted on non-union proto.
+    # Raises if union-casting is attempted on non-union proto.
     self.assertRaises(AttributeError, tested_non_union.UnionCast)
 
     # A proto with a semantic union_field. In this particular proto the chosen
     # union variant is called struct_flavor, but it's arbitrary, we also use
-    # eg rule_type reffering to the chosen union variant elsewhere. This is
+    # eg rule_type referring to the chosen union variant elsewhere. This is
     # determined by the value of union_field.
     tested_union = UnionTest()
 
@@ -819,6 +833,23 @@ message DynamicTypeTest {{
   def testUnsetFieldsHaveSymmetricEqualityWithDefaultValues(self):
     self.assertEqual(TestStruct(repeated=[]), TestStruct())
     self.assertEqual(TestStruct(), TestStruct(repeated=[]))
+
+  def testCanDeserializeOldVersion(self):
+    a = VersionedTestStructV2(bool1=True, bool2=True)
+    a_ser = a.SerializeToBytes()
+    a_old = VersionedTestStructV1.FromSerializedBytes(a_ser)
+
+    with self.assertRaises(AttributeError):
+      a_old.Get("bool2")
+
+  def testCanCompareEqualityAcrossVersions(self):
+    a = VersionedTestStructV1.FromSerializedBytes(
+        VersionedTestStructV2(bool1=True, bool2=True).SerializeToBytes())
+
+    b = VersionedTestStructV1(bool1=True)
+
+    self.assertEqual(a, b)
+    self.assertEqual(b, a)
 
 
 class BooleanToEnumMigrationTest(test_lib.GRRBaseTest):
@@ -1010,6 +1041,268 @@ class EnumNamedValueTest(absltest.TestCase):
     a2 = rdf_structs.EnumNamedValue.FromHumanReadable(str(a))
     self.assertEqual(a2.name, "A")
     self.assertEqual(a2, a)
+
+
+class EnumContainerTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.enum_container = rdf_structs.EnumContainer(
+        name="foo", values={
+            "bar": 1,
+            "baz": 2
+        })
+
+  def testFromString(self):
+    self.assertEqual(
+        self.enum_container.FromString("bar"), self.enum_container.bar)
+
+  def testFromString_invalidValue(self):
+    with self.assertRaises(ValueError):
+      self.enum_container.FromString("bax")
+
+
+class NoDynamicTypeLookupTest(absltest.TestCase):
+
+  class NoDynamicTypeLookupMessage(rdf_structs.RDFProtoStruct):
+
+    protobuf = tests_pb2.NoDynamicTypeLookupMessage
+
+  def testFieldAccessors(self):
+    message = self.NoDynamicTypeLookupMessage()
+    self.assertIsInstance(message.any, rdf_structs.AnyValue)
+
+    message.any.type_url = "foo.bar.baz"
+    message.any.value = b"quux"
+
+    self.assertEqual(message.any.type_url, "foo.bar.baz")
+    self.assertEqual(message.any.value, b"quux")
+
+  def testSerializeAndDeserialize(self):
+    message = self.NoDynamicTypeLookupMessage()
+    message.any.type_url = "foo.bar.baz"
+    message.any.value = b"quux"
+
+    blob = message.SerializeToBytes()
+    message = self.NoDynamicTypeLookupMessage.FromSerializedBytes(blob)
+
+    self.assertEqual(message.any.type_url, "foo.bar.baz")
+    self.assertEqual(message.any.value, b"quux")
+
+  def testAsPrimitiveProto(self):
+    message = self.NoDynamicTypeLookupMessage()
+    message.any.type_url = "foo.bar.baz"
+    message.any.value = b"quux"
+
+    proto = message.AsPrimitiveProto()
+    self.assertEqual(proto.any.type_url, "foo.bar.baz")
+    self.assertEqual(proto.any.value, b"quux")
+
+
+class AnyValueTest(absltest.TestCase):
+
+  def testPack(self):
+    user = rdf_client.User()
+    user.username = "foo"
+
+    proto = rdf_structs.AnyValue.Pack(user)
+    self.assertIn("User", proto.type_url)
+
+    deserialized = rdf_client.User.FromSerializedBytes(proto.value)
+    self.assertEqual(deserialized.username, "foo")
+
+  def testUnpack(self):
+    user = rdf_client.User()
+    user.username = "foo"
+
+    proto = rdf_structs.AnyValue.Pack(user)
+
+    unpacked = proto.Unpack(rdf_client.User)
+    self.assertEqual(unpacked.username, "foo")
+
+  def testUnpackIncompatibleTypeURL(self):
+    user = rdf_client.User()
+    user.username = "foo"
+
+    proto = rdf_structs.AnyValue.Pack(user)
+    proto.type_url = "type.googleapis.com/com.example.Foo"
+
+    unpacked = proto.Unpack(rdf_client.User)
+    self.assertEqual(unpacked.username, "foo")
+
+
+class VarintTest(absltest.TestCase):
+  """Tests the VarintEncode and VarintReader implementations."""
+
+  _ENCODED_VARINTS = (
+      (1, b"\x01"),
+      (1 << 4, b"\x10"),
+      (1 << 8, b"\x80\x02"),
+      (1 << 12, b"\x80\x20"),
+      (1 << 16, b"\x80\x80\x04"),
+      (1 << 62, b"\x80\x80\x80\x80\x80\x80\x80\x80\x40"),
+      (1 << 63, b"\x80\x80\x80\x80\x80\x80\x80\x80\x80\x01"),
+  )
+
+  def testCorrectlyEncodesIntegers(self):
+    for val, b in self._ENCODED_VARINTS:
+      with self.subTest(value=val):
+        self.assertEqual(rdf_structs.VarintEncode(val), b)
+
+  def testEncodesOverflowIntegerAsZero(self):
+    self.assertEqual(rdf_structs.VarintEncode(1 << 66), b"\x00")
+
+  def testCorrectlyReadsEncodedIntegers(self):
+    for src_val, b in self._ENCODED_VARINTS:
+      with self.subTest(buffer=b):
+        self.assertEqual(rdf_structs.VarintReader(b, 0), (src_val, len(b)))
+
+  def testReaderCanReadWhatEncoderHasEncoded(self):
+    for v in [
+        0, 1, 2, 10, 20, 63, 64, 65, 127, 128, 129, 255, 256, 257, 1 << 63 - 1,
+        1 << 64 - 1
+    ]:
+      with self.subTest(value=v):
+        buf = rdf_structs.VarintEncode(v)
+        r, p = rdf_structs.VarintReader(buf, 0)
+        self.assertEqual(v, r)
+        self.assertLen(buf, p)
+
+  def testDecodingZeroBufferRaises(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Too many bytes when decoding varint"):
+      rdf_structs.VarintReader(b"", 0)
+
+  def testDecodingValueLargerThan64BitReturnsTruncatedValue(self):
+    self.assertEqual(
+        rdf_structs.VarintReader(b"\x80\x80\x80\x80\x80\x80\x80\x80\x80\x02",
+                                 0), (0, 10))
+
+  def testRaisesWhenBufferIsTooLong(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Too many bytes when decoding varint"):
+      rdf_structs.VarintReader(
+          b"\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80\x01\x00\x00", 0)
+    with self.assertRaisesRegex(ValueError,
+                                "Too many bytes when decoding varint"):
+      rdf_structs.VarintReader(b"\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF",
+                               0)
+
+  def testNonCanonicalZeroDoesNotRaise(self):
+    self.assertEqual(rdf_structs.VarintReader(b"\x80\x80\x80\x00", 0), (0, 4))
+
+
+class SignedVarintTest(absltest.TestCase):
+  """Test the VarintReader implementation."""
+
+  _ENCODED_SIGNED_VARINTS = (
+      (-1, b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01"),
+      (-(1 << 4), b"\xf0\xff\xff\xff\xff\xff\xff\xff\xff\x01"),
+      (-(1 << 8), b"\x80\xfe\xff\xff\xff\xff\xff\xff\xff\x01"),
+      (-(1 << 12), b"\x80\xe0\xff\xff\xff\xff\xff\xff\xff\x01"),
+      (-(1 << 16), b"\x80\x80\xfc\xff\xff\xff\xff\xff\xff\x01"),
+      (-(1 << 62), b"\x80\x80\x80\x80\x80\x80\x80\x80\xc0\x01"),
+      (-(1 << 63), b"\x80\x80\x80\x80\x80\x80\x80\x80\x80\x01"),
+  )
+
+  def testCorrectlyEncodesSignedIntegers(self):
+    for val, b in self._ENCODED_SIGNED_VARINTS:
+      with self.subTest(value=val):
+        self.assertEqual(rdf_structs.SignedVarintEncode(val), b)
+
+  def testEncodesOverflowIntegerAsZero(self):
+    self.assertEqual(rdf_structs.SignedVarintEncode(-(1 << 66)), b"\x00")
+
+  def testCorrectlyReadsEncodedSignedIntegers(self):
+    for src_val, b in self._ENCODED_SIGNED_VARINTS:
+      with self.subTest(buffer=b):
+        self.assertEqual(
+            rdf_structs.SignedVarintReader(b, 0), (src_val, len(b)))
+
+
+class SplitBufferTest(absltest.TestCase):
+  """Test the SplitBuffer function."""
+
+  def testRaisesIfIndexOrLengthIncorrect(self):
+    buf = b"\x00\x00"
+    with self.assertRaises(ValueError):
+      rdf_structs.SplitBuffer(buf, -1, 2)
+    with self.assertRaises(ValueError):
+      rdf_structs.SplitBuffer(buf, 0, -1)
+    with self.assertRaises(ValueError):
+      rdf_structs.SplitBuffer(buf, -1, -1)
+    with self.assertRaises(ValueError):
+      rdf_structs.SplitBuffer(buf, 3, 2)
+
+  def testReturnsNothingOnEmptyBuffer(self):
+    self.assertEqual(rdf_structs.SplitBuffer(b"", 0, 0), [])
+    self.assertEqual(rdf_structs.SplitBuffer(b"\x00\x00", 2, 2), [])
+
+  def testRaisesOnBrokenTag(self):
+    with self.assertRaisesRegex(ValueError, "Broken tag encountered"):
+      rdf_structs.SplitBuffer(b"\xff", 0, 1)
+
+  def testRaisesOnBrokenVarintTag(self):
+    # This used to trigger an infinite loop in the accelerated.c implementation.
+    with self.assertRaisesRegex(ValueError, "Broken varint tag encountered"):
+      rdf_structs.SplitBuffer(b"\x00", 0, 1)
+
+    with self.assertRaisesRegex(ValueError, "Broken varint tag encountered"):
+      rdf_structs.SplitBuffer(b"\x00\xff", 0, 2)
+
+  def testCorrectlyProcessesVarintTag(self):
+    self.assertEqual(
+        rdf_structs.SplitBuffer("\x00\x01", 0, 2), [(b"\x00", b"", b"\x01")])
+
+  def testRaisesOnOversizedFixed64Tag(self):
+    for l in range(8):
+      with self.subTest(l=l):
+        with self.assertRaisesRegex(ValueError,
+                                    "Fixed64 tag exceeds available buffer"):
+          buf = b"\x01" + b"\x00" * l
+          rdf_structs.SplitBuffer(buf, 0, len(buf))
+
+  def testCorrectlyProcessesFixed64Tag(self):
+    self.assertEqual(
+        rdf_structs.SplitBuffer("\x01\x00\x01\x02\x03\x04\x05\0x6\0x7", 0, 9),
+        [(b"\x01", b"", b"\x00\x01\x02\x03\x04\x05\x00x")])
+
+  def testRaisesOnOversizedFixed32Tag(self):
+    for l in range(4):
+      with self.subTest(l=l):
+        with self.assertRaisesRegex(ValueError,
+                                    "Fixed32 tag exceeds available buffer"):
+          buf = b"\x05" + b"\x00" * l
+          rdf_structs.SplitBuffer(buf, 0, len(buf))
+
+  def testCorrectlyProcessesFixed32Tag(self):
+    self.assertEqual(
+        rdf_structs.SplitBuffer("\x05\x00\x01\x02\x03", 0, 5),
+        [(b"\x05", b"", b"\x00\x01\x02\x03")])
+
+  def testRaisesOnBrokenLengthDelimitedTag(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Broken length_delimited tag encountered"):
+      rdf_structs.SplitBuffer(b"\x02\xff", 0, 2)
+
+  def testRaisesOnLengthDelimitedTagExceedingMaxInt(self):
+    with self.assertRaisesRegex(ValueError, "Length delimited exceeds limits"):
+      buf = b"\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\x02\xff\xff\xff\xff\xff\xff\x27"
+      rdf_structs.SplitBuffer(buf, 0, len(buf))
+
+  def testRaisesOnOversizedLengthDelimitedTag(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Length tag exceeds available buffer"):
+      rdf_structs.SplitBuffer(b"\x02\x02", 0, 2)
+
+  def testCorrectlyProcessesLengthDelimitedTag(self):
+    self.assertEqual(
+        rdf_structs.SplitBuffer("\x02\x02\x00\x01", 0, 4),
+        [(b"\x02", b"\x02", b"\x00\x01")])
+
+  def testRaisesOnUnknownTag(self):
+    with self.assertRaisesRegex(ValueError, "Unexpected Tag"):
+      rdf_structs.SplitBuffer(b"\x03", 0, 1)
 
 
 def main(argv):

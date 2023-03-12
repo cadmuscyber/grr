@@ -1,15 +1,12 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Configuration parameters for the server side subsystems."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core import version
 from grr_response_core.lib import config_lib
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
+from grr_response_core.lib.rdfvalues import paths as rdf_paths
 
 VERSION = version.Version()
 
@@ -99,6 +96,17 @@ config_lib.DEFINE_integer(
     "Maximum number of client crashes to allow for an Interrogate cron hunt "
     "before stopping the hunt.")
 
+config_lib.DEFINE_integer(
+    "Cron.interrogate_client_rate", 50,
+    "Client rate setting for the periodical Interrogate cron hunt.")
+
+config_lib.DEFINE_semantic_value(
+    rdfvalue.Duration, "Cron.interrogate_duration",
+    rdfvalue.Duration.From(1, rdfvalue.WEEKS),
+    "Duration of the Interrogate cron hunt. The hunt is run weekly, so "
+    "default duration is 1w. In certain cases the duration might be extended "
+    "to accommodate for the clients that rarely show up online.")
+
 config_lib.DEFINE_string("Frontend.bind_address", "::",
                          "The ip address to bind.")
 
@@ -127,9 +135,6 @@ config_lib.DEFINE_integer(
 config_lib.DEFINE_bool(
     "Server.initialized", False, "True once config_updater initialize has been "
     "run at least once.")
-
-config_lib.DEFINE_string("Server.master_watcher_class", "",
-                         "Unused, deprecated.")
 
 config_lib.DEFINE_string("Server.ip_resolver_class", "IPResolver",
                          "The ip resolver class to use.")
@@ -245,6 +250,12 @@ config_lib.DEFINE_string(
     help="Inactive clients marked with "
     "this label will be retained forever.")
 
+config_lib.DEFINE_float(
+    "Hunt.default_client_rate",
+    default=20.0,
+    help="Default value for HuntRunnerArgs.client_rate. Client rate "
+    "determines how many clients per minute get to process a hunt")
+
 config_lib.DEFINE_integer(
     "Hunt.default_crash_limit",
     default=100,
@@ -273,11 +284,21 @@ config_lib.DEFINE_integer(
     "If the average network usage per client becomes "
     "greater than this limit, the hunt gets stopped.")
 
+# GRRafana HTTP Server settings.
+config_lib.DEFINE_string(
+    "GRRafana.bind", default="localhost", help="The GRRafana server address.")
+
+config_lib.DEFINE_integer(
+    "GRRafana.port", default=5000, help="The GRRafana server port.")
+
 # Fleetspeak server-side integration flags.
 config_lib.DEFINE_string(
     "Server.fleetspeak_message_listen_address", "",
     "The Fleetspeak server message listen address, formatted like "
     "localhost:6061.")
+
+config_lib.DEFINE_bool("Server.fleetspeak_enabled", False,
+                       "Whether to enable fleetspeak on the server side.")
 
 config_lib.DEFINE_string(
     "Server.fleetspeak_server", "",
@@ -309,3 +330,12 @@ config_lib.DEFINE_integer(
     help="Maximum number of client ids to place in a single Fleetspeak "
     "ListClients() API request.")
 
+config_lib.DEFINE_semantic_enum(
+    rdf_paths.PathSpec.PathType,
+    "Server.raw_filesystem_access_pathtype",
+    default=rdf_paths.PathSpec.PathType.NTFS,
+    help="PathType to use for raw filesystem access on Windows.")
+
+config_lib.DEFINE_boolean(
+    "Server.grr_binaries_readonly", False,
+    "When set to True, uploaded GRR binaries can't be deleted or overwritten.")

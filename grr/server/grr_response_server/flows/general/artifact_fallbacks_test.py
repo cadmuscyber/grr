@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for grr.server.flows.general.artifact_fallbacks."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -28,7 +24,7 @@ class TestSystemRootSystemDriveFallbackFlow(flow_test_lib.FlowTestsBaseclass):
           artifact_fallbacks.SystemRootSystemDriveFallbackFlow.__name__,
           client_mock,
           client_id=client_id,
-          token=self.token,
+          creator=self.test_username,
           artifact_name="WindowsEnvironmentVariableSystemRoot")
 
       results = flow_test_lib.GetFlowResults(client_id, session_id)

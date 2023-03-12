@@ -1,8 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import os
@@ -115,7 +111,7 @@ class LiteralMatcherTest(absltest.TestCase):
 class ConditionTestMixin(object):
 
   def setUp(self):
-    super(ConditionTestMixin, self).setUp()
+    super().setUp()
     self.temp_filepath = temp.TempFilePath()
     self.addCleanup(lambda: os.remove(self.temp_filepath))
 

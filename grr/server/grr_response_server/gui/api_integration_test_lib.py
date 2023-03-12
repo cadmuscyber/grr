@@ -1,25 +1,23 @@
 #!/usr/bin/env python
-# Lint as: python3
 """End-to-end tests for the API.
 
 API plugins are tested with their own dedicated unit-tests that are
 protocol- and server-independent. End-to-end tests are meant to use
 the full GRR server stack (web server + API client library).
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
+from unittest import mock
 
 import portpicker
 
 from grr_api_client import api as grr_api
 from grr_api_client import utils as grr_api_utils
 from grr_response_core.lib import utils
-from grr_response_core.lib.util import compatibility
 from grr_response_server.flows.general import registry_init  # pylint: disable=unused-import
 from grr_response_server.gui import api_auth_manager
+from grr_response_server.gui import api_call_context
+from grr_response_server.gui import api_call_router_registry
 from grr_response_server.gui import api_call_router_without_checks
 from grr_response_server.gui import webauth
 from grr_response_server.gui import wsgiapp_testlib
@@ -32,17 +30,18 @@ class ApiIntegrationTest(test_lib.GRRBaseTest, acl_test_lib.AclTestMixin):
   """Base class for all API E2E tests."""
 
   def setUp(self):
-    super(ApiIntegrationTest, self).setUp()
+    super().setUp()
 
     api_auth_manager.InitializeApiAuthManager()
-    self.token.username = "api_test_robot_user"
+    self.context = api_call_context.ApiCallContext("api_test_robot_user")
+    self.test_username = self.context.username
     try:
-      webauth.WEBAUTH_MANAGER.SetUserName(self.token.username)
+      webauth.WEBAUTH_MANAGER.SetUserName(self.context.username)
     except AttributeError:
       # Only the NullWebAuthManager supports SetUserName
       pass
 
-    self.CreateUser(self.token.username)
+    self.CreateUser(self.context.username)
 
     self.port = ApiIntegrationTest.server_port
     self.endpoint = "http://localhost:%s" % self.port
@@ -90,13 +89,22 @@ class RootApiIntegrationTest(ApiIntegrationTest):
   """Base class for tests dealing with root API calls."""
 
   def setUp(self):
-    super(RootApiIntegrationTest, self).setUp()
+    super().setUp()
 
     default_router = RootApiBinaryManagementTestRouter
     root_api_config_overrider = test_lib.ConfigOverrider(
-        {"API.DefaultRouter": compatibility.GetName(default_router)})
+        {"API.DefaultRouter": default_router.__name__})
     root_api_config_overrider.Start()
     self.addCleanup(root_api_config_overrider.Stop)
+
+    patcher = mock.patch.object(api_call_router_registry,
+                                "_API_CALL_ROUTER_REGISTRY", {})
+    patcher.start()
+    self.addCleanup(patcher.stop)
+    api_call_router_registry.RegisterApiCallRouter(
+        "RootApiBinaryManagementTestRouter", RootApiBinaryManagementTestRouter)
+    self.addCleanup(lambda: api_call_router_registry.UnregisterApiCallRouter(  # pylint:disable=g-long-lambda
+        "RootApiBinaryManagementTestRouter"))
 
     # Force creation of new APIAuthorizationManager, so that configuration
     # changes are picked up.

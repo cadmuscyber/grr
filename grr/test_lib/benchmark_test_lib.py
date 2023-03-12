@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 """Classes for benchmarking-related tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
 import logging
 import time
@@ -17,7 +13,7 @@ class MicroBenchmarks(test_lib.GRRBaseTest):
   units = "us"
 
   def setUp(self, extra_fields=None, extra_format=None):
-    super(MicroBenchmarks, self).setUp()
+    super().setUp()
 
     if extra_fields is None:
       extra_fields = []
@@ -36,7 +32,7 @@ class MicroBenchmarks(test_lib.GRRBaseTest):
     ]
 
   def tearDown(self):
-    super(MicroBenchmarks, self).tearDown()
+    super().tearDown()
     f = 1
     if self.units == "us":
       f = 1e6
@@ -68,7 +64,7 @@ class AverageMicroBenchmarks(MicroBenchmarks):
   units = "s"
 
   def setUp(self):
-    super(AverageMicroBenchmarks, self).setUp(["Value"])
+    super().setUp(["Value"])
 
   def TimeIt(self, callback, name=None, repetitions=None, pre=None, **kwargs):
     """Runs the callback repetitively and returns the average time."""

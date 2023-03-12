@@ -3,6 +3,7 @@ syntax = "proto2";
 import "grr_response_proto/jobs.proto";
 import "grr_response_proto/semantic.proto";
 
+package grr;
 
 message DumpFlashImageRequest {
   optional uint32 log_level = 1 [(sem_type) = {

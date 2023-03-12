@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for root API user management calls."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -74,7 +70,7 @@ class RootApiUserManagementTest(api_integration_test_lib.RootApiIntegrationTest
     users = sorted(self.api.root.ListGrrUsers(), key=lambda u: u.username)
 
     # skip user that issues the request, which is implicitly created
-    users = [u for u in users if u.username != self.token.username]
+    users = [u for u in users if u.username != self.test_username]
 
     self.assertLen(users, 10)
     for i, u in enumerate(users):

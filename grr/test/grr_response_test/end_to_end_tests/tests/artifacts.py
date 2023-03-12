@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 """End to end tests for GRR artifacts."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
+from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_test.end_to_end_tests import test_base
 
 
@@ -52,6 +50,77 @@ class TestRootDiskVolumeUsage(test_base.EndToEndTest):
     self.assertGreater(results[0].payload.total_allocation_units, 0)
 
 
+class TestUseTsk(test_base.EndToEndTest):
+  """Tests that the deprecated, hidden field use_tsk works via the API."""
+
+  platforms = [
+      test_base.EndToEndTest.Platform.WINDOWS,
+  ]
+
+  def runTest(self):
+    args = self.grr_api.types.CreateFlowArgs("ArtifactCollectorFlow")
+    # This is deprecated and has label: HIDDEN set.
+    # Test that the field works via the API.
+    args.use_tsk = True
+    args.artifact_list.append("WindowsEventLogApplication")
+    args.artifact_list.append("WindowsEventLogSecurity")
+    args.artifact_list.append("WindowsEventLogSystem")
+    args.artifact_list.append("WindowsXMLEventLogApplication")
+    args.artifact_list.append("WindowsXMLEventLogSecurity")
+    args.artifact_list.append("WindowsXMLEventLogSystem")
+    f = self.RunFlowAndWait("ArtifactCollectorFlow", args=args)
+
+    results = list(f.ListResults())
+    self.assertIn(
+        results[0].payload.pathspec.nested_path.pathtype,
+        (rdf_paths.PathSpec.PathType.TSK, rdf_paths.PathSpec.PathType.NTFS))
+
+
+class TestRawFilesystemAccessUsesNtfsOnWindows(test_base.EndToEndTest):
+  """Tests that use_raw_filesystem_access maps to NTFS on Windows OSes."""
+
+  platforms = [
+      test_base.EndToEndTest.Platform.WINDOWS,
+  ]
+
+  def runTest(self):
+    args = self.grr_api.types.CreateFlowArgs("ArtifactCollectorFlow")
+    args.use_raw_filesystem_access = True
+    args.artifact_list.append("WindowsEventLogApplication")
+    args.artifact_list.append("WindowsEventLogSecurity")
+    args.artifact_list.append("WindowsEventLogSystem")
+    args.artifact_list.append("WindowsXMLEventLogApplication")
+    args.artifact_list.append("WindowsXMLEventLogSecurity")
+    args.artifact_list.append("WindowsXMLEventLogSystem")
+    f = self.RunFlowAndWait("ArtifactCollectorFlow", args=args)
+
+    results = list(f.ListResults())
+    self.assertEqual(results[0].payload.pathspec.nested_path.pathtype,
+                     rdf_paths.PathSpec.PathType.NTFS)
+
+
+class TestRawFilesystemAccessUsesTskOnNonWindows(test_base.EndToEndTest):
+  """Tests that use_raw_filesystem_access maps to TSK on non-Windows OSes."""
+
+  platforms = [
+      test_base.EndToEndTest.Platform.LINUX,
+  ]
+
+  def runTest(self):
+    if self.os_release == "CentOS Linux":
+      self.skipTest(
+          "TSK is not supported on CentOS due to an xfs root filesystem.")
+
+    args = self.grr_api.types.CreateFlowArgs("ArtifactCollectorFlow")
+    args.use_raw_filesystem_access = True
+    args.artifact_list.append("UserHomeDirs")
+    f = self.RunFlowAndWait("ArtifactCollectorFlow", args=args)
+
+    results = list(f.ListResults())
+    self.assertEqual(results[0].payload.pathspec.nested_path.pathtype,
+                     rdf_paths.PathSpec.PathType.TSK)
+
+
 class TestParserDependency(test_base.EndToEndTest):
   """Test artifact collectors completes when dependencies=FETCH_NOW."""
 
@@ -96,6 +165,26 @@ class TestWindowsRegistryCollector(test_base.EndToEndTest):
     for statentry in [r.payload for r in f.ListResults()]:
       self.assertTrue(hasattr(statentry, "pathspec"))
       self.assertIn("namespace", statentry.pathspec.path.lower())
+
+
+class TestWindowsUninstallKeysCollection(test_base.EndToEndTest):
+  """Tests the WindowsUninstallKeys artifact collection."""
+
+  platforms = [
+      test_base.EndToEndTest.Platform.WINDOWS,
+  ]
+
+  def runTest(self):
+    args = self.grr_api.types.CreateFlowArgs("ArtifactCollectorFlow")
+    args.artifact_list.append("WindowsUninstallKeys")
+    f = self.RunFlowAndWait("ArtifactCollectorFlow", args=args)
+
+    # The result should contain a single SoftwarePackages proto with
+    # multiple entries in its 'packages' attribute.
+    results = list(f.ListResults())
+    self.assertLen(results, 1)
+    self.assertTrue(hasattr(results[0].payload, "packages"))
+    self.assertNotEmpty(results[0].payload.packages)
 
 
 class TestKnowledgeBaseInitializationFlow(test_base.EndToEndTest):

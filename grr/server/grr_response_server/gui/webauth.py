@@ -1,15 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Web authentication classes for the GUI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import base64
 import logging
 
 from werkzeug import utils as werkzeug_utils
-from werkzeug import wrappers as werkzeug_wrappers
 
 from google.oauth2 import id_token
 
@@ -19,6 +14,7 @@ from grr_response_core.lib.registry import MetaclassRegistry
 from grr_response_server import access_control
 from grr_response_server import data_store
 from grr_response_server.databases import db
+from grr_response_server.gui import http_response
 from grr_response_server.gui import validate_iap
 
 
@@ -80,7 +76,7 @@ class IAPWebAuthManager(BaseWebAuthManager):
   def SecurityCheck(self, func, request, *args, **kwargs):
     """Wrapping function."""
     if self.IAP_HEADER not in request.headers:
-      return werkzeug_wrappers.Response("Unauthorized", status=401)
+      return http_response.HttpResponse("Unauthorized", status=401)
 
     jwt = request.headers.get(self.IAP_HEADER)
     try:
@@ -91,7 +87,7 @@ class IAPWebAuthManager(BaseWebAuthManager):
     except validate_iap.IAPValidationFailedError as e:
       # Return failure if IAP is not decoded correctly.
       logging.error("IAPWebAuthManager failed with: %s", e)
-      return werkzeug_wrappers.Response("Unauthorized", status=401)
+      return http_response.HttpResponse("Unauthorized", status=401)
 
 
 class BasicWebAuthManager(BaseWebAuthManager):
@@ -127,7 +123,7 @@ class BasicWebAuthManager(BaseWebAuthManager):
       pass
 
     if not authorized:
-      result = werkzeug_wrappers.Response("Unauthorized", status=401)
+      result = http_response.HttpResponse("Unauthorized", status=401)
       result.headers["WWW-Authenticate"] = "Basic realm='Secure Area'"
       return result
 
@@ -152,7 +148,7 @@ class RemoteUserWebAuthManager(BaseWebAuthManager):
     self.trusted_ips = config.CONFIG["AdminUI.remote_user_trusted_ips"]
 
   def AuthError(self, message):
-    return werkzeug_wrappers.Response(message, status=403)
+    return http_response.HttpResponse(message, status=403)
 
   def SecurityCheck(self, func, request, *args, **kwargs):
     if request.remote_addr not in self.trusted_ips:
@@ -196,7 +192,7 @@ class FirebaseWebAuthManager(BaseWebAuthManager):
                          "Current setting is: %s" % def_router)
 
   def AuthError(self, message):
-    return werkzeug_wrappers.Response(message, status=403)
+    return http_response.HttpResponse(message, status=403)
 
   def SecurityCheck(self, func, request, *args, **kwargs):
     """Check if access should be allowed for the request."""
@@ -242,8 +238,6 @@ class NullWebAuthManager(BaseWebAuthManager):
   def SecurityCheck(self, func, request, *args, **kwargs):
     """A decorator applied to protected web handlers."""
     request.user = self.username
-    request.token = access_control.ACLToken(
-        username="Testing", reason="Just a test")
     return func(request, *args, **kwargs)
 
 

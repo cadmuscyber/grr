@@ -1,15 +1,11 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Test flow notifications."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
+from unittest import mock
 
 from absl import app
 
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_server.flows.general import transfer as flows_transfer
 from grr_response_server.gui import archive_generator
@@ -23,7 +19,7 @@ class TestFlowNotifications(gui_test_lib.GRRSeleniumTest):
   """Test flow notifications."""
 
   def setUp(self):
-    super(TestFlowNotifications, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
     self.RequestAndGrantClientApproval(self.client_id)
     self.action_mock = action_mocks.FileFinderClientMock()
@@ -39,7 +35,7 @@ class TestFlowNotifications(gui_test_lib.GRRSeleniumTest):
         client_mock=self.action_mock,
         client_id=self.client_id,
         pathspec=pathspec,
-        token=self.token)
+        creator=self.test_username)
 
     # Clicking on this should show the notifications table.
     self.Click("css=button[id=notification_button]")
@@ -64,15 +60,15 @@ class TestFlowNotifications(gui_test_lib.GRRSeleniumTest):
         client_mock=self.action_mock,
         client_id=self.client_id,
         pathspec=pathspec,
-        token=self.token)
+        creator=self.test_username)
 
     def RaisingStub(*unused_args, **unused_kwargs):
       yield b"foo"
       yield b"bar"
       raise RuntimeError("something went wrong")
 
-    with utils.Stubber(archive_generator.CollectionArchiveGenerator, "Generate",
-                       RaisingStub):
+    with mock.patch.object(archive_generator.CollectionArchiveGenerator,
+                           "Generate", RaisingStub):
       self.Open("/#/clients/%s" % self.client_id)
 
       self.Click("css=a[grrtarget='client.flows']")
@@ -96,7 +92,7 @@ class TestFlowNotifications(gui_test_lib.GRRSeleniumTest):
         client_mock=self.action_mock,
         client_id=self.client_id,
         pathspec=pathspec,
-        token=self.token)
+        creator=self.test_username)
 
     self.Open("/#/clients/%s" % self.client_id)
 

@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Standard actions that happen on the client."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
 import ctypes
 import hashlib
@@ -15,6 +10,7 @@ import platform
 import socket
 import sys
 from typing import Text
+from unittest import mock
 import zlib
 
 from absl import flags
@@ -27,7 +23,6 @@ from grr_response_client.client_actions import tempfiles
 from grr_response_core import config
 from grr_response_core.lib import constants
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_action as rdf_client_action
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
@@ -302,7 +297,7 @@ class ExecuteBinaryCommand(actions.ActionPlugin):
 
   def ProcessFile(self, path, args):
     res = client_utils_common.Execute(
-        path, args.args, args.time_limit, bypass_whitelist=True)
+        path, args.args, args.time_limit, bypass_allowlist=True)
     (stdout, stderr, status, time_used) = res
 
     # Limit output to 10MB so our response doesn't get too big.
@@ -347,7 +342,7 @@ class ExecutePython(actions.ActionPlugin):
     context["Progress"] = self.Progress
 
     stdout = io.StringIO()
-    with utils.Stubber(sys, "stdout", StdOutHook(stdout)):
+    with mock.patch.object(sys, "stdout", StdOutHook(stdout)):
       exec(args.python_code.data, context)  # pylint: disable=exec-used
 
     stdout_output = stdout.getvalue()

@@ -1,18 +1,13 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """OSX tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import ctypes
 import os
 import socket
 import struct
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_core.lib.rdfvalues import client_network as rdf_client_network
 from grr.test_lib import client_test_lib
@@ -20,11 +15,11 @@ from grr.test_lib import osx_launchd_testdata
 from grr.test_lib import test_lib
 
 
-class OSXClientTests(client_test_lib.OSSpecificClientTests):
+class OSXClientTests(client_test_lib.EmptyActionTest):
   """OSX client action tests."""
 
   def setUp(self):
-    super(OSXClientTests, self).setUp()
+    super().setUp()
     # TODO(user): move this import to the top of the file.
     # At the moment, importing this at the top of the file causes
     # "Duplicate names for registered classes" metaclass registry

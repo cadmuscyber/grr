@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
 """The base class for ApiCallHandlers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from typing import Text
 
-from grr_response_core.lib.registry import MetaclassRegistry
 from grr_response_core.lib.util import precondition
+from grr_response_server import access_control
 
 
 class Error(Exception):
@@ -19,6 +15,12 @@ class ResourceNotFoundError(Error):
   """Raised when a resource could not be found."""
 
 
+# ResourceExhaustedError is a more concrete case of UnauthorizedAccess errorsL
+# resource exists, but access gets forbidden because of the lack of quota.
+class ResourceExhaustedError(access_control.UnauthorizedAccess):
+  """Raised when a resource can't be fetched due to quota restrictions."""
+
+
 class ApiBinaryStream(object):
   """Object to be returned from streaming API methods."""
 
@@ -27,9 +29,9 @@ class ApiBinaryStream(object):
 
     Args:
       filename: A file name to be used by the browser when user downloads the
-          file.
-      content_generator: A generator that yields byte chunks (of any size) to
-          be streamed to the user.
+        file.
+      content_generator: A generator that yields byte chunks (of any size) to be
+        streamed to the user.
       content_length: The length of the stream, if known upfront.
 
     Raises:
@@ -54,7 +56,7 @@ class ApiBinaryStream(object):
       yield chunk
 
 
-class ApiCallHandler(metaclass=MetaclassRegistry):
+class ApiCallHandler:
   """Baseclass for restful API renderers."""
 
   # RDFValue type used to handle API renderer arguments. This has to be
@@ -74,6 +76,6 @@ class ApiCallHandler(metaclass=MetaclassRegistry):
   # fields of the resulting proto.
   strip_json_root_fields_types = True
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     """Handles request and returns an RDFValue of result_type."""
     raise NotImplementedError()

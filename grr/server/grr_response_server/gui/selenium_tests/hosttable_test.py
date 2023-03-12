@@ -1,12 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for host table in search view."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
+from grr_response_server import data_store
 from grr_response_server.gui import gui_test_lib
 from grr.test_lib import test_lib
 
@@ -15,11 +12,11 @@ class TestHostTable(gui_test_lib.SearchClientTestBase):
   """Tests the main content view."""
 
   def setUp(self):
-    super(TestHostTable, self).setUp()
+    super().setUp()
     self.client_ids = self.SetupClients(10)
 
   def testUserLabelIsShownAsBootstrapSuccessLabel(self):
-    self.AddClientLabel(self.client_ids[0], self.token.username, u"foo")
+    self.AddClientLabel(self.client_ids[0], self.test_username, u"foo")
 
     self.Open("/#/search?q=.")
 
@@ -28,6 +25,7 @@ class TestHostTable(gui_test_lib.SearchClientTestBase):
         "span.label-success:contains('foo')" % self.client_ids[0])
 
   def testSystemLabelIsShownAsRegularBootstrapLabel(self):
+    data_store.REL_DB.WriteGRRUser("GRR")
     self.AddClientLabel(self.client_ids[0], u"GRR", u"bar")
 
     self.Open("/#/search?q=.")

@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test protodict implementation.
 
 An Dict is a generic dictionary implementation which has keys of type
@@ -11,11 +9,8 @@ Dict objects behave generally like a dict (with __getitem__, items() and
 an __iter__) method, but are serializable as an RDFProto.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
-import collections
+from collections import abc
 from typing import Text
 
 from absl import app
@@ -43,7 +38,7 @@ class DictTest(rdf_test_base.RDFProtoTestMixin, test_lib.GRRBaseTest):
     return rdf_protodict.Dict(foo=number, bar="hello")
 
   def CheckRDFValue(self, value, sample):
-    super(DictTest, self).CheckRDFValue(value, sample)
+    super().CheckRDFValue(value, sample)
 
     self.assertEqual(value.ToDict(), sample.ToDict())
 
@@ -60,7 +55,7 @@ class DictTest(rdf_test_base.RDFProtoTestMixin, test_lib.GRRBaseTest):
 
   def testIsMapping(self):
     test_dict = rdf_protodict.Dict(a=1)
-    self.assertIsInstance(test_dict, collections.Mapping)
+    self.assertIsInstance(test_dict, abc.Mapping)
 
   def testDictBehaviour(self):
     tested = rdf_protodict.Dict(a=1)

@@ -10,7 +10,7 @@ const gulpInsert = require('gulp-insert');
 const gulpLess = require('gulp-less');
 const gulpNewer = require('gulp-newer');
 const gulpPlumber = require('gulp-plumber');
-const gulpSass = require('gulp-sass');
+const gulpSass = require('gulp-sass')(require('sass'));
 const karma = require('karma');
 
 const {series, parallel} = gulp;
@@ -52,7 +52,7 @@ const closureCompilerPath =
 
 const closureCompilerFlags = {
   compilation_level: 'WHITESPACE_ONLY',
-  dependency_mode: 'STRICT',
+  dependency_mode: 'PRUNE',
   jscomp_off: [
     'checkTypes',
     'checkVars',
@@ -138,9 +138,20 @@ function copyThirdPartyResources() {
       .src(validateGlobs([
         NODE_MODULES + '/jstree/dist/themes/default/*.gif',
         NODE_MODULES + '/jstree/dist/themes/default/*.png',
-        NODE_MODULES + '/bootstrap/fonts/glyphicons-halflings-regular.*',
       ]))
-      .pipe(gulp.dest(config.distDir));
+      .pipe(gulp.dest(config.distDir))
+      /**
+       * server/grr_response_server/gui/static/angular-components/app-controller.js
+       * hardcodes the jstree theme path to
+       * /static/third-party/jstree/themes/
+       */
+      .pipe(
+          gulp.src(validateGlobs([
+            NODE_MODULES + '/jstree/dist/themes/default/*.gif',
+            NODE_MODULES + '/jstree/dist/themes/default/*.png',
+          ]))
+      )
+      .pipe(gulp.dest("third-party/jstree/themes/default"));
 }
 
 /**

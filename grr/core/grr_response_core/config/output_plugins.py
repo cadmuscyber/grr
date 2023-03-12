@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Configuration parameters for server output plugins."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core.lib import config_lib
 from grr_response_core.lib import rdfvalue
@@ -63,4 +59,23 @@ config_lib.DEFINE_string(
     "The sourcetype value assigned to all submitted events.")
 
 config_lib.DEFINE_string("Splunk.index", None,
+                         "The index assigned to all submitted events.")
+
+# Elasticsearch Output Plugin
+config_lib.DEFINE_string(
+    "Elasticsearch.url", None, "Absolute URL of the Elasticsearch installation,"
+    " e.g. 'https://myelasticsearch.example.com:9200'")
+
+config_lib.DEFINE_string(
+    "Elasticsearch.token", "",
+    "Token used to authenticate with the Elasticsearch cluster.")
+
+config_lib.DEFINE_bool(
+    "Elasticsearch.verify_https", True,
+    "Verify the certificate for HTTPS connections. Setting this to False comes "
+    "with big security risks. Instead, when using self-signed certificates, "
+    "set REQUESTS_CA_BUNDLE environment variable to the path of the cert file. "
+    "See https://requests.readthedocs.io/en/master/user/advanced/.")
+
+config_lib.DEFINE_string("Elasticsearch.index", "grr-flows",
                          "The index assigned to all submitted events.")

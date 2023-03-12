@@ -1,8 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 
@@ -13,6 +9,7 @@ from grr_response_proto.api import client_pb2
 from grr_response_proto.api import vfs_pb2
 from grr_response_proto.api.root import user_management_pb2
 from grr_response_server.bin import api_shell_raw_access_lib
+from grr_response_server.gui import api_call_context
 from grr.test_lib import acl_test_lib
 from grr.test_lib import fixture_test_lib
 from grr.test_lib import test_lib
@@ -21,9 +18,10 @@ from grr.test_lib import test_lib
 class RawConnectorTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super(RawConnectorTest, self).setUp()
+    super().setUp()
     self.connector = api_shell_raw_access_lib.RawConnector(
-        token=self.token, page_size=10)
+        context=api_call_context.ApiCallContext(self.test_username),
+        page_size=10)
 
   def testCorrectlyCallsGeneralMethod(self):
     self.SetupClients(10)
@@ -43,14 +41,13 @@ class RawConnectorTest(test_lib.GRRBaseTest):
     self.assertEqual(out.getvalue(), b"Hello world")
 
   def testCorrectlyCallsRootGeneralMethod(self):
-    acl_test_lib.CreateUser(self.token.username)
+    acl_test_lib.CreateUser(self.test_username)
 
-    args = user_management_pb2.ApiDeleteGrrUserArgs(
-        username=self.token.username)
+    args = user_management_pb2.ApiDeleteGrrUserArgs(username=self.test_username)
     self.connector.SendRequest("DeleteGrrUser", args)
 
   def testCorrectlyCallsAmbiguouslyNamedMethod(self):
-    acl_test_lib.CreateUser(self.token.username)
+    acl_test_lib.CreateUser(self.test_username)
 
     # Here arguments are provided, so root router is correctly chosen.
     args = user_management_pb2.ApiGetGrrUserArgs(username="blah")
@@ -59,7 +56,7 @@ class RawConnectorTest(test_lib.GRRBaseTest):
 
     # Here no arguments are provided, so non-root router is correctly chosen.
     result = self.connector.SendRequest("GetGrrUser", None)
-    self.assertEqual(result.username, self.token.username)
+    self.assertEqual(result.username, self.test_username)
 
 
 def main(argv):

@@ -5,11 +5,13 @@
       "method": "POST",
       "response": {
         "args": {
-          "@type": "type.googleapis.com/ListProcessesArgs"
+          "@type": "type.googleapis.com/grr.ListProcessesArgs"
         },
         "clientId": "C.1000000000000000",
         "creator": "",
+        "errorDescription": "Cancelled by user",
         "flowId": "W:ABCDEF",
+        "isRobot": false,
         "lastActiveAt": "4242000000",
         "name": "ListProcesses",
         "runnerArgs": {
@@ -23,6 +25,22 @@
       },
       "test_class": "ApiCancelFlowHandlerRegressionTest_http_v2",
       "url": "/api/v2/clients/C.1000000000000000/flows/W:ABCDEF/actions/cancel"
+    }
+  ],
+  "ApiCountHuntResultsByTypeHandler": [
+    {
+      "api_method": "CountHuntResultsByType",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "count": "1",
+            "type": "RDFString"
+          }
+        ]
+      },
+      "test_class": "ApiCountHuntResultsByTypeRegressionTest_http_v2",
+      "url": "/api/v2/hunts/H:123456/result-counts"
     }
   ],
   "ApiCreateClientApprovalHandler": [
@@ -49,6 +67,7 @@
           "test@example.com"
         ],
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419326000000",
         "id": "approval:112233",
         "isValid": false,
         "isValidMessage": "Need at least 1 additional approver for access.",
@@ -86,12 +105,15 @@
                   "addressType": "INET6",
                   "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                 }
-              ]
+              ],
+              "ifname": "if0"
             },
             {
+              "ifname": "if1",
               "macAddress": "qrvM3e4A"
             },
             {
+              "ifname": "if2",
               "macAddress": "u8zd7v8A"
             }
           ],
@@ -168,11 +190,13 @@
           "args": {
             "actionType": "HUNT_CRON_ACTION",
             "huntCronAction": {
-              "flowName": "",
+              "flowArgs": "",
+              "flowName": "Interrogate",
               "huntRunnerArgs": {
                 "avgCpuSecondsPerClientLimit": "60",
                 "avgNetworkBytesPerClientLimit": "10485760",
                 "avgResultsPerClientLimit": "1000",
+                "clientRate": 20.0,
                 "crashLimit": "100"
               }
             }
@@ -195,7 +219,7 @@
       "request_payload": {
         "flow": {
           "args": {
-            "@type": "type.googleapis.com/ListProcessesArgs",
+            "@type": "type.googleapis.com/grr.ListProcessesArgs",
             "fetchBinaries": true,
             "filenameRegex": "."
           },
@@ -207,13 +231,14 @@
       },
       "response": {
         "args": {
-          "@type": "type.googleapis.com/ListProcessesArgs",
+          "@type": "type.googleapis.com/grr.ListProcessesArgs",
           "fetchBinaries": true,
           "filenameRegex": "."
         },
         "clientId": "C.1000000000000000",
         "creator": "api_test_user",
         "flowId": "W:ABCDEF",
+        "isRobot": false,
         "lastActiveAt": "42000000",
         "name": "ListProcesses",
         "runnerArgs": {
@@ -253,6 +278,7 @@
           "test@example.com"
         ],
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419326000000",
         "id": "approval:112233",
         "isValid": false,
         "isValidMessage": "Need at least 1 additional approver for access.",
@@ -277,7 +303,6 @@
               }
             ]
           },
-          "clientsQueuedCount": "0",
           "clientsWithResultsCount": "0",
           "completedClientsCount": "0",
           "crashLimit": "100",
@@ -286,7 +311,7 @@
           "description": "foo",
           "duration": "1209600",
           "flowArgs": {
-            "@type": "type.googleapis.com/GetFileArgs",
+            "@type": "type.googleapis.com/grr.GetFileArgs",
             "pathspec": {
               "path": "/tmp/evil.txt",
               "pathtype": "OS"
@@ -316,11 +341,13 @@
             "huntName": "GenericHunt",
             "originalObject": {}
           },
+          "huntType": "STANDARD",
           "isRobot": false,
           "name": "GenericHunt",
           "remainingClientsCount": "0",
           "resultsCount": "0",
           "state": "PAUSED",
+          "stateComment": "",
           "totalCpuUsage": 0.0,
           "totalNetUsage": "0",
           "urn": "aff4:/hunts/H:123456"
@@ -328,6 +355,85 @@
       },
       "test_class": "ApiCreateHuntApprovalHandlerRegressionTest_http_v2",
       "url": "/api/v2/users/me/approvals/hunt/H:123456"
+    }
+  ],
+  "ApiCreatePerClientFileCollectionHuntHandler": [
+    {
+      "api_method": "CreatePerClientFileCollectionHunt",
+      "method": "POST",
+      "request_payload": {
+        "description": "Per-client file collection",
+        "perClientArgs": [
+          {
+            "clientId": "C.1000000000000000",
+            "paths": [
+              "/etc/hosts",
+              "/foo/bar"
+            ]
+          }
+        ]
+      },
+      "response": {
+        "allClientsCount": "0",
+        "clientLimit": "100",
+        "clientRate": 0.0,
+        "clientRuleSet": {},
+        "clientsWithResultsCount": "0",
+        "completedClientsCount": "0",
+        "crashLimit": "100",
+        "creator": "api_test_user",
+        "description": "Per-client file collection",
+        "duration": "1209600",
+        "flowArgs": {
+          "@type": "type.googleapis.com/grr.HuntArgumentsVariable",
+          "flowGroups": [
+            {
+              "clientIds": [
+                "C.1000000000000000"
+              ],
+              "flowArgs": {
+                "@type": "type.googleapis.com/grr.MultiGetFileArgs",
+                "pathspecs": [
+                  {
+                    "path": "/etc/hosts",
+                    "pathtype": "OS"
+                  },
+                  {
+                    "path": "/foo/bar",
+                    "pathtype": "OS"
+                  }
+                ]
+              },
+              "flowName": "MultiGetFile"
+            }
+          ]
+        },
+        "huntId": "H:123456",
+        "huntRunnerArgs": {
+          "avgCpuSecondsPerClientLimit": "60",
+          "avgNetworkBytesPerClientLimit": "10485760",
+          "avgResultsPerClientLimit": "1000",
+          "clientRate": 0.0,
+          "clientRuleSet": {},
+          "crashLimit": "100",
+          "description": "Per-client file collection",
+          "expiryTime": "1209600",
+          "huntName": "VariableGenericHunt",
+          "originalObject": {}
+        },
+        "huntType": "VARIABLE",
+        "isRobot": false,
+        "name": "VariableGenericHunt",
+        "remainingClientsCount": "0",
+        "resultsCount": "0",
+        "state": "PAUSED",
+        "stateComment": "",
+        "totalCpuUsage": 0.0,
+        "totalNetUsage": "0",
+        "urn": "aff4:/hunts/H:123456"
+      },
+      "test_class": "ApiCreatePerClientFileCollectionHuntRegressionTest_http_v2",
+      "url": "/api/v2/hunts/per-client-file-collection"
     }
   ],
   "ApiCreateVfsRefreshOperationHandler": [
@@ -339,7 +445,7 @@
         "maxDepth": "1"
       },
       "response": {
-        "operationId": "W:ABCDEF"
+        "operationId": "ABCDEF"
       },
       "test_class": "ApiCreateVfsRefreshOperationHandlerRegressionTest_http_v2",
       "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations"
@@ -354,6 +460,27 @@
       },
       "test_class": "ApiDeleteHuntHandlerRegressionTest_http_v2",
       "url": "/api/v2/hunts/H:123456"
+    }
+  ],
+  "ApiExplainGlobExpressionHandler": [
+    {
+      "api_method": "ExplainGlobExpression",
+      "method": "POST",
+      "request_payload": {
+        "globExpression": "/foo/*"
+      },
+      "response": {
+        "components": [
+          {
+            "globExpression": "/foo/"
+          },
+          {
+            "globExpression": "*"
+          }
+        ]
+      },
+      "test_class": "ApiExplainGlobExpressionHandlerTest_http_v2",
+      "url": "/api/v2/clients/C.1000000000000000/glob-expressions:explain"
     }
   ],
   "ApiForceRunCronJobHandler": [
@@ -376,6 +503,7 @@
           "api_test_user"
         ],
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419244000000",
         "id": "approval:111111",
         "isValid": false,
         "isValidMessage": "Need at least 1 additional approver for access.",
@@ -412,12 +540,15 @@
                   "addressType": "INET6",
                   "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                 }
-              ]
+              ],
+              "ifname": "if0"
             },
             {
+              "ifname": "if1",
               "macAddress": "qrvM3e4A"
             },
             {
+              "ifname": "if2",
               "macAddress": "u8zd7v8A"
             }
           ],
@@ -464,6 +595,7 @@
           "approver"
         ],
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419245000000",
         "id": "approval:222222",
         "isValid": true,
         "notifiedUsers": [
@@ -499,12 +631,15 @@
                   "addressType": "INET6",
                   "packedBytes": "IAGrzQAAAAAAAAAAAAAAAQ=="
                 }
-              ]
+              ],
+              "ifname": "if0"
             },
             {
+              "ifname": "if1",
               "macAddress": "qrvM3e4B"
             },
             {
+              "ifname": "if2",
               "macAddress": "u8zd7v8B"
             }
           ],
@@ -575,12 +710,15 @@
                 "addressType": "INET6",
                 "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
               }
-            ]
+            ],
+            "ifname": "if0"
           },
           {
+            "ifname": "if1",
             "macAddress": "qrvM3e4A"
           },
           {
+            "ifname": "if2",
             "macAddress": "u8zd7v8A"
           }
         ],
@@ -690,12 +828,15 @@
                     "addressType": "INET6",
                     "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "macAddress": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "macAddress": "u8zd7v8A"
               }
             ],
@@ -756,12 +897,15 @@
                     "addressType": "INET6",
                     "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "macAddress": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "macAddress": "u8zd7v8A"
               }
             ],
@@ -832,12 +976,15 @@
                     "addressType": "INET6",
                     "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "macAddress": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "macAddress": "u8zd7v8A"
               }
             ],
@@ -908,12 +1055,15 @@
                     "addressType": "INET6",
                     "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "macAddress": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "macAddress": "u8zd7v8A"
               }
             ],
@@ -975,11 +1125,13 @@
           "args": {
             "actionType": "HUNT_CRON_ACTION",
             "huntCronAction": {
-              "flowName": "",
+              "flowArgs": "",
+              "flowName": "Interrogate",
               "huntRunnerArgs": {
                 "avgCpuSecondsPerClientLimit": "60",
                 "avgNetworkBytesPerClientLimit": "10485760",
                 "avgResultsPerClientLimit": "1000",
+                "clientRate": 20.0,
                 "crashLimit": "100"
               }
             }
@@ -1015,11 +1167,13 @@
           "args": {
             "actionType": "HUNT_CRON_ACTION",
             "huntCronAction": {
-              "flowName": "",
+              "flowArgs": "",
+              "flowName": "Interrogate",
               "huntRunnerArgs": {
                 "avgCpuSecondsPerClientLimit": "60",
                 "avgNetworkBytesPerClientLimit": "10485760",
                 "avgResultsPerClientLimit": "1000",
+                "clientRate": 20.0,
                 "crashLimit": "100"
               }
             }
@@ -1113,7 +1267,7 @@
       "method": "GET",
       "response": {
         "args": {
-          "@type": "type.googleapis.com/InterrogateArgs"
+          "@type": "type.googleapis.com/grr.InterrogateArgs"
         },
         "clientId": "C.1000000000000000",
         "context": {
@@ -1130,8 +1284,15 @@
         },
         "creator": "api_test_user",
         "flowId": "F:ABCDEF12",
+        "isRobot": false,
         "lastActiveAt": "42000000",
         "name": "Interrogate",
+        "progress": {
+          "@type": "type.googleapis.com/grr.DefaultFlowProgress"
+        },
+        "resultMetadata": {
+          "isMetadataSet": true
+        },
         "runnerArgs": {
           "clientId": "aff4:/C.1000000000000000",
           "flowName": "Interrogate",
@@ -1142,11 +1303,22 @@
         "stateData": {
           "items": [
             {
+              "key": "_result_metadata",
+              "type": "FlowResultMetadata",
+              "value": {
+                "@type": "type.googleapis.com/grr.FlowResultMetadata",
+                "isMetadataSet": true
+              }
+            },
+            {
               "key": "client",
               "type": "ClientSnapshot",
               "value": {
-                "@type": "type.googleapis.com/ClientSnapshot",
-                "clientId": "C.1000000000000000"
+                "@type": "type.googleapis.com/grr.ClientSnapshot",
+                "clientId": "C.1000000000000000",
+                "metadata": {
+                  "sourceFlowId": "F:ABCDEF12"
+                }
               }
             },
             {
@@ -1169,7 +1341,7 @@
       "method": "GET",
       "response": {
         "args": {
-          "@type": "type.googleapis.com/InterrogateArgs"
+          "@type": "type.googleapis.com/grr.InterrogateArgs"
         },
         "clientId": "C.1000000000000000",
         "context": {
@@ -1186,9 +1358,17 @@
           "status": "Pending termination: Some reason"
         },
         "creator": "api_test_user",
+        "errorDescription": "Pending termination: Some reason",
         "flowId": "F:ABCDEF13",
+        "isRobot": false,
         "lastActiveAt": "42000000",
         "name": "Interrogate",
+        "progress": {
+          "@type": "type.googleapis.com/grr.DefaultFlowProgress"
+        },
+        "resultMetadata": {
+          "isMetadataSet": true
+        },
         "runnerArgs": {
           "clientId": "aff4:/C.1000000000000000",
           "flowName": "Interrogate",
@@ -1199,11 +1379,22 @@
         "stateData": {
           "items": [
             {
+              "key": "_result_metadata",
+              "type": "FlowResultMetadata",
+              "value": {
+                "@type": "type.googleapis.com/grr.FlowResultMetadata",
+                "isMetadataSet": true
+              }
+            },
+            {
               "key": "client",
               "type": "ClientSnapshot",
               "value": {
-                "@type": "type.googleapis.com/ClientSnapshot",
-                "clientId": "C.1000000000000000"
+                "@type": "type.googleapis.com/grr.ClientSnapshot",
+                "clientId": "C.1000000000000000",
+                "metadata": {
+                  "sourceFlowId": "F:ABCDEF13"
+                }
               }
             },
             {
@@ -1286,6 +1477,7 @@
           "api_test_user"
         ],
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419244000000",
         "id": "approval:111111",
         "isValid": false,
         "isValidMessage": "Need at least 1 additional approver for access.",
@@ -1309,7 +1501,6 @@
               }
             ]
           },
-          "clientsQueuedCount": "0",
           "clientsWithResultsCount": "0",
           "completedClientsCount": "0",
           "crashLimit": "100",
@@ -1318,7 +1509,7 @@
           "description": "hunt1",
           "duration": "1209600",
           "flowArgs": {
-            "@type": "type.googleapis.com/GetFileArgs",
+            "@type": "type.googleapis.com/grr.GetFileArgs",
             "pathspec": {
               "path": "/tmp/evil.txt",
               "pathtype": "OS"
@@ -1348,11 +1539,13 @@
             "huntName": "GenericHunt",
             "originalObject": {}
           },
+          "huntType": "STANDARD",
           "isRobot": false,
           "name": "GenericHunt",
           "remainingClientsCount": "0",
           "resultsCount": "0",
           "state": "PAUSED",
+          "stateComment": "",
           "totalCpuUsage": 0.0,
           "totalNetUsage": "0",
           "urn": "aff4:/hunts/H:123456"
@@ -1370,6 +1563,7 @@
           "approver"
         ],
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419245000000",
         "id": "approval:222222",
         "isValid": true,
         "notifiedUsers": [
@@ -1392,7 +1586,6 @@
               }
             ]
           },
-          "clientsQueuedCount": "0",
           "clientsWithResultsCount": "0",
           "completedClientsCount": "0",
           "crashLimit": "100",
@@ -1401,7 +1594,7 @@
           "description": "hunt2",
           "duration": "1209600",
           "flowArgs": {
-            "@type": "type.googleapis.com/GetFileArgs",
+            "@type": "type.googleapis.com/grr.GetFileArgs",
             "pathspec": {
               "path": "/tmp/evil.txt",
               "pathtype": "OS"
@@ -1431,11 +1624,13 @@
             "huntName": "GenericHunt",
             "originalObject": {}
           },
+          "huntType": "STANDARD",
           "isRobot": false,
           "name": "GenericHunt",
           "remainingClientsCount": "0",
           "resultsCount": "0",
           "state": "PAUSED",
+          "stateComment": "",
           "totalCpuUsage": 0.0,
           "totalNetUsage": "0",
           "urn": "aff4:/hunts/H:567890"
@@ -1466,7 +1661,6 @@
               }
             ]
           },
-          "clientsQueuedCount": "0",
           "clientsWithResultsCount": "0",
           "completedClientsCount": "0",
           "crashLimit": "100",
@@ -1475,7 +1669,7 @@
           "description": "original hunt",
           "duration": "1209600",
           "flowArgs": {
-            "@type": "type.googleapis.com/GetFileArgs",
+            "@type": "type.googleapis.com/grr.GetFileArgs",
             "pathspec": {
               "path": "/tmp/evil.txt",
               "pathtype": "OS"
@@ -1505,16 +1699,19 @@
             "huntName": "GenericHunt",
             "originalObject": {}
           },
+          "huntType": "STANDARD",
           "isRobot": false,
           "name": "GenericHunt",
           "remainingClientsCount": "0",
           "resultsCount": "0",
           "state": "PAUSED",
+          "stateComment": "",
           "totalCpuUsage": 0.0,
           "totalNetUsage": "0",
           "urn": "aff4:/hunts/H:556677"
         },
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419244000000",
         "id": "approval:333333",
         "isValid": false,
         "isValidMessage": "Need at least 1 additional approver for access.",
@@ -1538,7 +1735,6 @@
               }
             ]
           },
-          "clientsQueuedCount": "0",
           "clientsWithResultsCount": "0",
           "completedClientsCount": "0",
           "crashLimit": "100",
@@ -1547,7 +1743,7 @@
           "description": "copied hunt",
           "duration": "1209600",
           "flowArgs": {
-            "@type": "type.googleapis.com/GetFileArgs",
+            "@type": "type.googleapis.com/grr.GetFileArgs",
             "pathspec": {
               "path": "/tmp/evil.txt",
               "pathtype": "OS"
@@ -1582,6 +1778,7 @@
               "objectType": "HUNT_REFERENCE"
             }
           },
+          "huntType": "STANDARD",
           "isRobot": false,
           "name": "GenericHunt",
           "originalObject": {
@@ -1593,6 +1790,7 @@
           "remainingClientsCount": "0",
           "resultsCount": "0",
           "state": "PAUSED",
+          "stateComment": "",
           "totalCpuUsage": 0.0,
           "totalNetUsage": "0",
           "urn": "aff4:/hunts/H:DDEEFF"
@@ -1610,11 +1808,12 @@
         ],
         "copiedFromFlow": {
           "args": {
-            "@type": "type.googleapis.com/InterrogateArgs"
+            "@type": "type.googleapis.com/grr.InterrogateArgs"
           },
           "clientId": "C.1000000000000000",
           "creator": "api_test_user",
           "flowId": "F:112233",
+          "isRobot": false,
           "lastActiveAt": "42000000",
           "name": "Interrogate",
           "runnerArgs": {
@@ -1627,6 +1826,7 @@
           "urn": "aff4:/C.1000000000000000/flows/F:112233"
         },
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419244000000",
         "id": "approval:444444",
         "isValid": false,
         "isValidMessage": "Need at least 1 additional approver for access.",
@@ -1650,7 +1850,6 @@
               }
             ]
           },
-          "clientsQueuedCount": "0",
           "clientsWithResultsCount": "0",
           "completedClientsCount": "0",
           "crashLimit": "100",
@@ -1659,7 +1858,7 @@
           "description": "hunt started from flow",
           "duration": "1209600",
           "flowArgs": {
-            "@type": "type.googleapis.com/GetFileArgs",
+            "@type": "type.googleapis.com/grr.GetFileArgs",
             "pathspec": {
               "path": "/tmp/evil.txt",
               "pathtype": "OS"
@@ -1695,6 +1894,7 @@
               "objectType": "FLOW_REFERENCE"
             }
           },
+          "huntType": "STANDARD",
           "isRobot": false,
           "name": "GenericHunt",
           "originalObject": {
@@ -1707,6 +1907,7 @@
           "remainingClientsCount": "0",
           "resultsCount": "0",
           "state": "PAUSED",
+          "stateComment": "",
           "totalCpuUsage": 0.0,
           "totalNetUsage": "0",
           "urn": "aff4:/hunts/H:667788"
@@ -1981,7 +2182,6 @@
             }
           ]
         },
-        "clientsQueuedCount": "0",
         "clientsWithResultsCount": "0",
         "completedClientsCount": "0",
         "crashLimit": "100",
@@ -1990,7 +2190,7 @@
         "description": "the hunt",
         "duration": "1209600",
         "flowArgs": {
-          "@type": "type.googleapis.com/GetFileArgs",
+          "@type": "type.googleapis.com/grr.GetFileArgs",
           "pathspec": {
             "path": "/tmp/evil.txt",
             "pathtype": "OS"
@@ -2026,6 +2226,7 @@
             "objectType": "FLOW_REFERENCE"
           }
         },
+        "huntType": "STANDARD",
         "isRobot": false,
         "name": "GenericHunt",
         "originalObject": {
@@ -2038,6 +2239,7 @@
         "remainingClientsCount": "0",
         "resultsCount": "0",
         "state": "PAUSED",
+        "stateComment": "",
         "totalCpuUsage": 0.0,
         "totalNetUsage": "0",
         "urn": "aff4:/hunts/H:123456"
@@ -2063,7 +2265,6 @@
             }
           ]
         },
-        "clientsQueuedCount": "0",
         "clientsWithResultsCount": "0",
         "completedClientsCount": "0",
         "crashLimit": "100",
@@ -2072,7 +2273,7 @@
         "description": "the hunt",
         "duration": "1209600",
         "flowArgs": {
-          "@type": "type.googleapis.com/GetFileArgs",
+          "@type": "type.googleapis.com/grr.GetFileArgs",
           "pathspec": {
             "path": "/tmp/evil.txt",
             "pathtype": "OS"
@@ -2107,6 +2308,7 @@
             "objectType": "HUNT_REFERENCE"
           }
         },
+        "huntType": "STANDARD",
         "isRobot": false,
         "name": "GenericHunt",
         "originalObject": {
@@ -2118,6 +2320,7 @@
         "remainingClientsCount": "0",
         "resultsCount": "0",
         "state": "PAUSED",
+        "stateComment": "",
         "totalCpuUsage": 0.0,
         "totalNetUsage": "0",
         "urn": "aff4:/hunts/H:123456"
@@ -2143,7 +2346,6 @@
             }
           ]
         },
-        "clientsQueuedCount": "0",
         "clientsWithResultsCount": "0",
         "completedClientsCount": "0",
         "crashLimit": "100",
@@ -2152,7 +2354,7 @@
         "description": "the hunt",
         "duration": "1209600",
         "flowArgs": {
-          "@type": "type.googleapis.com/GetFileArgs",
+          "@type": "type.googleapis.com/grr.GetFileArgs",
           "pathspec": {
             "path": "/tmp/evil.txt",
             "pathtype": "OS"
@@ -2182,11 +2384,13 @@
           "huntName": "GenericHunt",
           "originalObject": {}
         },
+        "huntType": "STANDARD",
         "isRobot": false,
         "name": "GenericHunt",
         "remainingClientsCount": "0",
         "resultsCount": "0",
         "state": "PAUSED",
+        "stateComment": "",
         "totalCpuUsage": 0.0,
         "totalNetUsage": "0",
         "urn": "aff4:/hunts/H:123456"
@@ -2457,6 +2661,7 @@
           "createCronJobActionEnabled": true,
           "createHuntActionEnabled": true,
           "cronJobsNavItemEnabled": true,
+          "huntApprovalRequired": false,
           "huntManagerNavItemEnabled": true,
           "manageBinariesNavItemEnabled": true,
           "manageClientFlowsNavItemEnabled": true,
@@ -2489,6 +2694,7 @@
           "createCronJobActionEnabled": true,
           "createHuntActionEnabled": true,
           "cronJobsNavItemEnabled": true,
+          "huntApprovalRequired": false,
           "huntManagerNavItemEnabled": true,
           "manageBinariesNavItemEnabled": true,
           "manageClientFlowsNavItemEnabled": true,
@@ -2551,7 +2757,7 @@
       "method": "GET",
       "response": {
         "default": {
-          "@type": "type.googleapis.com/ApiFlow"
+          "@type": "type.googleapis.com/grr.ApiFlow"
         },
         "doc": "ApiFlow is used when rendering responses.\n\n  ApiFlow is meant to be more lightweight than automatically generated AFF4\n  representation. It's also meant to contain only the information needed by\n  the UI and and to not expose implementation defails.\n  ",
         "fields": [
@@ -2612,6 +2818,15 @@
             "repeated": false
           },
           {
+            "doc": "Metadata about results returned by the flow.",
+            "dynamic": false,
+            "friendlyName": "Result metadata",
+            "index": 17,
+            "name": "result_metadata",
+            "repeated": false,
+            "type": "FlowResultMetadata"
+          },
+          {
             "doc": "Flow runner arguments.",
             "dynamic": false,
             "friendlyName": "Runner args",
@@ -2656,6 +2871,19 @@
             "type": "EnumNamedValue"
           },
           {
+            "default": {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              "value": ""
+            },
+            "doc": "Describes the error that happened while executing the flow, truncated if over 4 KB.",
+            "dynamic": false,
+            "friendlyName": "Error description",
+            "index": 18,
+            "name": "error_description",
+            "repeated": false,
+            "type": "RDFString"
+          },
+          {
             "doc": "When flow was created.",
             "dynamic": false,
             "friendlyName": "Started at",
@@ -2685,6 +2913,19 @@
             "name": "creator",
             "repeated": false,
             "type": "RDFString"
+          },
+          {
+            "default": {
+              "@type": "type.googleapis.com/google.protobuf.UInt64Value",
+              "value": "0"
+            },
+            "doc": "Whether the flow was created by a GRRWorker.",
+            "dynamic": false,
+            "friendlyName": "Is robot",
+            "index": 19,
+            "name": "is_robot",
+            "repeated": false,
+            "type": "bool"
           },
           {
             "doc": "Current flow state data.",
@@ -2806,7 +3047,7 @@
         "state": "RUNNING"
       },
       "test_class": "ApiGetVfsFileContentUpdateStateHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/vfs-update/W:ABCDEF"
+      "url": "/api/v2/clients/C.1000000000000000/vfs-update/ABCDEF"
     },
     {
       "api_method": "GetVfsFileContentUpdateState",
@@ -2815,25 +3056,25 @@
         "state": "FINISHED"
       },
       "test_class": "ApiGetVfsFileContentUpdateStateHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/vfs-update/W:ABCDEF"
+      "url": "/api/v2/clients/C.1000000000000000/vfs-update/ABCDEF"
     },
     {
       "api_method": "GetVfsFileContentUpdateState",
       "method": "GET",
       "response": {
-        "message": "Operation with id W:ABCDEF not found"
+        "message": "Operation with id ABCDEF not found"
       },
       "test_class": "ApiGetVfsFileContentUpdateStateHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/vfs-update/W:ABCDEF"
+      "url": "/api/v2/clients/C.1000000000000000/vfs-update/ABCDEF"
     },
     {
       "api_method": "GetVfsFileContentUpdateState",
       "method": "GET",
       "response": {
-        "message": "Operation with id W:ABCDEF not found"
+        "message": "Flow id has incorrect format: `ABCDEF`"
       },
       "test_class": "ApiGetVfsFileContentUpdateStateHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/vfs-update/W:ABCDEF"
+      "url": "/api/v2/clients/C.1000000000000000/vfs-update/ABCDEF"
     }
   ],
   "ApiGetVfsRefreshOperationStateHandler": [
@@ -2844,7 +3085,7 @@
         "state": "RUNNING"
       },
       "test_class": "ApiGetVfsRefreshOperationStateHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations/W:ABCDEF"
+      "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations/ABCDEF"
     },
     {
       "api_method": "GetVfsRefreshOperationState",
@@ -2853,25 +3094,25 @@
         "state": "FINISHED"
       },
       "test_class": "ApiGetVfsRefreshOperationStateHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations/W:ABCDEF"
+      "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations/ABCDEF"
     },
     {
       "api_method": "GetVfsRefreshOperationState",
       "method": "GET",
       "response": {
-        "message": "Operation with id W:ABCDEF not found"
+        "message": "Operation with id ABCDEF not found"
       },
       "test_class": "ApiGetVfsRefreshOperationStateHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations/W:ABCDEF"
+      "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations/ABCDEF"
     },
     {
       "api_method": "GetVfsRefreshOperationState",
       "method": "GET",
       "response": {
-        "message": "Operation with id W:ABCDEF not found"
+        "message": "Operation with id ABCDEF not found"
       },
       "test_class": "ApiGetVfsRefreshOperationStateHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations/W:ABCDEF"
+      "url": "/api/v2/clients/C.1000000000000000/vfs-refresh-operations/ABCDEF"
     }
   ],
   "ApiGetVfsTimelineHandler": [
@@ -2921,6 +3162,7 @@
           "requestor"
         ],
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419244000000",
         "id": "approval:111111",
         "isValid": true,
         "notifiedUsers": [
@@ -2956,12 +3198,15 @@
                   "addressType": "INET6",
                   "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                 }
-              ]
+              ],
+              "ifname": "if0"
             },
             {
+              "ifname": "if1",
               "macAddress": "qrvM3e4A"
             },
             {
+              "ifname": "if2",
               "macAddress": "u8zd7v8A"
             }
           ],
@@ -3022,11 +3267,13 @@
           "args": {
             "actionType": "HUNT_CRON_ACTION",
             "huntCronAction": {
-              "flowName": "",
+              "flowArgs": "",
+              "flowName": "Interrogate",
               "huntRunnerArgs": {
                 "avgCpuSecondsPerClientLimit": "60",
                 "avgNetworkBytesPerClientLimit": "10485760",
                 "avgResultsPerClientLimit": "1000",
+                "clientRate": 20.0,
                 "crashLimit": "100"
               }
             }
@@ -3052,6 +3299,7 @@
           "requestor"
         ],
         "emailMessageId": "<message id stub>",
+        "expirationTimeUs": "2419244000000",
         "id": "approval:111111",
         "isValid": true,
         "notifiedUsers": [
@@ -3074,7 +3322,6 @@
               }
             ]
           },
-          "clientsQueuedCount": "0",
           "clientsWithResultsCount": "0",
           "completedClientsCount": "0",
           "crashLimit": "100",
@@ -3083,7 +3330,7 @@
           "description": "a hunt",
           "duration": "1209600",
           "flowArgs": {
-            "@type": "type.googleapis.com/GetFileArgs",
+            "@type": "type.googleapis.com/grr.GetFileArgs",
             "pathspec": {
               "path": "/tmp/evil.txt",
               "pathtype": "OS"
@@ -3113,11 +3360,13 @@
             "huntName": "GenericHunt",
             "originalObject": {}
           },
+          "huntType": "STANDARD",
           "isRobot": false,
           "name": "GenericHunt",
           "remainingClientsCount": "0",
           "resultsCount": "0",
           "state": "PAUSED",
+          "stateComment": "",
           "totalCpuUsage": 0.0,
           "totalNetUsage": "0",
           "urn": "aff4:/hunts/H:123456"
@@ -3259,9 +3508,6 @@
                 "os_major_version >= 6"
               ],
               "doc": "Extract the installed drivers on Windows via WMI.",
-              "labels": [
-                "Software"
-              ],
               "name": "TestDrivers",
               "sources": [
                 {
@@ -3361,6 +3607,7 @@
               "approver"
             ],
             "emailMessageId": "<message id stub>",
+            "expirationTimeUs": "2419245000000",
             "id": "approval:222222",
             "isValid": true,
             "notifiedUsers": [
@@ -3396,12 +3643,15 @@
                       "addressType": "INET6",
                       "packedBytes": "IAGrzQAAAAAAAAAAAAAAAQ=="
                     }
-                  ]
+                  ],
+                  "ifname": "if0"
                 },
                 {
+                  "ifname": "if1",
                   "macAddress": "qrvM3e4B"
                 },
                 {
+                  "ifname": "if2",
                   "macAddress": "u8zd7v8B"
                 }
               ],
@@ -3441,6 +3691,7 @@
               "api_test_user"
             ],
             "emailMessageId": "<message id stub>",
+            "expirationTimeUs": "2419244000000",
             "id": "approval:111111",
             "isValid": false,
             "isValidMessage": "Need at least 1 additional approver for access.",
@@ -3477,12 +3728,15 @@
                       "addressType": "INET6",
                       "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                     }
-                  ]
+                  ],
+                  "ifname": "if0"
                 },
                 {
+                  "ifname": "if1",
                   "macAddress": "qrvM3e4A"
                 },
                 {
+                  "ifname": "if2",
                   "macAddress": "u8zd7v8A"
                 }
               ],
@@ -3532,6 +3786,7 @@
               "api_test_user"
             ],
             "emailMessageId": "<message id stub>",
+            "expirationTimeUs": "2419244000000",
             "id": "approval:111111",
             "isValid": false,
             "isValidMessage": "Need at least 1 additional approver for access.",
@@ -3568,12 +3823,15 @@
                       "addressType": "INET6",
                       "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                     }
-                  ]
+                  ],
+                  "ifname": "if0"
                 },
                 {
+                  "ifname": "if1",
                   "macAddress": "qrvM3e4A"
                 },
                 {
+                  "ifname": "if2",
                   "macAddress": "u8zd7v8A"
                 }
               ],
@@ -3733,6 +3991,7 @@
                   "avgCpuSecondsPerClientLimit": "60",
                   "avgNetworkBytesPerClientLimit": "10485760",
                   "avgResultsPerClientLimit": "1000",
+                  "clientRate": 20.0,
                   "crashLimit": "100"
                 }
               }
@@ -3755,6 +4014,7 @@
                   "avgCpuSecondsPerClientLimit": "60",
                   "avgNetworkBytesPerClientLimit": "10485760",
                   "avgResultsPerClientLimit": "1000",
+                  "clientRate": 20.0,
                   "crashLimit": "100"
                 }
               }
@@ -3777,6 +4037,7 @@
                   "avgCpuSecondsPerClientLimit": "60",
                   "avgNetworkBytesPerClientLimit": "10485760",
                   "avgResultsPerClientLimit": "1000",
+                  "clientRate": 20.0,
                   "crashLimit": "100"
                 }
               }
@@ -3865,9 +4126,9 @@
             ],
             "category": "Filesystem",
             "defaultArgs": {
-              "@type": "type.googleapis.com/FileFinderArgs"
+              "@type": "type.googleapis.com/grr.FileFinderArgs"
             },
-            "doc": "This flow looks for files matching given criteria and acts on them.\n\n  FileFinder searches for files that match glob expressions.  The \"action\"\n  (e.g. Download) is applied to files that match all given \"conditions\".\n  Matches are then written to the results collection. If there are no\n  \"conditions\" specified, \"action\" is just applied to all found files.\n  \n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=file_finder.FileFinder, paths=paths, pathtype=pathtype, conditions=conditions, action=action, process_non_regular_files=process_non_regular_files, follow_links=follow_links, xdev=xdev)\n\n  Args:\n    action\n      description: \n      type: FileFinderAction\n      default: None\n\n    conditions\n      description: These conditions will be applied to all files that match the path arguments.\n      type: \n      default: None\n\n    follow_links\n      description: Should symbolic links be followed in recursive directory listings.\n      type: bool\n      default: False\n\n    paths\n      description: A path to glob that can contain %% expansions.\n      type: \n      default: None\n\n    pathtype\n      description: Path type to glob in.\n      type: EnumNamedValue\n      default: OS\n\n    process_non_regular_files\n      description: Look both into regular files and non-regular files (devices, named pipes, sockets). NOTE: This is very dangerous and should be used with care.\n      type: bool\n      default: 0\n\n    xdev\n      description: Behavior when ecountering device boundaries while doing recursive searches.\n      type: EnumNamedValue\n      default: LOCAL\n",
+            "doc": "This flow looks for files matching given criteria and acts on them.\n\n  FileFinder searches for files that match glob expressions.  The \"action\"\n  (e.g. Download) is applied to files that match all given \"conditions\".\n  Matches are then written to the results collection. If there are no\n  \"conditions\" specified, \"action\" is just applied to all found files.\n  \n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=file_finder.FileFinder, paths=paths, pathtype=pathtype, conditions=conditions, action=action, process_non_regular_files=process_non_regular_files, follow_links=follow_links, xdev=xdev, implementation_type=implementation_type)\n\n  Args:\n    action\n      description: \n      type: FileFinderAction\n      default: None\n\n    conditions\n      description: These conditions will be applied to all files that match the path arguments.\n      type: \n      default: None\n\n    follow_links\n      description: Should symbolic links be followed in recursive directory listings.\n      type: bool\n      default: False\n\n    implementation_type\n      description: Force use of an implementation.\n      type: EnumNamedValue\n      default: 0\n\n    paths\n      description: A path to glob that can contain %% expansions.\n      type: \n      default: None\n\n    pathtype\n      description: Path type to glob in.\n      type: EnumNamedValue\n      default: OS\n\n    process_non_regular_files\n      description: Look both into regular files and non-regular files (devices, named pipes, sockets). NOTE: This is very dangerous and should be used with care.\n      type: bool\n      default: 0\n\n    xdev\n      description: Behavior when ecountering device boundaries while doing recursive searches.\n      type: EnumNamedValue\n      default: LOCAL\n",
             "friendlyName": "File Finder",
             "name": "FileFinder"
           },
@@ -3879,9 +4140,9 @@
             ],
             "category": "Processes",
             "defaultArgs": {
-              "@type": "type.googleapis.com/ListProcessesArgs"
+              "@type": "type.googleapis.com/grr.ListProcessesArgs"
             },
-            "doc": "List running processes on a system.\n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=processes.ListProcesses, filename_regex=filename_regex, fetch_binaries=fetch_binaries, connection_states=connection_states)\n\n  Args:\n    connection_states\n      description: Network connection states to match. If a process has any network connections in any status listed here, it will be considered a match\n      type: \n      default: None\n\n    fetch_binaries\n      description: \n      type: bool\n      default: False\n\n    filename_regex\n      description: Regex used to filter the list of processes. The regex is applied to the full path and not only to the filename.\n      type: RegularExpression\n      default: .\n",
+            "doc": "List running processes on a system.\n\n  Call Spec:\n    flow.StartFlow(client_id=client_id, flow_cls=processes.ListProcesses, filename_regex=filename_regex, fetch_binaries=fetch_binaries, connection_states=connection_states, pids=pids)\n\n  Args:\n    connection_states\n      description: Network connection states to match. If a process has any network connections in any status listed here, it will be considered a match\n      type: \n      default: None\n\n    fetch_binaries\n      description: \n      type: bool\n      default: False\n\n    filename_regex\n      description: Regex used to filter the list of processes. The regex is applied to the full path and not only to the filename.\n      type: RegularExpression\n      default: .\n\n    pids\n      description: \n      type: \n      default: None\n",
             "name": "ListProcesses"
           }
         ]
@@ -3990,27 +4251,26 @@
         "items": [
           {
             "payload": {
-              "@type": "type.googleapis.com/StatEntry",
+              "@type": "type.googleapis.com/grr.StatEntry",
               "pathspec": {
                 "path": "/tmp/evil.txt",
                 "pathtype": "OS"
               },
               "stAtime": "1336469177",
               "stCtime": "1336129892",
-              "stDev": 64512,
+              "stDev": "64512",
               "stGid": 5000,
-              "stIno": 1063090,
+              "stIno": "1063090",
               "stMode": "33184",
               "stMtime": "1336129892",
-              "stNlink": 1,
+              "stNlink": "1",
               "stSize": "12",
               "stUid": 139592
             },
             "payloadType": "StatEntry",
             "timestamp": "42000000"
           }
-        ],
-        "totalCount": "1"
+        ]
       },
       "test_class": "ApiListFlowResultsHandlerRegressionTest_http_v2",
       "url": "/api/v2/clients/C.1000000000000000/flows/W:ABCDEF/results?filter=evil"
@@ -4018,9 +4278,7 @@
     {
       "api_method": "ListFlowResults",
       "method": "GET",
-      "response": {
-        "totalCount": "1"
-      },
+      "response": {},
       "test_class": "ApiListFlowResultsHandlerRegressionTest_http_v2",
       "url": "/api/v2/clients/C.1000000000000000/flows/W:ABCDEF/results?filter=benign"
     }
@@ -4033,14 +4291,15 @@
         "items": [
           {
             "clientId": "C.1000000000000000",
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "flowId": "F:ABCDEF11",
+            "isRobot": true,
             "lastActiveAt": "44000000",
             "name": "ListProcesses",
             "runnerArgs": {
               "clientId": "aff4:/C.1000000000000000",
               "flowName": "ListProcesses",
-              "notifyToUser": true
+              "notifyToUser": false
             },
             "startedAt": "44000000",
             "state": "RUNNING",
@@ -4050,6 +4309,7 @@
             "clientId": "C.1000000000000000",
             "creator": "api_test_user",
             "flowId": "F:ABCDEF10",
+            "isRobot": false,
             "lastActiveAt": "43000000",
             "name": "Interrogate",
             "runnerArgs": {
@@ -4073,17 +4333,24 @@
         "items": [
           {
             "args": {
-              "@type": "type.googleapis.com/ListProcessesArgs"
+              "@type": "type.googleapis.com/grr.ListProcessesArgs"
             },
             "clientId": "C.1000000000000000",
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "flowId": "F:ABCDEF11",
+            "isRobot": true,
             "lastActiveAt": "44000000",
             "name": "ListProcesses",
+            "progress": {
+              "@type": "type.googleapis.com/grr.DefaultFlowProgress"
+            },
+            "resultMetadata": {
+              "isMetadataSet": true
+            },
             "runnerArgs": {
               "clientId": "aff4:/C.1000000000000000",
               "flowName": "ListProcesses",
-              "notifyToUser": true
+              "notifyToUser": false
             },
             "startedAt": "44000000",
             "state": "RUNNING",
@@ -4091,13 +4358,20 @@
           },
           {
             "args": {
-              "@type": "type.googleapis.com/InterrogateArgs"
+              "@type": "type.googleapis.com/grr.InterrogateArgs"
             },
             "clientId": "C.1000000000000000",
             "creator": "api_test_user",
             "flowId": "F:ABCDEF10",
+            "isRobot": false,
             "lastActiveAt": "43000000",
             "name": "Interrogate",
+            "progress": {
+              "@type": "type.googleapis.com/grr.DefaultFlowProgress"
+            },
+            "resultMetadata": {
+              "isMetadataSet": true
+            },
             "runnerArgs": {
               "clientId": "aff4:/C.1000000000000000",
               "flowName": "Interrogate",
@@ -4119,17 +4393,24 @@
         "items": [
           {
             "args": {
-              "@type": "type.googleapis.com/ListProcessesArgs"
+              "@type": "type.googleapis.com/grr.ListProcessesArgs"
             },
             "clientId": "C.1000000000000000",
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "flowId": "F:ABCDEF11",
+            "isRobot": true,
             "lastActiveAt": "44000000",
             "name": "ListProcesses",
+            "progress": {
+              "@type": "type.googleapis.com/grr.DefaultFlowProgress"
+            },
+            "resultMetadata": {
+              "isMetadataSet": true
+            },
             "runnerArgs": {
               "clientId": "aff4:/C.1000000000000000",
               "flowName": "ListProcesses",
-              "notifyToUser": true
+              "notifyToUser": false
             },
             "startedAt": "44000000",
             "state": "RUNNING",
@@ -4147,11 +4428,44 @@
         "items": [
           {
             "args": {
-              "@type": "type.googleapis.com/InterrogateArgs"
+              "@type": "type.googleapis.com/grr.InterrogateArgs"
             },
             "clientId": "C.1000000000000000",
             "creator": "api_test_user",
             "flowId": "F:ABCDEF10",
+            "isRobot": false,
+            "lastActiveAt": "43000000",
+            "name": "Interrogate",
+            "progress": {
+              "@type": "type.googleapis.com/grr.DefaultFlowProgress"
+            },
+            "resultMetadata": {
+              "isMetadataSet": true
+            },
+            "runnerArgs": {
+              "clientId": "aff4:/C.1000000000000000",
+              "flowName": "Interrogate",
+              "notifyToUser": true
+            },
+            "startedAt": "43000000",
+            "state": "RUNNING",
+            "urn": "aff4:/C.1000000000000000/flows/F:ABCDEF10"
+          }
+        ]
+      },
+      "test_class": "ApiListFlowsHandlerRegressionTest_http_v2",
+      "url": "/api/v2/clients/C.1000000000000000/flows?max_started_at=43000000&top_flows_only=1"
+    },
+    {
+      "api_method": "ListFlows",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "clientId": "C.1000000000000000",
+            "creator": "api_test_user",
+            "flowId": "F:ABCDEF10",
+            "isRobot": false,
             "lastActiveAt": "43000000",
             "name": "Interrogate",
             "runnerArgs": {
@@ -4166,7 +4480,7 @@
         ]
       },
       "test_class": "ApiListFlowsHandlerRegressionTest_http_v2",
-      "url": "/api/v2/clients/C.1000000000000000/flows?max_started_at=43000000&top_flows_only=1"
+      "url": "/api/v2/clients/C.1000000000000000/flows?human_flows_only=1"
     }
   ],
   "ApiListGrrBinariesHandler": [
@@ -4206,6 +4520,7 @@
               "api_test_user"
             ],
             "emailMessageId": "<message id stub>",
+            "expirationTimeUs": "2419243000000",
             "id": "approval:112233",
             "isValid": false,
             "isValidMessage": "Need at least 1 additional approver for access.",
@@ -4229,7 +4544,6 @@
                   }
                 ]
               },
-              "clientsQueuedCount": "0",
               "clientsWithResultsCount": "0",
               "completedClientsCount": "0",
               "crashLimit": "100",
@@ -4238,7 +4552,7 @@
               "description": "foo",
               "duration": "1209600",
               "flowArgs": {
-                "@type": "type.googleapis.com/GetFileArgs",
+                "@type": "type.googleapis.com/grr.GetFileArgs",
                 "pathspec": {
                   "path": "/tmp/evil.txt",
                   "pathtype": "OS"
@@ -4268,11 +4582,13 @@
                 "huntName": "GenericHunt",
                 "originalObject": {}
               },
+              "huntType": "STANDARD",
               "isRobot": false,
               "name": "GenericHunt",
               "remainingClientsCount": "0",
               "resultsCount": "0",
               "state": "PAUSED",
+              "stateComment": "",
               "totalCpuUsage": 0.0,
               "totalNetUsage": "0",
               "urn": "aff4:/hunts/H:123456"
@@ -4657,11 +4973,11 @@
             "clientLimit": "100",
             "clientRate": 0.0,
             "created": "1000000000",
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "description": "hunt_0",
             "duration": "1209600",
             "huntId": "H:000000",
-            "isRobot": false,
+            "isRobot": true,
             "state": "PAUSED",
             "urn": "aff4:/hunts/H:000000"
           }
@@ -4701,11 +5017,11 @@
             "clientLimit": "100",
             "clientRate": 0.0,
             "created": "1000000000",
-            "creator": "api_test_user",
+            "creator": "GRRWorker",
             "description": "hunt_0",
             "duration": "1209600",
             "huntId": "H:000000",
-            "isRobot": false,
+            "isRobot": true,
             "state": "PAUSED",
             "urn": "aff4:/hunts/H:000000"
           }
@@ -4713,6 +5029,84 @@
       },
       "test_class": "ApiListHuntsHandlerRegressionTest_http_v2",
       "url": "/api/v2/hunts?count=1&offset=1"
+    },
+    {
+      "api_method": "ListHunts",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "clientLimit": "100",
+            "clientRate": 0.0,
+            "created": "2000000000",
+            "creator": "api_test_user",
+            "description": "hunt_1",
+            "duration": "1209600",
+            "huntId": "H:000001",
+            "isRobot": false,
+            "state": "STOPPED",
+            "urn": "aff4:/hunts/H:000001"
+          }
+        ]
+      },
+      "test_class": "ApiListHuntsHandlerRegressionTest_http_v2",
+      "url": "/api/v2/hunts?count=2&offset=0&robot_filter=no_robots"
+    },
+    {
+      "api_method": "ListHunts",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "clientLimit": "100",
+            "clientRate": 0.0,
+            "created": "1000000000",
+            "creator": "GRRWorker",
+            "description": "hunt_0",
+            "duration": "1209600",
+            "huntId": "H:000000",
+            "isRobot": true,
+            "state": "PAUSED",
+            "urn": "aff4:/hunts/H:000000"
+          }
+        ]
+      },
+      "test_class": "ApiListHuntsHandlerRegressionTest_http_v2",
+      "url": "/api/v2/hunts?count=2&offset=0&robot_filter=only_robots"
+    },
+    {
+      "api_method": "ListHunts",
+      "method": "GET",
+      "response": {
+        "items": [
+          {
+            "clientLimit": "100",
+            "clientRate": 0.0,
+            "created": "2000000000",
+            "creator": "api_test_user",
+            "description": "hunt_1",
+            "duration": "1209600",
+            "huntId": "H:000001",
+            "isRobot": false,
+            "state": "STOPPED",
+            "urn": "aff4:/hunts/H:000001"
+          },
+          {
+            "clientLimit": "100",
+            "clientRate": 0.0,
+            "created": "1000000000",
+            "creator": "GRRWorker",
+            "description": "hunt_0",
+            "duration": "1209600",
+            "huntId": "H:000000",
+            "isRobot": true,
+            "state": "PAUSED",
+            "urn": "aff4:/hunts/H:000000"
+          }
+        ]
+      },
+      "test_class": "ApiListHuntsHandlerRegressionTest_http_v2",
+      "url": "/api/v2/hunts?count=2&offset=0&robot_filter=unknown"
     }
   ],
   "ApiListKbFieldsHandler": [
@@ -4977,6 +5371,7 @@
               "avgCpuSecondsPerClientLimit": "60",
               "avgNetworkBytesPerClientLimit": "10485760",
               "avgResultsPerClientLimit": "1000",
+              "clientRate": 20.0,
               "crashLimit": "100"
             }
           }
@@ -5008,6 +5403,7 @@
               "avgCpuSecondsPerClientLimit": "60",
               "avgNetworkBytesPerClientLimit": "10485760",
               "avgResultsPerClientLimit": "1000",
+              "clientRate": 20.0,
               "crashLimit": "100"
             }
           }
@@ -5045,7 +5441,6 @@
             }
           ]
         },
-        "clientsQueuedCount": "0",
         "clientsWithResultsCount": "0",
         "completedClientsCount": "0",
         "crashLimit": "100",
@@ -5054,7 +5449,7 @@
         "description": "the hunt",
         "duration": "1209600",
         "flowArgs": {
-          "@type": "type.googleapis.com/GetFileArgs",
+          "@type": "type.googleapis.com/grr.GetFileArgs",
           "pathspec": {
             "path": "/tmp/evil.txt",
             "pathtype": "OS"
@@ -5085,11 +5480,13 @@
           "huntName": "GenericHunt",
           "originalObject": {}
         },
+        "huntType": "STANDARD",
         "isRobot": false,
         "name": "GenericHunt",
         "remainingClientsCount": "0",
         "resultsCount": "0",
         "state": "PAUSED",
+        "stateComment": "",
         "totalCpuUsage": 0.0,
         "totalNetUsage": "0",
         "urn": "aff4:/hunts/H:123456"
@@ -5118,7 +5515,6 @@
             }
           ]
         },
-        "clientsQueuedCount": "0",
         "clientsWithResultsCount": "0",
         "completedClientsCount": "0",
         "crashLimit": "100",
@@ -5127,7 +5523,7 @@
         "description": "the hunt",
         "duration": "1209600",
         "flowArgs": {
-          "@type": "type.googleapis.com/GetFileArgs",
+          "@type": "type.googleapis.com/grr.GetFileArgs",
           "pathspec": {
             "path": "/tmp/evil.txt",
             "pathtype": "OS"
@@ -5158,11 +5554,13 @@
           "huntName": "GenericHunt",
           "originalObject": {}
         },
+        "huntType": "STANDARD",
         "isRobot": false,
         "name": "GenericHunt",
         "remainingClientsCount": "0",
         "resultsCount": "0",
         "state": "STOPPED",
+        "stateComment": "Cancelled by user",
         "totalCpuUsage": 0.0,
         "totalNetUsage": "0",
         "urn": "aff4:/hunts/H:123456"
@@ -5205,12 +5603,15 @@
                     "addressType": "INET6",
                     "packedBytes": "IAGrzQAAAAAAAAAAAAAAAA=="
                   }
-                ]
+                ],
+                "ifname": "if0"
               },
               {
+                "ifname": "if1",
                 "macAddress": "qrvM3e4A"
               },
               {
+                "ifname": "if2",
                 "macAddress": "u8zd7v8A"
               }
             ],
@@ -5258,7 +5659,7 @@
         "filePath": "fs/os/c/bin/bash"
       },
       "response": {
-        "operationId": "W:ABCDEF"
+        "operationId": "ABCDEF"
       },
       "test_class": "ApiUpdateVfsFileContentHandlerRegressionTest_http_v2",
       "url": "/api/v2/clients/C.1000000000000000/vfs-update"

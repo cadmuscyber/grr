@@ -1,28 +1,24 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Test the file transfer mechanism."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import hashlib
 import io
+import itertools
 import os
 import platform
 import struct
 import unittest
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_core.lib import constants
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import temp
 from grr_response_server import data_store
 from grr_response_server import file_store
+from grr_response_server import flow_base
 from grr_response_server.databases import db
 from grr_response_server.flows.general import transfer
 from grr_response_server.rdfvalues import objects as rdf_objects
@@ -55,7 +51,7 @@ class GetMBRFlowTest(flow_test_lib.FlowTestsBaseclass):
   mbr = (b"123456789" * 1000)[:4096]
 
   def setUp(self):
-    super(GetMBRFlowTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
 
   def testGetMBR(self):
@@ -64,7 +60,7 @@ class GetMBRFlowTest(flow_test_lib.FlowTestsBaseclass):
     flow_id = flow_test_lib.TestFlowHelper(
         transfer.GetMBR.__name__,
         ClientMock(self.mbr),
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id)
 
     results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
@@ -73,11 +69,11 @@ class GetMBRFlowTest(flow_test_lib.FlowTestsBaseclass):
 
   def _RunAndCheck(self, chunk_size, download_length):
 
-    with utils.Stubber(constants, "CLIENT_MAX_BUFFER_SIZE", chunk_size):
+    with mock.patch.object(constants, "CLIENT_MAX_BUFFER_SIZE", chunk_size):
       flow_id = flow_test_lib.TestFlowHelper(
           transfer.GetMBR.__name__,
           ClientMock(self.mbr),
-          token=self.token,
+          creator=self.test_username,
           client_id=self.client_id,
           length=download_length)
 
@@ -128,14 +124,8 @@ class GetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
   """Test the transfer mechanism."""
 
   def setUp(self):
-    super(GetFileFlowTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
-
-    # Set suitable defaults for testing
-    self.old_window_size = transfer.GetFile.WINDOW_SIZE
-    self.old_chunk_size = transfer.GetFile.CHUNK_SIZE
-    transfer.GetFile.WINDOW_SIZE = 10
-    transfer.GetFile.CHUNK_SIZE = 600 * 1024
 
   def testGetFile(self):
     """Test that the GetFile flow works."""
@@ -148,17 +138,16 @@ class GetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         transfer.GetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         pathspec=pathspec)
 
     # Fix path for Windows testing.
     pathspec.path = pathspec.path.replace("\\", "/")
-    fd2 = open(pathspec.path, "rb")
-
-    cp = db.ClientPath.FromPathSpec(self.client_id, pathspec)
-    fd_rel_db = file_store.OpenFile(cp)
-    self.CompareFDs(fd2, fd_rel_db)
+    with open(pathspec.path, "rb") as fd2:
+      cp = db.ClientPath.FromPathSpec(self.client_id, pathspec)
+      fd_rel_db = file_store.OpenFile(cp)
+      self.CompareFDs(fd2, fd_rel_db)
 
     # Only the sha256 hash of the contents should have been calculated:
     # in order to put file contents into the file store.
@@ -180,7 +169,7 @@ class GetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     session_id = flow_test_lib.TestFlowHelper(
         transfer.GetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         pathspec=pathspec)
 
@@ -190,13 +179,13 @@ class GetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
 
     # Fix path for Windows testing.
     pathspec.path = pathspec.path.replace("\\", "/")
-    fd2 = open(res_pathspec.path, "rb")
-    fd2.seek(0, 2)
+    with open(res_pathspec.path, "rb") as fd2:
+      fd2.seek(0, 2)
 
-    cp = db.ClientPath.FromPathSpec(self.client_id, res_pathspec)
+      cp = db.ClientPath.FromPathSpec(self.client_id, res_pathspec)
 
-    fd_rel_db = file_store.OpenFile(cp)
-    self.CompareFDs(fd2, fd_rel_db)
+      fd_rel_db = file_store.OpenFile(cp)
+      self.CompareFDs(fd2, fd_rel_db)
 
     # Only the sha256 hash of the contents should have been calculated:
     # in order to put file contents into the file store.
@@ -218,16 +207,365 @@ class GetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
         flow_test_lib.TestFlowHelper(
             transfer.GetFile.__name__,
             client_mock,
-            token=self.token,
+            creator=self.test_username,
             client_id=self.client_id,
             pathspec=pathspec)
+
+  def testFailsIfStatFailsAndIgnoreStatFailureFlagNotSet(self):
+    with temp.AutoTempFilePath() as test_path:
+      with open(test_path, "wb") as fd:
+        fd.write(b"foo")
+
+      pathspec = rdf_paths.PathSpec(
+          pathtype=rdf_paths.PathSpec.PathType.OS,
+          path=test_path,
+      )
+      args = transfer.GetFileArgs(
+          pathspec=pathspec,
+          read_length=1,
+      )
+      client_mock = action_mocks.GetFileWithFailingStatClientMock()
+      with self.assertRaises(RuntimeError):
+        flow_test_lib.TestFlowHelper(
+            transfer.GetFile.__name__,
+            client_mock,
+            creator=self.test_username,
+            client_id=self.client_id,
+            args=args)
+
+  def testWorksIfStatFailsAndIgnoreStatFailureFlagIsSet(self):
+    with temp.AutoTempFilePath() as test_path:
+      with open(test_path, "wb") as fd:
+        fd.write(b"foo")
+
+      pathspec = rdf_paths.PathSpec(
+          pathtype=rdf_paths.PathSpec.PathType.OS,
+          path=test_path,
+      )
+      args = transfer.GetFileArgs(
+          pathspec=pathspec,
+          read_length=1,
+          ignore_stat_failure=True,
+      )
+      client_mock = action_mocks.GetFileWithFailingStatClientMock()
+      flow_test_lib.TestFlowHelper(
+          transfer.GetFile.__name__,
+          client_mock,
+          creator=self.test_username,
+          client_id=self.client_id,
+          args=args)
+
+  def _ReadBytesWithGetFile(self,
+                            path,
+                            stat_available=False,
+                            offset=None,
+                            file_size_override=None,
+                            read_length=None):
+    if stat_available:
+      client_mock = action_mocks.GetFileClientMock()
+    else:
+      client_mock = action_mocks.GetFileWithFailingStatClientMock()
+
+    pathspec = rdf_paths.PathSpec(
+        pathtype=rdf_paths.PathSpec.PathType.OS,
+        path=path,
+    )
+    if offset is not None:
+      pathspec.offset = offset
+    if file_size_override is not None:
+      pathspec.file_size_override = file_size_override
+
+    args = transfer.GetFileArgs(
+        pathspec=pathspec,
+        ignore_stat_failure=not stat_available,
+    )
+    if read_length is not None:
+      args.read_length = read_length
+
+    flow_id = flow_test_lib.TestFlowHelper(
+        transfer.GetFile.__name__,
+        client_mock,
+        creator=self.test_username,
+        client_id=self.client_id,
+        args=args)
+
+    results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
+    self.assertLen(
+        results, 1, f"Expected 1 result for offset={offset}, "
+        f"file_size_override={file_size_override}, "
+        f"read_length={read_length}, ")
+    res_pathspec = results[0].pathspec
+    cp = db.ClientPath.FromPathSpec(self.client_id, res_pathspec)
+
+    return file_store.OpenFile(cp).Read()
+
+  TEST_DATA_LENGTH = transfer.GetFile.CHUNK_SIZE * 10 + 1
+
+  TEST_DATA = b"".join(
+      itertools.islice(
+          itertools.cycle(
+              [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8", b"9"]),
+          TEST_DATA_LENGTH))
+
+  def testReadsTheWholeStatableFileWhenNoSizesPassed(self):
+    with temp.AutoTempFilePath() as test_path:
+      with open(test_path, "wb") as fd:
+        fd.write(self.TEST_DATA)
+
+      actual_bytes = self._ReadBytesWithGetFile(test_path, stat_available=True)
+      self.assertEqual(self.TEST_DATA, actual_bytes)
+
+  def testRaisesOnNonStatableFileWhenNoSizesPassed(self):
+    with temp.AutoTempFilePath() as test_path:
+      with self.assertRaises(RuntimeError):
+        self._ReadBytesWithGetFile(test_path, stat_available=False)
+
+  READ_LENGTH_INTERVALS = (
+      # Check for intervals within the file size.
+      (0, 10),
+      (10, 20),
+      (0, transfer.GetFile.CHUNK_SIZE),
+      (1, transfer.GetFile.CHUNK_SIZE),
+      (1, transfer.GetFile.CHUNK_SIZE - 1),
+      (0, transfer.GetFile.CHUNK_SIZE * 2),
+      (1, transfer.GetFile.CHUNK_SIZE * 2),
+      (1, transfer.GetFile.CHUNK_SIZE * 2 - 1),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE,
+       transfer.GetFile.CHUNK_SIZE),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE - 1,
+       transfer.GetFile.CHUNK_SIZE),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE + 1,
+       transfer.GetFile.CHUNK_SIZE - 1),
+      # Check for intervals outside of the file size (an EOF might
+      # happen also on a device file, like when a disk file is read).
+      (TEST_DATA_LENGTH - 10, 20),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE - 1,
+       transfer.GetFile.CHUNK_SIZE + 2),
+  )
+
+  def testWorksWithReadLengthOnSeekableFile(self):
+    with temp.AutoTempFilePath() as test_path:
+      with open(test_path, "wb") as fd:
+        fd.write(self.TEST_DATA)
+
+      for offset, read_length in self.READ_LENGTH_INTERVALS:
+        with self.subTest(
+            offset=offset, read_length=read_length, stat_available=True):
+          actual_bytes = self._ReadBytesWithGetFile(
+              test_path,
+              stat_available=True,
+              offset=offset,
+              read_length=read_length)
+          self.assertEqual(self.TEST_DATA[offset:offset + read_length],
+                           actual_bytes)
+
+        with self.subTest(
+            offset=offset, read_length=read_length, stat_available=False):
+          actual_bytes = self._ReadBytesWithGetFile(
+              test_path,
+              stat_available=False,
+              offset=offset,
+              read_length=read_length)
+          self.assertEqual(self.TEST_DATA[offset:offset + read_length],
+                           actual_bytes)
+
+  def testWorksWithReadLengthOnNonSeekableFile(self):
+    for offset, read_length in self.READ_LENGTH_INTERVALS:
+      # Check non-seekable file that still can be stat-ed.
+      with self.subTest(
+          offset=offset, read_length=read_length, stat_available=True):
+        actual_bytes = self._ReadBytesWithGetFile(
+            "/dev/random",
+            stat_available=True,
+            offset=offset,
+            read_length=read_length)
+        # Using assertEqual instead of assertLen for easier-to-process
+        # failure messages (as long byte sequences get dumped to stdout
+        # in case of a failure).
+        self.assertEqual(len(actual_bytes), read_length)
+
+      # Check non-seekable file that can't be stat-ed.
+      with self.subTest(
+          offset=offset, read_length=read_length, stat_available=False):
+        actual_bytes = self._ReadBytesWithGetFile(
+            "/dev/random",
+            stat_available=False,
+            offset=offset,
+            read_length=read_length)
+        # Using assertEqual instead of assertLen for easier-to-process
+        # failure messages (as long byte sequences get dumped to stdout
+        # in case of a failure).
+        self.assertEqual(len(actual_bytes), read_length)
+
+  FILE_SIZE_OVERRIDE_INTERVALS = (
+      # Check intervals within the file boundaries.
+      (0, 10),
+      (10, 30),
+      (0, transfer.GetFile.CHUNK_SIZE),
+      (1, 1 + transfer.GetFile.CHUNK_SIZE),
+      (1, transfer.GetFile.CHUNK_SIZE),
+      (0, transfer.GetFile.CHUNK_SIZE * 2),
+      (1, 1 + transfer.GetFile.CHUNK_SIZE * 2),
+      (1, transfer.GetFile.CHUNK_SIZE * 2),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE, TEST_DATA_LENGTH),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE - 1,
+       TEST_DATA_LENGTH - 1),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE + 1, TEST_DATA_LENGTH),
+      # Checks intervals outside of the file size.
+      (TEST_DATA_LENGTH - 10, TEST_DATA_LENGTH + 10),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE - 1,
+       TEST_DATA_LENGTH + 1),
+  )
+
+  def testWorksWithFileSizeOverrideOnSeekableFile(self):
+    with temp.AutoTempFilePath() as test_path:
+      with open(test_path, "wb") as fd:
+        fd.write(self.TEST_DATA)
+
+      for offset, file_size_override in self.FILE_SIZE_OVERRIDE_INTERVALS:
+        with self.subTest(
+            offset=offset,
+            file_size_override=file_size_override,
+            stat_available=True):
+          actual_bytes = self._ReadBytesWithGetFile(
+              test_path,
+              stat_available=True,
+              offset=offset,
+              file_size_override=file_size_override)
+          self.assertEqual(self.TEST_DATA[offset:file_size_override],
+                           actual_bytes)
+
+        with self.subTest(
+            offset=offset,
+            file_size_override=file_size_override,
+            stat_available=False):
+          actual_bytes = self._ReadBytesWithGetFile(
+              test_path,
+              stat_available=False,
+              offset=offset,
+              file_size_override=file_size_override)
+          self.assertEqual(self.TEST_DATA[offset:file_size_override],
+                           actual_bytes)
+
+  def testWorksWithFileSizeOverrideOnNonSeekableFile(self):
+    for offset, file_size_override in self.FILE_SIZE_OVERRIDE_INTERVALS:
+      with self.subTest(
+          offset=offset,
+          file_size_override=file_size_override,
+          stat_available=True):
+        actual_bytes = self._ReadBytesWithGetFile(
+            "/dev/random",
+            stat_available=True,
+            offset=offset,
+            file_size_override=file_size_override)
+        self.assertEqual(len(actual_bytes), file_size_override - offset)
+
+      with self.subTest(
+          offset=offset,
+          file_size_override=file_size_override,
+          stat_available=False):
+        actual_bytes = self._ReadBytesWithGetFile(
+            "/dev/random",
+            stat_available=False,
+            offset=offset,
+            file_size_override=file_size_override)
+        self.assertEqual(len(actual_bytes), file_size_override - offset)
+
+  READ_LENGTH_FILE_SIZE_OVERRIDE_INTERVALS = (
+      # offset, read_length, file_size_override
+      (0, 10, 5),
+      (0, 10, 15),
+      (0, 5, 10),
+      (0, 15, 10),
+      (0, transfer.GetFile.CHUNK_SIZE * 2, transfer.GetFile.CHUNK_SIZE * 2 - 1),
+      (0, transfer.GetFile.CHUNK_SIZE * 2, transfer.GetFile.CHUNK_SIZE * 2 + 1),
+      (1, transfer.GetFile.CHUNK_SIZE * 2, transfer.GetFile.CHUNK_SIZE * 2),
+      (1, transfer.GetFile.CHUNK_SIZE * 2, transfer.GetFile.CHUNK_SIZE * 2 + 2),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE,
+       transfer.GetFile.CHUNK_SIZE, TEST_DATA_LENGTH - 1),
+      (TEST_DATA_LENGTH - transfer.GetFile.CHUNK_SIZE,
+       transfer.GetFile.CHUNK_SIZE, TEST_DATA_LENGTH + 1),
+  )
+
+  def testWorksWithReadLengthAndFileSizeOverrideOnSeekableFiles(self):
+    with temp.AutoTempFilePath() as test_path:
+      with open(test_path, "wb") as fd:
+        fd.write(self.TEST_DATA)
+
+      for (offset, read_length,
+           file_size_override) in self.READ_LENGTH_FILE_SIZE_OVERRIDE_INTERVALS:
+        upper_limit = min(offset + read_length, file_size_override)
+
+        with self.subTest(
+            offset=offset,
+            read_length=read_length,
+            file_size_override=file_size_override,
+            stat_available=True):
+          actual_bytes = self._ReadBytesWithGetFile(
+              test_path,
+              stat_available=True,
+              offset=offset,
+              read_length=read_length,
+              file_size_override=file_size_override)
+          self.assertEqual(self.TEST_DATA[offset:upper_limit], actual_bytes)
+
+        with self.subTest(
+            offset=offset,
+            read_length=read_length,
+            file_size_override=file_size_override,
+            stat_available=False):
+          actual_bytes = self._ReadBytesWithGetFile(
+              test_path,
+              stat_available=False,
+              offset=offset,
+              read_length=read_length,
+              file_size_override=file_size_override)
+          self.assertEqual(self.TEST_DATA[offset:upper_limit], actual_bytes)
+
+  def testWorksWithReadLengthAndFileSizeOverrideOnNonSeekableFiles(self):
+    for (offset, read_length,
+         file_size_override) in self.READ_LENGTH_FILE_SIZE_OVERRIDE_INTERVALS:
+
+      with self.subTest(
+          offset=offset,
+          read_length=read_length,
+          file_size_override=file_size_override,
+          stat_available=True):
+        actual_bytes = self._ReadBytesWithGetFile(
+            "/dev/random",
+            stat_available=True,
+            offset=offset,
+            read_length=read_length,
+            file_size_override=file_size_override)
+        # Using assertEqual instead of assertLen for easier-to-process
+        # failure messages (as long byte sequences get dumped to stdout
+        # in case of a failure).
+        self.assertEqual(
+            len(actual_bytes), min(read_length, file_size_override - offset))
+
+      with self.subTest(
+          offset=offset,
+          read_length=read_length,
+          file_size_override=file_size_override,
+          stat_available=False):
+        actual_bytes = self._ReadBytesWithGetFile(
+            "/dev/random",
+            stat_available=False,
+            offset=offset,
+            read_length=read_length,
+            file_size_override=file_size_override)
+        # Using assertEqual instead of assertLen for easier-to-process
+        # failure messages (as long byte sequences get dumped to stdout
+        # in case of a failure).
+        self.assertEqual(
+            len(actual_bytes), min(read_length, file_size_override - offset))
 
 
 class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
   """Test the transfer mechanism."""
 
   def setUp(self):
-    super(MultiGetFileFlowTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
 
   @unittest.skipUnless(platform.system() == "Linux",
@@ -265,7 +603,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         file_size="1MiB",
         client_id=self.client_id,
         pathspecs=[pathspec])
@@ -278,12 +616,13 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         file_size=1024 * 1024,
         client_id=self.client_id,
         pathspecs=[pathspec])
 
-    data = open(pathspec.last.path, "rb").read()
+    with open(pathspec.last.path, "rb") as fd:
+      data = fd.read()
 
     cp = db.ClientPath.FromPathSpec(self.client_id, pathspec)
     fd_rel_db = file_store.OpenFile(cp)
@@ -310,26 +649,26 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
 
     args = transfer.MultiGetFileArgs(pathspecs=[pathspec, pathspec])
     with test_lib.Instrument(transfer.MultiGetFile,
-                             "_StoreStat") as storestat_instrument:
+                             "_ReceiveFileStat") as receivestat_instrument:
       flow_test_lib.TestFlowHelper(
           transfer.MultiGetFile.__name__,
           client_mock,
-          token=self.token,
+          creator=self.test_username,
           client_id=self.client_id,
           args=args)
 
       # We should only have called StoreStat once because the two paths
       # requested were identical.
-      self.assertLen(storestat_instrument.args, 1)
+      self.assertLen(receivestat_instrument.args, 1)
 
     # Fix path for Windows testing.
     pathspec.path = pathspec.path.replace("\\", "/")
-    fd2 = open(pathspec.path, "rb")
 
-    # Test the file that was created.
-    cp = db.ClientPath.FromPathSpec(self.client_id, pathspec)
-    fd_rel_db = file_store.OpenFile(cp)
-    self.CompareFDs(fd2, fd_rel_db)
+    with open(pathspec.path, "rb") as fd2:
+      # Test the file that was created.
+      cp = db.ClientPath.FromPathSpec(self.client_id, pathspec)
+      fd_rel_db = file_store.OpenFile(cp)
+      self.CompareFDs(fd2, fd_rel_db)
 
     # Check that SHA256 hash of the file matches the contents
     # hash and that MD5 and SHA1 are set.
@@ -364,7 +703,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
       flow_test_lib.TestFlowHelper(
           transfer.MultiGetFile.__name__,
           client_mock,
-          token=self.token,
+          creator=self.test_username,
           client_id=self.client_id,
           args=args)
 
@@ -403,7 +742,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         args=args)
 
@@ -446,7 +785,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         args=args)
 
@@ -492,7 +831,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
       flow_test_lib.TestFlowHelper(
           transfer.MultiGetFile.__name__,
           client_mock,
-          token=self.token,
+          creator=self.test_username,
           client_id=self.client_id,
           args=args)
 
@@ -526,7 +865,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         args=args)
 
@@ -560,11 +899,12 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         args=args)
 
-    expected_data = open(image_path, "rb").read(expected_size)
+    with open(image_path, "rb") as fd:
+      expected_data = fd.read(expected_size)
 
     cp = db.ClientPath.FromPathSpec(self.client_id, pathspec)
     fd_rel_db = file_store.OpenFile(cp)
@@ -602,7 +942,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_id = flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         args=args)
 
@@ -637,7 +977,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         args=args)
 
@@ -645,7 +985,7 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     flow_id = flow_test_lib.TestFlowHelper(
         transfer.MultiGetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         args=args)
 
@@ -672,9 +1012,9 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
         path=os.path.join(self.base_path, "test_img.dd"))
 
     flow_test_lib.TestFlowHelper(
-        compatibility.GetName(transfer.GetFile),
+        transfer.GetFile.__name__,
         client_mock,
-        token=self.token,
+        creator=self.test_username,
         client_id=self.client_id,
         pathspec=pathspec)
 
@@ -687,6 +1027,259 @@ class MultiGetFileFlowTest(CompareFDsMixin, flow_test_lib.FlowTestsBaseclass):
     self.assertNotEmpty(args[0][hash_id].blob_refs)
     for blob_ref in args[0][hash_id].blob_refs:
       self.assertIsInstance(blob_ref, rdf_objects.BlobReference)
+
+
+class DummyMultiGetFileLogic(transfer.MultiGetFileLogic, flow_base.FlowBase):
+  args_type = rdf_paths.PathSpec
+
+  def Start(self):
+    super().Start()
+    self.StartFileFetch(self.args)
+
+  def ReceiveFileStat(self, stat_entry, request_data=None):
+    pass
+
+  def ReceiveFileHash(self, stat_entry, file_hash, request_data=None):
+    pass
+
+  def ReceiveFetchedFile(self,
+                         stat_entry,
+                         file_hash,
+                         request_data=None,
+                         is_duplicate=False):
+    pass
+
+  def FileFetchFailed(self, pathspec, request_data=None, status=None):
+    pass
+
+
+class DummyMultiGetFileLogicStat(transfer.MultiGetFileLogic,
+                                 flow_base.FlowBase):
+  args_type = rdf_paths.PathSpec
+
+  def Start(self):
+    super().Start()
+    self.state.stop_at_stat = True
+    self.StartFileFetch(self.args)
+
+  def ReceiveFileStat(self, stat_entry, request_data=None):
+    pass
+
+  def ReceiveFileHash(self, stat_entry, file_hash, request_data=None):
+    pass
+
+  def ReceiveFetchedFile(self,
+                         stat_entry,
+                         file_hash,
+                         request_data=None,
+                         is_duplicate=False):
+    pass
+
+  def FileFetchFailed(self, pathspec, request_data=None, status=None):
+    pass
+
+
+class DummyMultiGetFileLogicHash(transfer.MultiGetFileLogic,
+                                 flow_base.FlowBase):
+  args_type = rdf_paths.PathSpec
+
+  def Start(self):
+    super().Start()
+    self.state.stop_at_hash = True
+    self.StartFileFetch(self.args)
+
+  def ReceiveFileStat(self, stat_entry, request_data=None):
+    del stat_entry, request_data  # Unused.
+
+  def ReceiveFileHash(self, stat_entry, file_hash, request_data=None):
+    del stat_entry, file_hash, request_data  # Unused.
+
+  def ReceiveFetchedFile(self,
+                         stat_entry,
+                         file_hash,
+                         request_data=None,
+                         is_duplicate=False):
+    del stat_entry, file_hash, request_data, is_duplicate  # Unused.
+
+  def FileFetchFailed(self, pathspec, request_data=None, status=None):
+    del pathspec, request_data, status  # Unused.
+
+
+class MultiGetFileLogicTest(flow_test_lib.FlowTestsBaseclass):
+  """Test the MultiGetFileLogicTest base class using DummyMultiGetFileLogic."""
+
+  def setUp(self):
+    super().setUp()
+    self.client_id = self.SetupClient(0)
+    self.client_mock = action_mocks.MultiGetFileClientMock()
+
+  def testStatCallsStatReceiveFileStatOnly(self):
+    pathtype = rdf_paths.PathSpec.PathType.OS
+    path = os.path.join(self.base_path, "test_img.dd")
+
+    with mock.patch.object(DummyMultiGetFileLogicStat,
+                           "ReceiveFetchedFileStat") as dummy_fetched_stat:
+      with mock.patch.object(DummyMultiGetFileLogicStat,
+                             "ReceiveFetchedFileHash") as dummy_fetched_hash:
+        with mock.patch.object(DummyMultiGetFileLogicStat,
+                               "ReceiveFetchedFile") as dummy_fetched_file:
+          with mock.patch.object(DummyMultiGetFileLogicStat,
+                                 "FileFetchFailed") as mock_failure:
+            flow_test_lib.TestFlowHelper(
+                DummyMultiGetFileLogicStat.__name__,
+                self.client_mock,
+                creator=self.test_username,
+                client_id=self.client_id,
+                pathtype=pathtype,
+                path=path)
+
+            self.assertTrue(dummy_fetched_stat.called)
+            self.assertEqual(dummy_fetched_stat.call_args[0][0].pathspec.path,
+                             path)
+            self.assertEqual(
+                dummy_fetched_stat.call_args[0][0].pathspec.pathtype, pathtype)
+            self.assertFalse(dummy_fetched_hash.called)
+            self.assertFalse(dummy_fetched_file.called)
+            self.assertFalse(mock_failure.called)
+
+  def testStatCallsFileFetchFailed(self):
+    pathtype = rdf_paths.PathSpec.PathType.OS
+    path = os.path.join(self.base_path, "invalid.dd")
+
+    with mock.patch.object(DummyMultiGetFileLogicStat,
+                           "ReceiveFetchedFileStat") as dummy_fetched_stat:
+      with mock.patch.object(DummyMultiGetFileLogicStat,
+                             "ReceiveFetchedFileHash") as dummy_fetched_hash:
+        with mock.patch.object(DummyMultiGetFileLogicStat,
+                               "ReceiveFetchedFile") as dummy_fetched_file:
+          with mock.patch.object(DummyMultiGetFileLogicStat,
+                                 "FileFetchFailed") as mock_failure:
+            flow_test_lib.TestFlowHelper(
+                DummyMultiGetFileLogicStat.__name__,
+                self.client_mock,
+                creator=self.test_username,
+                client_id=self.client_id,
+                pathtype=pathtype,
+                path=path)
+
+            self.assertFalse(dummy_fetched_stat.called)
+            self.assertFalse(dummy_fetched_hash.called)
+            self.assertFalse(dummy_fetched_file.called)
+            self.assertTrue(mock_failure.called)
+            self.assertEqual(mock_failure.call_args[0][0].path, path)
+            self.assertEqual(mock_failure.call_args[0][0].pathtype, pathtype)
+
+  def testHashCallsReceiveFileHash(self):
+    pathtype = rdf_paths.PathSpec.PathType.OS
+    path = os.path.join(self.base_path, "test_img.dd")
+
+    with mock.patch.object(DummyMultiGetFileLogicHash,
+                           "ReceiveFetchedFileStat") as dummy_fetched_stat:
+      with mock.patch.object(DummyMultiGetFileLogicHash,
+                             "ReceiveFetchedFileHash") as dummy_fetched_hash:
+        with mock.patch.object(DummyMultiGetFileLogicHash,
+                               "ReceiveFetchedFile") as dummy_fetched_file:
+          with mock.patch.object(DummyMultiGetFileLogicHash,
+                                 "FileFetchFailed") as mock_failure:
+            flow_test_lib.TestFlowHelper(
+                DummyMultiGetFileLogicHash.__name__,
+                self.client_mock,
+                creator=self.test_username,
+                client_id=self.client_id,
+                pathtype=pathtype,
+                path=path)
+
+            self.assertTrue(dummy_fetched_stat.called)
+            self.assertTrue(dummy_fetched_hash.called)
+            self.assertEqual(dummy_fetched_hash.call_args[0][0].pathspec.path,
+                             path)
+            self.assertEqual(
+                dummy_fetched_hash.call_args[0][0].pathspec.pathtype, pathtype)
+            self.assertFalse(dummy_fetched_file.called)
+            self.assertFalse(mock_failure.called)
+
+  def testHashCallsFileFetchFailed(self):
+    pathtype = rdf_paths.PathSpec.PathType.OS
+    path = os.path.join(self.base_path, "invalid.dd")
+
+    with mock.patch.object(DummyMultiGetFileLogicHash,
+                           "ReceiveFetchedFileStat") as dummy_fetched_stat:
+      with mock.patch.object(DummyMultiGetFileLogicHash,
+                             "ReceiveFetchedFileHash") as dummy_fetched_hash:
+        with mock.patch.object(DummyMultiGetFileLogicHash,
+                               "ReceiveFetchedFile") as dummy_fetched_file:
+          with mock.patch.object(DummyMultiGetFileLogicHash,
+                                 "FileFetchFailed") as mock_failure:
+            flow_test_lib.TestFlowHelper(
+                DummyMultiGetFileLogicHash.__name__,
+                self.client_mock,
+                creator=self.test_username,
+                client_id=self.client_id,
+                pathtype=pathtype,
+                path=path)
+
+            self.assertFalse(dummy_fetched_stat.called)
+            self.assertFalse(dummy_fetched_hash.called)
+            self.assertFalse(dummy_fetched_file.called)
+            self.assertTrue(mock_failure.called)
+            self.assertEqual(mock_failure.call_args[0][0].path, path)
+            self.assertEqual(mock_failure.call_args[0][0].pathtype, pathtype)
+
+  def testFileCallsReceiveFetchedFile(self):
+    pathtype = rdf_paths.PathSpec.PathType.OS
+    path = os.path.join(self.base_path, "test_img.dd")
+
+    with mock.patch.object(DummyMultiGetFileLogic,
+                           "ReceiveFetchedFileStat") as dummy_fetched_stat:
+      with mock.patch.object(DummyMultiGetFileLogic,
+                             "ReceiveFetchedFileHash") as dummy_fetched_hash:
+        with mock.patch.object(DummyMultiGetFileLogic,
+                               "ReceiveFetchedFile") as dummy_fetched_file:
+          with mock.patch.object(DummyMultiGetFileLogic,
+                                 "FileFetchFailed") as mock_failure:
+            flow_test_lib.TestFlowHelper(
+                DummyMultiGetFileLogic.__name__,
+                self.client_mock,
+                creator=self.test_username,
+                client_id=self.client_id,
+                pathtype=pathtype,
+                path=path)
+
+            self.assertTrue(dummy_fetched_stat.called)
+            self.assertTrue(dummy_fetched_hash.called)
+            self.assertTrue(dummy_fetched_file.called)
+            self.assertEqual(dummy_fetched_file.call_args[0][0].pathspec.path,
+                             path)
+            self.assertEqual(
+                dummy_fetched_file.call_args[0][0].pathspec.pathtype, pathtype)
+            self.assertFalse(mock_failure.called)
+
+  def testFileCallsFileFetchFailed(self):
+    pathtype = rdf_paths.PathSpec.PathType.OS
+    path = os.path.join(self.base_path, "invalid.dd")
+
+    with mock.patch.object(DummyMultiGetFileLogic,
+                           "ReceiveFetchedFileStat") as dummy_fetched_stat:
+      with mock.patch.object(DummyMultiGetFileLogic,
+                             "ReceiveFetchedFileHash") as dummy_fetched_hash:
+        with mock.patch.object(DummyMultiGetFileLogic,
+                               "ReceiveFetchedFile") as dummy_fetched_file:
+          with mock.patch.object(DummyMultiGetFileLogic,
+                                 "FileFetchFailed") as mock_failure:
+            flow_test_lib.TestFlowHelper(
+                DummyMultiGetFileLogic.__name__,
+                self.client_mock,
+                creator=self.test_username,
+                client_id=self.client_id,
+                pathtype=pathtype,
+                path=path)
+
+            self.assertFalse(dummy_fetched_stat.called)
+            self.assertFalse(dummy_fetched_hash.called)
+            self.assertFalse(dummy_fetched_file.called)
+            self.assertTrue(mock_failure.called)
+            self.assertEqual(mock_failure.call_args[0][0].path, path)
+            self.assertEqual(mock_failure.call_args[0][0].pathtype, pathtype)
 
 
 def main(argv):

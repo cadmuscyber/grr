@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 """Clients-related part of GRR API client library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
-import collections
+from collections import abc
+from typing import Sequence
 
 from grr_api_client import flow
 from grr_api_client import utils
@@ -22,7 +20,7 @@ class ClientApprovalBase(object):
                approval_id=None,
                username=None,
                context=None):
-    super(ClientApprovalBase, self).__init__()
+    super().__init__()
 
     if not client_id:
       raise ValueError("client_id can't be empty.")
@@ -89,7 +87,7 @@ class ClientApproval(ClientApprovalBase):
     if data is None:
       raise ValueError("data can't be None")
 
-    super(ClientApproval, self).__init__(
+    super().__init__(
         client_id=utils.UrnStringToClientId(data.subject.urn),
         approval_id=data.id,
         username=username,
@@ -102,7 +100,7 @@ class ClientCrash(object):
   """Wrapper class for client crashes."""
 
   def __init__(self, data=None, context=None):
-    super(ClientCrash, self).__init__()
+    super().__init__()
 
     self.data = data
 
@@ -118,7 +116,7 @@ class ClientBase(object):
   """Base class for Client and ClientRef."""
 
   def __init__(self, client_id=None, context=None):
-    super(ClientBase, self).__init__()
+    super().__init__()
 
     if not client_id:
       raise ValueError("client_id can't be empty.")
@@ -233,7 +231,7 @@ class ClientBase(object):
       raise TypeError("'labels' argument is expected to be an "
                       "iterable of strings, not {!r}.".format(labels))
 
-    if not isinstance(labels, collections.Iterable):
+    if not isinstance(labels, abc.Iterable):
       raise TypeError(
           "Expected iterable container, but got {!r} instead.".format(labels))
 
@@ -275,6 +273,46 @@ class ClientBase(object):
     result = self._context.SendRequest("GetClient", args)
     return Client(data=result, context=self._context)
 
+  def KillFleetspeak(self, force: bool) -> None:
+    """Kills fleetspeak on the given client."""
+    args = client_pb2.ApiKillFleetspeakArgs()
+    args.client_id = self.client_id
+    args.force = force
+    self._context.SendRequest("KillFleetspeak", args)
+
+  def RestartFleetspeakGrrService(self) -> None:
+    """Restarts the GRR fleetspeak service on the given client."""
+    args = client_pb2.ApiRestartFleetspeakGrrServiceArgs()
+    args.client_id = self.client_id
+    self._context.SendRequest("RestartFleetspeakGrrService", args)
+
+  def DeleteFleetspeakPendingMessages(self) -> None:
+    """Deletes fleetspeak messages pending for the given client."""
+    args = client_pb2.ApiDeleteFleetspeakPendingMessagesArgs()
+    args.client_id = self.client_id
+    self._context.SendRequest("DeleteFleetspeakPendingMessages", args)
+
+  def GetFleetspeakPendingMessageCount(self) -> int:
+    """Returns the number of fleetspeak messages pending for the given client."""
+    args = client_pb2.ApiGetFleetspeakPendingMessageCountArgs()
+    args.client_id = self.client_id
+    result = self._context.SendRequest("GetFleetspeakPendingMessageCount", args)
+    return result.count
+
+  def GetFleetspeakPendingMessages(
+      self,
+      offset: int = 0,
+      limit: int = 0,
+      want_data: bool = False) -> Sequence[client_pb2.ApiFleetspeakMessage]:
+    """Returns messages pending for the given client."""
+    args = client_pb2.ApiGetFleetspeakPendingMessagesArgs()
+    args.client_id = self.client_id
+    args.offset = offset
+    args.limit = limit
+    args.want_data = want_data
+    result = self._context.SendRequest("GetFleetspeakPendingMessages", args)
+    return result.messages
+
 
 class ClientRef(ClientBase):
   """Ref to the client."""
@@ -291,7 +329,7 @@ class Client(ClientBase):
     if data is None:
       raise ValueError("data can't be None")
 
-    super(Client, self).__init__(
+    super().__init__(
         client_id=utils.UrnStringToClientId(data.urn), context=context)
 
     self.data = data

@@ -1,12 +1,11 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for fleetspeak_utils module."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+from unittest import mock
 
 from absl import app
-import mock
+
+from google.protobuf import timestamp_pb2
 
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_server import fleetspeak_connector
@@ -16,6 +15,7 @@ from grr.test_lib import test_lib
 from fleetspeak.src.common.proto.fleetspeak import common_pb2
 from fleetspeak.src.common.proto.fleetspeak import system_pb2 as fs_system_pb2
 from fleetspeak.src.server.proto.fleetspeak_server import admin_pb2
+from fleetspeak.src.server.proto.fleetspeak_server import resource_pb2
 
 _TEST_CLIENT_ID = "C.0000000000000001"
 
@@ -132,6 +132,79 @@ class FleetspeakUtilsTest(test_lib.GRRBaseTest):
     restart_req = fs_system_pb2.RestartServiceRequest()
     fs_message.data.Unpack(restart_req)
     self.assertEqual(restart_req.name, "GRR")
+
+  @mock.patch.object(fleetspeak_connector, "CONN")
+  def testDeleteFleetspeakPendingMessages(self, mock_conn):
+    fleetspeak_utils.DeleteFleetspeakPendingMessages("C.1000000000000000")
+
+    mock_conn.outgoing.DeletePendingMessages.assert_called_once()
+    delete_args, _ = mock_conn.outgoing.DeletePendingMessages.call_args
+
+    delete_req = delete_args[0]
+    self.assertSameElements(delete_req.client_ids,
+                            [b"\x10\x00\x00\x00\x00\x00\x00\x00"])
+
+  def testGetFleetspeakPendingMessageCount(self):
+    conn = mock.MagicMock()
+    conn.outgoing.GetPendingMessageCount.return_value = admin_pb2.GetPendingMessageCountResponse(
+        count=42)
+    with mock.patch.object(fleetspeak_connector, "CONN", conn):
+      count = fleetspeak_utils.GetFleetspeakPendingMessageCount(
+          "C.1000000000000000")
+      self.assertEqual(count, 42)
+      get_args, _ = conn.outgoing.GetPendingMessageCount.call_args
+      get_req = get_args[0]
+      self.assertSameElements(get_req.client_ids,
+                              [b"\x10\x00\x00\x00\x00\x00\x00\x00"])
+
+  def testGetFleetspeakPendingMessages(self):
+    conn = mock.MagicMock()
+    proto_response = admin_pb2.GetPendingMessagesResponse(
+        messages=[common_pb2.Message(message_id=b"foo")])
+    conn.outgoing.GetPendingMessages.return_value = proto_response
+    with mock.patch.object(fleetspeak_connector, "CONN", conn):
+      result = fleetspeak_utils.GetFleetspeakPendingMessages(
+          "C.1000000000000000", 1, 2, True)
+      self.assertEqual(result, proto_response)
+      get_args, _ = conn.outgoing.GetPendingMessages.call_args
+      get_req = get_args[0]
+      self.assertSameElements(get_req.client_ids,
+                              [b"\x10\x00\x00\x00\x00\x00\x00\x00"])
+      self.assertEqual(get_req.offset, 1)
+      self.assertEqual(get_req.limit, 2)
+      self.assertEqual(get_req.want_data, True)
+
+  def testFetchClientResourceUsageRecords(self):
+    conn = mock.MagicMock()
+    conn.outgoing.FetchClientResourceUsageRecords.return_value = admin_pb2.FetchClientResourceUsageRecordsResponse(
+        records=[{
+            "mean_user_cpu_rate": 1,
+            "max_system_cpu_rate": 2
+        }, {
+            "mean_user_cpu_rate": 4,
+            "max_system_cpu_rate": 8
+        }])
+    with mock.patch.object(fleetspeak_connector, "CONN", conn):
+      expected_records_list = [
+          resource_pb2.ClientResourceUsageRecord(
+              mean_user_cpu_rate=1, max_system_cpu_rate=2),
+          resource_pb2.ClientResourceUsageRecord(
+              mean_user_cpu_rate=4, max_system_cpu_rate=8)
+      ]
+      arbitrary_date = timestamp_pb2.Timestamp(seconds=1, nanos=1)
+      self.assertListEqual(
+          fleetspeak_utils.FetchClientResourceUsageRecords(
+              client_id=_TEST_CLIENT_ID,
+              start_range=arbitrary_date,
+              end_range=arbitrary_date), expected_records_list)
+      conn.outgoing.FetchClientResourceUsageRecords.assert_called_once()
+      args, _ = conn.outgoing.FetchClientResourceUsageRecords.call_args
+      self.assertEqual(
+          args[0],
+          admin_pb2.FetchClientResourceUsageRecordsRequest(
+              client_id=fleetspeak_utils.GRRIDToFleetspeakID(_TEST_CLIENT_ID),
+              start_timestamp=arbitrary_date,
+              end_timestamp=arbitrary_date))
 
 
 def main(argv):

@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Message handlers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 
@@ -28,16 +24,10 @@ session_id_map = {
 }
 
 
-
 class MessageHandler(object):
   """The base class for all message handlers."""
 
   handler_name = ""
-
-  def __init__(self, token=None):
-    # TODO(amoser): Get rid of the token once well known flows don't
-    # write to aff4 anymore.
-    self.token = token
 
   def ProcessMessages(self, msgs):
     """This is where messages get processed.

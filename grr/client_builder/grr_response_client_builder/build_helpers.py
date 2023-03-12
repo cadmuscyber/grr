@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 """Helper functions used by client building/repacking process."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import io
 import logging
@@ -14,6 +11,8 @@ import tempfile
 
 
 from typing import Optional, Sequence, Text, Tuple
+
+import yaml
 
 from grr_response_client_builder import build
 from grr_response_core import config
@@ -27,7 +26,6 @@ from grr_response_core.lib import utils
 from grr_response_core.lib.local import plugins
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
-from grr_response_core.lib.util.compat import yaml
 # pylint: enable=unused-import
 
 # pylint: disable=g-import-not-at-top,unused-import
@@ -223,7 +221,7 @@ def WriteBuildYaml(fd, build_timestamp=True, context=None):
     if v is None:
       raise RuntimeError("Bad build.yaml: expected %s to be not None" % k)
 
-  fd.write(yaml.Dump(output))
+  fd.write(yaml.safe_dump(output))
 
 
 def ValidateEndConfig(config_obj, errors_fatal=True, context=None):

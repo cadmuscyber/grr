@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for an ApiLabelsRestrictedCallRouter."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -11,6 +7,7 @@ from grr_response_server import access_control
 from grr_response_server import data_store
 
 from grr_response_server.flows.general import processes
+from grr_response_server.gui import api_call_context
 from grr_response_server.gui import api_labels_restricted_call_router as api_router
 from grr_response_server.gui.api_plugins import client as api_client
 from grr_response_server.gui.api_plugins import flow as api_flow
@@ -23,11 +20,13 @@ class CheckClientLabelsTest(test_lib.GRRBaseTest):
   """Tests for CheckClientLabels function."""
 
   def setUp(self):
-    super(CheckClientLabelsTest, self).setUp()
+    super().setUp()
     self.client_id = self.SetupClient(0)
 
-    self.labels_whitelist = ["foo"]
-    self.labels_owners_whitelist = ["GRR"]
+    self.allow_labels = ["foo"]
+
+    data_store.REL_DB.WriteGRRUser("GRR")
+    self.allow_labels_owners = ["GRR"]
 
   def _AddLabel(self, name, owner=None):
     data_store.REL_DB.AddClientLabels(self.client_id, owner, [name])
@@ -37,9 +36,8 @@ class CheckClientLabelsTest(test_lib.GRRBaseTest):
 
     api_router.CheckClientLabels(
         self.client_id,
-        labels_whitelist=self.labels_whitelist,
-        labels_owners_whitelist=self.labels_owners_whitelist,
-        token=self.token)
+        allow_labels=self.allow_labels,
+        allow_labels_owners=self.allow_labels_owners)
 
   def testDoesNotRaiseWhenLabelMatchesAmongManyLabels(self):
     self._AddLabel("bar", owner="GRR")
@@ -49,9 +47,8 @@ class CheckClientLabelsTest(test_lib.GRRBaseTest):
 
     api_router.CheckClientLabels(
         self.client_id,
-        labels_whitelist=self.labels_whitelist,
-        labels_owners_whitelist=self.labels_owners_whitelist,
-        token=self.token)
+        allow_labels=self.allow_labels,
+        allow_labels_owners=self.allow_labels_owners)
 
   def testRaisesWhenLabelDoesNotMatch(self):
     self._AddLabel("bar", owner="GRR")
@@ -59,9 +56,8 @@ class CheckClientLabelsTest(test_lib.GRRBaseTest):
     with self.assertRaises(access_control.UnauthorizedAccess):
       api_router.CheckClientLabels(
           self.client_id,
-          labels_whitelist=self.labels_whitelist,
-          labels_owners_whitelist=self.labels_owners_whitelist,
-          token=self.token)
+          allow_labels=self.allow_labels,
+          allow_labels_owners=self.allow_labels_owners)
 
   def testRaisesWhenLabelDoesNotMatchAmongManyLabels(self):
     self._AddLabel("foo1", owner="GRR")
@@ -72,19 +68,18 @@ class CheckClientLabelsTest(test_lib.GRRBaseTest):
     with self.assertRaises(access_control.UnauthorizedAccess):
       api_router.CheckClientLabels(
           self.client_id,
-          labels_whitelist=self.labels_whitelist,
-          labels_owners_whitelist=self.labels_owners_whitelist,
-          token=self.token)
+          allow_labels=self.allow_labels,
+          allow_labels_owners=self.allow_labels_owners)
 
   def testRaisesIfOwnerDoesNotMatch(self):
+    data_store.REL_DB.WriteGRRUser("GRRother")
     self._AddLabel("foo", owner="GRRother")
 
     with self.assertRaises(access_control.UnauthorizedAccess):
       api_router.CheckClientLabels(
           self.client_id,
-          labels_whitelist=self.labels_whitelist,
-          labels_owners_whitelist=self.labels_owners_whitelist,
-          token=self.token)
+          allow_labels=self.allow_labels,
+          allow_labels_owners=self.allow_labels_owners)
 
 
 class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
@@ -134,7 +129,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
 
     for method_name, args in self.checks.items():
       try:
-        handler = getattr(router, method_name)(args, token=self.token)
+        handler = getattr(router, method_name)(args, context=self.context)
         result[method_name] = (True, handler)
       except (access_control.UnauthorizedAccess, NotImplementedError) as e:
         result[method_name] = (False, e)
@@ -142,12 +137,15 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
     return result
 
   def setUp(self):
-    super(ApiLabelsRestrictedCallRouterTest, self).setUp()
+    super().setUp()
 
     self.client_id = self.SetupClient(0)
+
+    data_store.REL_DB.WriteGRRUser("GRR")
     data_store.REL_DB.AddClientLabels(self.client_id, "GRR", ["foo"])
 
     self.hunt_id = "H:123456"
+    self.context = api_call_context.ApiCallContext("test")
 
     c = api_router.ApiLabelsRestrictedCallRouter
 
@@ -270,7 +268,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
 
   def testReturnsCustomHandlerForSearchClients(self):
     router = api_router.ApiLabelsRestrictedCallRouter()
-    handler = router.SearchClients(None, token=self.token)
+    handler = router.SearchClients(None, context=self.context)
     self.assertIsInstance(handler,
                           api_client.ApiLabelsRestrictedSearchClientsHandler)
 
@@ -285,7 +283,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
 
   def testWithoutFlowsWithoutVfsAndUnapprovedClientWithWrongLabelName(self):
     params = api_router.ApiLabelsRestrictedCallRouterParams(
-        labels_whitelist=["bar"])
+        allow_labels=["bar"])
     router = api_router.ApiLabelsRestrictedCallRouter(params=params)
 
     self.CheckOnlyFollowingMethodsArePermitted(router, [
@@ -295,7 +293,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
 
   def testWithoutFlowsWithoutVfsAndUnapprovedClientWithWrongLabelOwner(self):
     params = api_router.ApiLabelsRestrictedCallRouterParams(
-        labels_whitelist=["foo"], labels_owners_whitelist=["somebody"])
+        allow_labels=["foo"], allow_labels_owners=["somebody"])
     router = api_router.ApiLabelsRestrictedCallRouter(params=params)
 
     self.CheckOnlyFollowingMethodsArePermitted(router, [
@@ -305,7 +303,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
 
   def testWithoutFlowsWithoutVfsAndSingleProperlyLabeledUnapprovedClient(self):
     params = api_router.ApiLabelsRestrictedCallRouterParams(
-        labels_whitelist=["foo"])
+        allow_labels=["foo"])
     router = api_router.ApiLabelsRestrictedCallRouter(params=params)
 
     self.CheckOnlyFollowingMethodsArePermitted(router, [
@@ -322,7 +320,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
     self.RequestAndGrantClientApproval(self.client_id)
 
     params = api_router.ApiLabelsRestrictedCallRouterParams(
-        labels_whitelist=["foo"])
+        allow_labels=["foo"])
     router = api_router.ApiLabelsRestrictedCallRouter(params=params)
     self.CheckOnlyFollowingMethodsArePermitted(router, [
         "SearchClients",
@@ -351,7 +349,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
 
   def testWithoutFlowsWithVfsAndSingleProperlyLabeledUnapprovedClient(self):
     params = api_router.ApiLabelsRestrictedCallRouterParams(
-        labels_whitelist=["foo"], allow_vfs_access=True)
+        allow_labels=["foo"], allow_vfs_access=True)
     router = api_router.ApiLabelsRestrictedCallRouter(params=params)
 
     self.CheckOnlyFollowingMethodsArePermitted(router, [
@@ -372,7 +370,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
     self.RequestAndGrantClientApproval(self.client_id)
 
     params = api_router.ApiLabelsRestrictedCallRouterParams(
-        labels_whitelist=["foo"], allow_vfs_access=True)
+        allow_labels=["foo"], allow_vfs_access=True)
     router = api_router.ApiLabelsRestrictedCallRouter(params=params)
 
     self.CheckOnlyFollowingMethodsArePermitted(router, [
@@ -411,7 +409,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
 
   def testWithFlowsWithoutVfsAndSingleProperlyLabeledUnapprovedClient(self):
     params = api_router.ApiLabelsRestrictedCallRouterParams(
-        labels_whitelist=["foo"], allow_flows_access=True)
+        allow_labels=["foo"], allow_flows_access=True)
     router = api_router.ApiLabelsRestrictedCallRouter(params=params)
 
     self.CheckOnlyFollowingMethodsArePermitted(router, [
@@ -428,7 +426,7 @@ class ApiLabelsRestrictedCallRouterTest(test_lib.GRRBaseTest,
     self.RequestAndGrantClientApproval(self.client_id)
 
     params = api_router.ApiLabelsRestrictedCallRouterParams(
-        labels_whitelist=["foo"], allow_flows_access=True)
+        allow_labels=["foo"], allow_flows_access=True)
     router = api_router.ApiLabelsRestrictedCallRouter(params=params)
 
     self.CheckOnlyFollowingMethodsArePermitted(router, [

@@ -2,6 +2,7 @@ syntax = "proto2";
 
 import "grr_response_proto/semantic.proto";
 
+package grr;
 
 message AdminUIClientWarningsConfigOption {
   repeated AdminUIClientWarningRule rules = 1;

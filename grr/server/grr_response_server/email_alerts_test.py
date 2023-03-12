@@ -1,12 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for grr.lib.email_alerts."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_core.lib.rdfvalues import standard as rdf_standard
 from grr_response_server import email_alerts
@@ -16,7 +13,7 @@ from grr.test_lib import test_lib
 class SendEmailTests(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super(SendEmailTests, self).setUp()
+    super().setUp()
     # We have to stop mail_stubber, otherwise email_alerts.EMAIL_ALERTER will
     # be just a stub and there will be nothing to test.
     self.mail_stubber.Stop()

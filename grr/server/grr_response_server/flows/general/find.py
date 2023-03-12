@@ -1,13 +1,8 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Find files on the client."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_core.lib.util import compatibility
 from grr_response_proto import flows_pb2
 from grr_response_server import data_store
 from grr_response_server import flow_base
@@ -79,7 +74,7 @@ class FindFiles(flow_base.FlowBase):
     self.CallClient(
         server_stubs.Find,
         self.args.findspec,
-        next_state=compatibility.GetName(self.StoreResults))
+        next_state=self.StoreResults.__name__)
 
   def StoreResults(self, responses):
     """Stores the results returned from the client."""

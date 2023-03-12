@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """AFF4 RDFValue implementations.
 
 This module contains all RDFValue implementations.
@@ -10,13 +8,9 @@ RDFValue class, regardless of where they are defined. To do this reliably, these
 implementations must be imported _before_ the relevant classes are referenced
 from this module.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import abc
 import calendar
-import collections
 import datetime
 import functools
 import logging
@@ -31,7 +25,6 @@ from dateutil import parser
 
 from grr_response_core.lib import registry
 from grr_response_core.lib import utils
-from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 from grr_response_core.lib.util import random
 from grr_response_core.lib.util import text
@@ -109,14 +102,12 @@ class RDFValue(metaclass=RDFValueMetaclass):  # pylint: disable=invalid-metaclas
   @classmethod
   def FromWireFormat(cls, value):
     raise NotImplementedError(
-        "Class {} does not implement FromWireFormat.".format(
-            compatibility.GetName(cls)))
+        "Class {} does not implement FromWireFormat.".format(cls.__name__))
 
   @classmethod
   def FromSerializedBytes(cls, value: bytes):
     raise NotImplementedError(
-        "Class {} does not implement FromSerializedBytes.".format(
-            compatibility.GetName(cls)))
+        "Class {} does not implement FromSerializedBytes.".format(cls.__name__))
 
   # TODO: Remove legacy SerializeToWireFormat.
   def SerializeToWireFormat(self):
@@ -146,7 +137,7 @@ class RDFValue(metaclass=RDFValueMetaclass):  # pylint: disable=invalid-metaclas
           "of RDFStructs as members of sets or keys of dicts is discouraged. "
           "If used anyway, mutating is prohibited, because it causes the hash "
           "to change. Be aware that accessing unset fields can trigger a "
-          "mutation.".format(compatibility.GetName(type(self))))
+          "mutation.".format(type(self).__name__))
     else:
       self._prev_hash = new_hash
       return new_hash
@@ -154,22 +145,18 @@ class RDFValue(metaclass=RDFValueMetaclass):  # pylint: disable=invalid-metaclas
   def __bool__(self):
     return bool(self._value)
 
-  # TODO: Remove after support for Python 2 is dropped.
-  __nonzero__ = __bool__
-
-  def __str__(self):  # pylint: disable=super-on-old-class
+  def __str__(self):
     """Ignores the __repr__ override below to avoid indefinite recursion."""
-    return super(RDFValue, self).__repr__()
+    return super().__repr__()
 
   def __repr__(self):
     content = str(self)
 
     # Note %r, which prevents nasty nonascii characters from being printed,
     # including dangerous terminal escape sequences.
-    return "<%s(%r)>" % (compatibility.GetName(self.__class__), content)
+    return "<%s(%r)>" % (self.__class__.__name__, content)
 
 
-# TODO(user): Replace `RDFValue.classes` with a function in serialization.py.
 RDFValue.classes["bool"] = bool
 RDFValue.classes["RDFBool"] = bool
 
@@ -195,8 +182,7 @@ class RDFPrimitive(RDFValue):
       string: An `unicode` value to initialize the object from.
     """
     raise NotImplementedError(
-        "Class {} does not implement FromHumanReadable.".format(
-            compatibility.GetName(cls)))
+        "Class {} does not implement FromHumanReadable.".format(cls.__name__))
 
 
 @functools.total_ordering
@@ -475,11 +461,6 @@ class RDFInteger(RDFPrimitive):
   def __mul__(self, other):
     return self._value * other
 
-  # TODO: There are no `__rop__` methods in Python 3 so all of
-  # these should be removed. Also, in general it should not be possible to add
-  # two values with incompatible types (e.g. `RDFInteger` and `int`). Sadly,
-  # currently a lot of code depends on this behaviour but it should be changed
-  # in the future.
   def __rmul__(self, other):
     return self._value * other
 
@@ -544,16 +525,20 @@ class RDFDatetime(RDFPrimitive):
     precondition.AssertType(fmt, Text)
 
     stime = time.gmtime(self._value / self.converter)
-    return compatibility.FormatTime(fmt, stime)
+    return time.strftime(fmt, stime)
 
   def __str__(self) -> Text:
     """Return the date in human readable (UTC)."""
     # TODO: Display microseconds if applicable.
     return self.Format("%Y-%m-%d %H:%M:%S")
 
-  def AsDatetime(self):
-    """Return the time as a python datetime object."""
+  def AsDatetime(self) -> datetime.datetime:
+    """Returns the datetime as Python `datetime` without any timezone set."""
     return datetime.datetime.utcfromtimestamp(self._value / self.converter)
+
+  def AsDatetimeUTC(self) -> datetime.datetime:
+    """Returns the datetime as a Python `datetime` with UTC timezone."""
+    return self.AsDatetime().replace(tzinfo=datetime.timezone.utc)
 
   def AsSecondsSinceEpoch(self):
     return self._value // self.converter
@@ -704,6 +689,11 @@ class RDFDatetime(RDFPrimitive):
   def __int__(self):
     return self._value
 
+  def AbsDiff(self, other: "RDFDatetime") -> "Duration":
+    if self > other:
+      return self - other
+    return other - self
+
 
 class RDFDatetimeSeconds(RDFDatetime):
   """A DateTime class which is stored in whole seconds."""
@@ -731,9 +721,15 @@ class Duration(RDFPrimitive):
   """
   protobuf_type = "unsigned_integer"
 
-  _DIVIDERS = collections.OrderedDict(
-      (("w", WEEKS), ("d", DAYS), ("h", HOURS), ("m", MINUTES), ("s", SECONDS),
-       ("ms", MILLISECONDS), ("us", MICROSECONDS)))
+  _DIVIDERS = dict((
+      ("w", WEEKS),
+      ("d", DAYS),
+      ("h", HOURS),
+      ("m", MINUTES),
+      ("s", SECONDS),
+      ("ms", MILLISECONDS),
+      ("us", MICROSECONDS),
+  ))
 
   def __init__(self, initializer=None):
     """Instantiates a new microsecond-based Duration.
@@ -744,9 +740,13 @@ class Duration(RDFPrimitive):
         absolute (positive) value will be stored.
     """
     if isinstance(initializer, Duration):
-      super().__init__(abs(initializer.microseconds))
+      if initializer.microseconds < 0:
+        raise ValueError("Negative Duration (%s ms)" % initializer.microseconds)
+      super().__init__(initializer.microseconds)
     elif isinstance(initializer, (int, RDFInteger)):
-      super().__init__(abs(int(initializer)))
+      if int(initializer) < 0:
+        raise ValueError("Negative Duration (%s s)" % initializer)
+      super().__init__(int(initializer))
     elif isinstance(initializer, Text):
       super().__init__(self._ParseText(initializer, default_unit=None))
     elif initializer is None:
@@ -806,7 +806,7 @@ class Duration(RDFPrimitive):
     return str(self.microseconds).encode("utf-8")
 
   def __repr__(self):
-    return "<{} {}>".format(compatibility.GetName(type(self)), self)
+    return "<{} {}>".format(type(self).__name__, self)
 
   def __str__(self) -> Text:
     if self._value == 0:
@@ -931,10 +931,10 @@ class Duration(RDFPrimitive):
 
     try:
       unit_multiplier = cls._DIVIDERS[unit_string]
-    except KeyError:
+    except KeyError as ex:
       raise ValueError(
           "Invalid unit {!r} for duration in {!r}. Expected any of {}.".format(
-              unit_string, string, ", ".join(cls._DIVIDERS)))
+              unit_string, string, ", ".join(cls._DIVIDERS))) from ex
 
     return number * unit_multiplier
 
@@ -974,7 +974,7 @@ class DurationSeconds(Duration):
   def __str__(self) -> Text:
     if self.microseconds == 0:
       return "0 s"
-    return super(DurationSeconds, self).__str__()
+    return super().__str__()
 
   @classmethod
   def From(cls, value: Union[int, float], timeunit: int):
@@ -1051,7 +1051,8 @@ class ByteSize(RDFInteger):
     if not multiplier:
       raise DecodeError("Invalid multiplier %s" % match.group(2))
 
-    # The value may be represented as a float, but if not dont lose accuracy.
+    # The value may be represented as a float, but if it's not, don't lose
+    # accuracy.
     value = match.group(1)
     if "." in value:
       value = float(value)
@@ -1175,9 +1176,6 @@ class RDFURN(RDFPrimitive):
   def __bool__(self):
     return bool(self._value)
 
-  # TODO: Remove after support for Python 2 is dropped.
-  __nonzero__ = __bool__
-
   def __lt__(self, other):
     return self._value < other
 
@@ -1233,7 +1231,7 @@ class RDFURN(RDFPrimitive):
 
 
 class Subject(RDFURN):
-  """A psuedo attribute representing the subject of an AFF4 object."""
+  """A pseudo attribute representing the subject of an AFF4 object."""
 
 
 DEFAULT_FLOW_QUEUE = RDFURN("F")

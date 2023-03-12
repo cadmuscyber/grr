@@ -1,17 +1,12 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Fleetspeak-facing client related functionality.
 
 This module contains glue code necessary for Fleetspeak and the GRR client
 to work together.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 import pdb
-import platform
 import queue
 import struct
 import threading
@@ -20,8 +15,8 @@ import time
 from absl import flags
 
 from grr_response_client import comms
+from grr_response_client import communicator
 from grr_response_core import config
-from grr_response_core.lib import communicator
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
@@ -33,7 +28,7 @@ from fleetspeak.client_connector import connector as fs_client
 
 START_STRING = "Starting client."
 
-# //depot/grr_response_client/comms.py)
+# /grr_response_client/comms.py)
 # pyformat: enable
 
 # Limit on the total size of GrrMessages to batch into a single
@@ -50,6 +45,10 @@ _DATA_IDS_ANNOTATION_KEY = "data_ids"
 
 
 class FatalError(Exception):
+  pass
+
+
+class BrokenFSConnectionError(Exception):
   pass
 
 
@@ -70,25 +69,17 @@ class GRRFleetspeakClient(object):
 
     self._threads = {}
 
-    if platform.system() == "Windows":
-      internal_nanny_monitoring = False
-      heart_beat_cb = self._fs.Heartbeat
-    else:
-      # TODO(amoser): Once the Fleetspeak nanny functionality is
-      # production ready, change this to
-      # internal_nanny_monitoring=False
-      # heart_beat_cb=self._fs.Heartbeat
-      internal_nanny_monitoring = True
-      heart_beat_cb = None
-
     # The client worker does all the real work here.
     # In particular, we delegate sending messages to Fleetspeak to a separate
     # threading.Thread here.
-    self._threads["Worker"] = comms.GRRClientWorker(
-        out_queue=_FleetspeakQueueForwarder(self._sender_queue),
-        heart_beat_cb=heart_beat_cb,
-        internal_nanny_monitoring=internal_nanny_monitoring,
-        client=self)
+    out_queue = _FleetspeakQueueForwarder(self._sender_queue)
+    worker = self._threads["Worker"] = comms.GRRClientWorker(
+        out_queue=out_queue, heart_beat_cb=self._fs.Heartbeat, client=self)
+    # TODO(user): this is an ugly way of passing the heartbeat callback to
+    # the queue. Refactor the heartbeat callback initialization logic so that
+    # this won't be needed.
+    out_queue.heart_beat_cb = worker.Heartbeat
+
     self._threads["Foreman"] = self._CreateThread(self._ForemanOp)
     self._threads["Sender"] = self._CreateThread(self._SendOp)
     self._threads["Receiver"] = self._CreateThread(self._ReceiveOp)
@@ -99,9 +90,14 @@ class GRRFleetspeakClient(object):
     return thread
 
   def _RunInLoop(self, loop_op):
+    """Runs the loop_op function in an endless loop."""
     while True:
       try:
         loop_op()
+      except BrokenFSConnectionError as e:
+        # This happens during Fleetspeak shutdown and was already logged in the
+        # receiver thread so we skip the additional stack trace here.
+        raise e
       except Exception as e:
         logging.critical("Fatal error occurred:", exc_info=True)
         if flags.FLAGS.pdb_post_mortem:
@@ -120,7 +116,7 @@ class GRRFleetspeakClient(object):
 
     while True:
       dead_threads = [
-          tn for (tn, t) in self._threads.items() if not t.isAlive()
+          tn for (tn, t) in self._threads.items() if not t.is_alive()
       ]
       if dead_threads:
         raise FatalError(
@@ -203,9 +199,9 @@ class GRRFleetspeakClient(object):
     """Receives a single message through Fleetspeak."""
     try:
       fs_msg, received_bytes = self._fs.Recv()
-    except (IOError, struct.error):
+    except (IOError, struct.error) as e:
       logging.critical("Broken local Fleetspeak connection (read end).")
-      raise
+      raise BrokenFSConnectionError() from e
 
     received_type = fs_msg.data.TypeName()
     if not received_type.endswith("GrrMessage"):
@@ -232,9 +228,23 @@ class _FleetspeakQueueForwarder(object):
       sender_queue: queue.Queue
     """
     self._sender_queue = sender_queue
+    self.heart_beat_cb = lambda: None
 
-  def Put(self, grr_msg, **_):
-    self._sender_queue.put(grr_msg)
+  def Put(self, grr_msg, block=True, timeout=None):
+    """Places a message in the queue."""
+    if not block:
+      self._sender_queue.put(grr_msg, block=False)
+    else:
+      t0 = time.time()
+      while not timeout or (time.time() - t0 < timeout):
+        self.heart_beat_cb()
+        try:
+          self._sender_queue.put(grr_msg, timeout=1)
+          return
+        except queue.Full:
+          continue
+
+      raise queue.Full
 
   def Get(self):
     raise NotImplementedError("This implementation only supports input.")

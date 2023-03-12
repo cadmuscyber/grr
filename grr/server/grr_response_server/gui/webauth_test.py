@@ -1,23 +1,18 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests for the web auth managers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import base64
+from unittest import mock
 
 from absl import app
-import mock
 import requests
 
 from werkzeug import test as werkzeug_test
-from werkzeug import wrappers as werkzeug_wrappers
 
 from google.oauth2 import id_token
 
 from grr_response_server import data_store
+from grr_response_server.gui import http_response
 from grr_response_server.gui import validate_iap
 from grr_response_server.gui import webauth
 from grr_response_server.gui import wsgiapp
@@ -27,10 +22,10 @@ from grr.test_lib import test_lib
 class RemoteUserWebAuthManagerTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super(RemoteUserWebAuthManagerTest, self).setUp()
+    super().setUp()
 
     self.manager = webauth.RemoteUserWebAuthManager()
-    self.success_response = werkzeug_wrappers.Response("foobar")
+    self.success_response = http_response.HttpResponse("foobar")
 
   def HandlerStub(self, request, *args, **kwargs):
     del request, args, kwargs  # Unused.
@@ -112,7 +107,7 @@ class RemoteUserWebAuthManagerTest(test_lib.GRRBaseTest):
 class FirebaseWebAuthManagerTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super(FirebaseWebAuthManagerTest, self).setUp()
+    super().setUp()
 
     config_overrider = test_lib.ConfigOverrider({
         "AdminUI.firebase_auth_domain": "foo-bar.firebaseapp.com",
@@ -122,7 +117,7 @@ class FirebaseWebAuthManagerTest(test_lib.GRRBaseTest):
     self.addCleanup(config_overrider.Stop)
 
     self.manager = webauth.FirebaseWebAuthManager()
-    self.success_response = werkzeug_wrappers.Response("foobar")
+    self.success_response = http_response.HttpResponse("foobar")
 
     self.checked_request = None
 
@@ -249,7 +244,7 @@ class IAPWebAuthManagerTest(test_lib.GRRBaseTest):
     def Handler(request, *args, **kwargs):
       del request, args, kwargs  # Unused.
 
-      return werkzeug_wrappers.Response("foobar", status=200)
+      return http_response.HttpResponse("foobar", status=200)
 
     manager = webauth.IAPWebAuthManager()
     response = manager.SecurityCheck(Handler, request)
@@ -317,7 +312,7 @@ class IAPWebAuthManagerTest(test_lib.GRRBaseTest):
       del args, kwargs  # Unused.
 
       self.assertEqual(request.user, "temp")
-      return werkzeug_wrappers.Response("success", status=200)
+      return http_response.HttpResponse("success", status=200)
 
     manager = webauth.IAPWebAuthManager()
     response = manager.SecurityCheck(Handler, request)
@@ -351,7 +346,7 @@ class BasicWebAuthManagerTest(test_lib.GRRBaseTest):
       del args, kwargs  # Unused.
 
       self.assertEqual(request.user, user)
-      return werkzeug_wrappers.Response(b"foobar", status=200)
+      return http_response.HttpResponse(b"foobar", status=200)
 
     manager = webauth.BasicWebAuthManager()
     response = manager.SecurityCheck(Handler, request)

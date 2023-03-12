@@ -1,14 +1,11 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Test of "New Hunt" wizard."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 from selenium.webdriver.common import keys
 
 from grr_response_core.lib import rdfvalue
+from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_server import data_store
 from grr_response_server import foreman
@@ -26,7 +23,7 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
   """Test the "new hunt wizard" GUI."""
 
   @staticmethod
-  def FindForemanRules(hunt_urn, token):
+  def FindForemanRules(hunt_urn):
     rules = data_store.REL_DB.ReadAllForemanRules()
     return [rule for rule in rules if rule.hunt_id == hunt_urn.Basename()]
 
@@ -63,7 +60,7 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
     self.Select(
         "css=grr-new-hunt-wizard-form "
         "grr-form-proto-single-field:has(label:contains('Pathtype')) "
-        "select", "TSK")
+        "select", "NTFS")
 
     # Click on "Next" button
     self.Click("css=grr-new-hunt-wizard-form button.Next")
@@ -92,7 +89,7 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
             "grr-form-proto-repeated-field:has(label:contains('Paths')) input"))
 
     self.assertEqual(
-        "TSK",
+        "NTFS",
         self.GetSelectedLabel(
             "css=grr-new-hunt-wizard-form "
             "grr-form-proto-single-field:has(label:contains('Pathtype')) select"
@@ -263,9 +260,10 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
 
     self.assertEqual(hunt.args.standard.flow_name,
                      file_finder.FileFinder.__name__)
-    self.assertEqual(hunt.args.standard.flow_args.paths[0], "/tmp")
-    self.assertEqual(hunt.args.standard.flow_args.pathtype,
-                     rdf_paths.PathSpec.PathType.TSK)
+
+    args = hunt.args.standard.flow_args.Unpack(rdf_file_finder.FileFinderArgs)
+    self.assertEqual(args.paths[0], "/tmp")
+    self.assertEqual(args.pathtype, rdf_paths.PathSpec.PathType.NTFS)
     # self.assertEqual(hunt.args.flow_args.ignore_errors, True)
     self.assertEqual(hunt.output_plugins[0].plugin_name, "DummyOutputPlugin")
 
@@ -275,12 +273,12 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
     lib_hunt.StartHunt(hunt.hunt_id)
 
     hunt_rules = self.FindForemanRules(
-        rdfvalue.RDFURN("hunts").Add(hunt.hunt_id), token=self.token)
+        rdfvalue.RDFURN("hunts").Add(hunt.hunt_id))
 
     # Check that the hunt was created with correct rules
     self.assertLen(hunt_rules, 1)
-    lifetime = hunt_rules[0].GetLifetime()
-    lifetime -= rdfvalue.Duration.From(2, rdfvalue.WEEKS)
+    lifetime = rdfvalue.Duration.From(2, rdfvalue.WEEKS)
+    lifetime -= hunt_rules[0].GetLifetime()
     self.assertLessEqual(lifetime, rdfvalue.Duration.From(1, rdfvalue.SECONDS))
 
     r = hunt_rules[0].client_rule_set
@@ -395,9 +393,10 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
     hunt = hunts_list[0]
     self.assertEqual(hunt.args.standard.flow_name,
                      file_finder.FileFinder.__name__)
-    self.assertEqual(
-        hunt.args.standard.flow_args.conditions[0].contents_literal_match
-        .literal, b"foo\x0d\xc8bar")
+
+    args = hunt.args.standard.flow_args.Unpack(rdf_file_finder.FileFinderArgs)
+    self.assertEqual(args.conditions[0].contents_literal_match.literal,
+                     b"foo\x0d\xc8bar")
 
   def testOutputPluginsListEmptyWhenNoDefaultOutputPluginSet(self):
     self.Open("/#main=ManageHunts")
@@ -444,6 +443,9 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
   def testLabelsHuntRuleDisplaysAvailableLabels(self):
     client_id = self.SetupClient(0)
 
+    data_store.REL_DB.WriteGRRUser("owner1")
+    data_store.REL_DB.WriteGRRUser("owner2")
+
     self.AddClientLabel(client_id, u"owner1", u"foo")
     self.AddClientLabel(client_id, u"owner2", u"bar")
 
@@ -480,6 +482,10 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
 
   def testLabelsHuntRuleMatchesCorrectClients(self):
     client_ids = self.SetupClients(10)
+
+    data_store.REL_DB.WriteGRRUser("owner1")
+    data_store.REL_DB.WriteGRRUser("owner2")
+    data_store.REL_DB.WriteGRRUser("GRR")
 
     self.AddClientLabel(client_ids[1], u"owner1", u"foo")
     self.AddClientLabel(client_ids[1], u"owner2", u"bar")
@@ -542,7 +548,7 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
       else:
         self.assertFalse(tasks_assigned)
 
-  def CreateSampleHunt(self, description, token=None):
+  def CreateSampleHunt(self, description, creator=None):
     self.StartHunt(
         description=description,
         flow_runner_args=rdf_flow_runner.FlowRunnerArgs(
@@ -550,18 +556,18 @@ class TestNewHuntWizard(gui_test_lib.GRRSeleniumHuntTest):
         flow_args=transfer.GetFileArgs(
             pathspec=rdf_paths.PathSpec(
                 path="/tmp/evil.txt",
-                pathtype=rdf_paths.PathSpec.PathType.TSK,
+                pathtype=rdf_paths.PathSpec.PathType.NTFS,
             )),
         client_rule_set=self._CreateForemanClientRuleSet(),
         output_plugins=[
             rdf_output_plugin.OutputPluginDescriptor(
                 plugin_name="DummyOutputPlugin",
-                plugin_args=gui_test_lib.DummyOutputPlugin.args_type(
+                args=gui_test_lib.DummyOutputPlugin.args_type(
                     filename_regex="blah!", fetch_binaries=True))
         ],
         client_rate=60,
         paused=True,
-        token=token)
+        creator=creator or self.test_username)
 
   def testPathAutocomplete(self):
     # Open Hunts

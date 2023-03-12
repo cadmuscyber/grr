@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Execute eficheck on the client."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import glob
 import os
@@ -46,7 +42,7 @@ class EficheckCollectHashes(EficheckActionPlugin):
   in_rdfvalue = rdf_apple_firmware.EficheckConfig
   out_rdfvalues = [rdf_apple_firmware.CollectEfiHashesResponse]
 
-  # The filename of the generated whitelist is passed as argument to the next
+  # The filename of the generated allowlist is passed as argument to the next
   # command. Make sure it matches a specific format to avoid any command
   # injection.
   _FILENAME_RE = re.compile(r"^[a-zA-Z0-9_.]+$")
@@ -98,7 +94,7 @@ class EficheckCollectHashes(EficheckActionPlugin):
           continue
         boot_rom_version, _ = os.path.splitext(basename)
         stdout, stderr, exit_status, time_used = client_utils_common.Execute(
-            args.cmd_path, cmd_args, bypass_whitelist=True)
+            args.cmd_path, cmd_args, bypass_allowlist=True)
 
         binary_response = rdf_client_action.ExecuteBinaryResponse(
             stdout=stdout,

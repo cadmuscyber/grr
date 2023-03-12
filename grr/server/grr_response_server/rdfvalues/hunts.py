@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """RDFValue implementations for hunts."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
@@ -79,6 +75,9 @@ class HuntRunnerArgs(rdf_structs.RDFProtoStruct):
     super().__init__(initializer=initializer, **kwargs)
 
     if initializer is None:
+      if not self.HasField("client_rate"):
+        self.client_rate = config.CONFIG["Hunt.default_client_rate"]
+
       if not self.HasField("crash_limit"):
         self.crash_limit = config.CONFIG["Hunt.default_crash_limit"]
 

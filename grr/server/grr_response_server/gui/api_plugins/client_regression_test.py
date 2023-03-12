@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """This modules contains regression tests for clients API handlers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -130,8 +126,8 @@ class ApiListClientsLabelsHandlerRegressionTest(
     with test_lib.FakeTime(42):
       client_ids = self.SetupClients(2)
 
-      self.AddClientLabel(client_ids[0], self.token.username, u"foo")
-      self.AddClientLabel(client_ids[0], self.token.username, u"bar")
+      self.AddClientLabel(client_ids[0], self.test_username, u"foo")
+      self.AddClientLabel(client_ids[0], self.test_username, u"bar")
 
     self.Check("ListClientsLabels")
 
@@ -155,15 +151,14 @@ class ApiListClientCrashesHandlerRegressionTest(
   def Run(self):
     client_id = self.SetupClient(0)
 
-    client_mock = flow_test_lib.CrashClientMock(client_id, self.token)
+    client_mock = flow_test_lib.CrashClientMock(client_id)
 
     with test_lib.FakeTime(42):
       hunt_id = self.StartHunt(description="the hunt")
 
     with test_lib.FakeTime(45):
       self.AssignTasksToClients([client_id])
-      hunt_test_lib.TestHuntHelperWithMultipleMocks({client_id: client_mock},
-                                                    self.token)
+      hunt_test_lib.TestHuntHelperWithMultipleMocks({client_id: client_mock})
 
     crashes = data_store.REL_DB.ReadClientCrashInfoHistory(str(client_id))
     crash = list(crashes)[0]

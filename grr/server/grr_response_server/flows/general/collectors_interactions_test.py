@@ -1,24 +1,20 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for grr.server.grr_response_server.flows.general.collectors.
 
 These tests cover the interaction of artifacts. They test that collection of
 good artifacts can still succeed if some bad artifacts are defined, and the
 various ways of loading artifacts.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
+from unittest import mock
 
 from absl import app
 
 from grr_response_core import config
-from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
+from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr_response_server import artifact
 from grr_response_server import artifact_registry
 from grr_response_server import data_store
 from grr_response_server.flows.general import collectors
@@ -39,7 +35,7 @@ class TestArtifactCollectorsInteractions(flow_test_lib.FlowTestsBaseclass):
   """
 
   def setUp(self):
-    super(TestArtifactCollectorsInteractions, self).setUp()
+    super().setUp()
 
     patcher = artifact_test_lib.PatchDefaultArtifactRegistry()
     patcher.start()
@@ -48,6 +44,24 @@ class TestArtifactCollectorsInteractions(flow_test_lib.FlowTestsBaseclass):
     test_artifacts_file = os.path.join(config.CONFIG["Test.data_dir"],
                                        "artifacts", "test_artifacts.json")
     artifact_registry.REGISTRY.AddFileSource(test_artifacts_file)
+
+  def _GetKB(self):
+    return rdf_client.KnowledgeBase(
+        environ_systemroot="C:\\Windows",
+        os="Windows",
+        environ_temp="C:\\Windows\\TEMP",
+        users=[
+            rdf_client.User(
+                homedir="C:\\Users\\jim",
+                sid="S-1-5-21-702227068-2140022151-3110739409-1000",
+                username="jim",
+                userprofile="C:\\Users\\jim"),
+            rdf_client.User(
+                homedir="C:\\Users\\kovacs",
+                sid="S-1-5-21-702227000-2140022111-3110739999-1990",
+                username="kovacs",
+                userprofile="C:\\Users\\kovacs")
+        ])
 
   def testNewArtifactLoaded(self):
     """Simulate a new artifact being loaded into the store via the UI."""
@@ -74,7 +88,7 @@ supported_os: [ "Linux" ]
     test_registry = artifact_registry.ArtifactRegistry()
     test_registry.ClearRegistry()
     test_registry._dirty = False
-    with utils.Stubber(artifact_registry, "REGISTRY", test_registry):
+    with mock.patch.object(artifact_registry, "REGISTRY", test_registry):
       with self.assertRaises(rdf_artifacts.ArtifactNotRegisteredError):
         artifact_registry.REGISTRY.GetArtifact("TestCmdArtifact")
 
@@ -106,45 +120,37 @@ supported_os: [ "Linux" ]
 
   @parser_test_lib.WithAllParsers
   def testProcessCollectedArtifacts(self):
-    """Test downloading files from artifacts."""
+    """Tests downloading files from artifacts."""
     self.client_id = self.SetupClient(0, system="Windows", os_version="6.2")
 
-    with vfs_test_lib.VFSOverrider(rdf_paths.PathSpec.PathType.REGISTRY,
-                                   vfs_test_lib.FakeRegistryVFSHandler):
-      with vfs_test_lib.VFSOverrider(rdf_paths.PathSpec.PathType.OS,
-                                     vfs_test_lib.FakeFullVFSHandler):
-        self._testProcessCollectedArtifacts()
-
-  def _testProcessCollectedArtifacts(self):
     client_mock = action_mocks.FileFinderClientMock()
 
-    # Get KB initialized
-    flow_id = flow_test_lib.TestFlowHelper(
-        artifact.KnowledgeBaseInitializationFlow.__name__,
-        client_mock,
-        client_id=self.client_id,
-        token=self.token)
-
-    kb = flow_test_lib.GetFlowResults(self.client_id, flow_id)[0]
-
     artifact_list = ["WindowsPersistenceMechanismFiles"]
-    with test_lib.Instrument(transfer.MultiGetFile,
-                             "Start") as getfile_instrument:
-      flow_test_lib.TestFlowHelper(
-          collectors.ArtifactCollectorFlow.__name__,
-          client_mock,
-          artifact_list=artifact_list,
-          knowledge_base=kb,
-          token=self.token,
-          client_id=self.client_id,
-          split_output_by_artifact=True)
+    with vfs_test_lib.VFSOverrider(rdf_paths.PathSpec.PathType.REGISTRY,
+                                   vfs_test_lib.FakeRegistryVFSHandler):
+      with test_lib.Instrument(transfer.MultiGetFile,
+                               "Start") as getfile_instrument:
+        flow_test_lib.TestFlowHelper(
+            collectors.ArtifactCollectorFlow.__name__,
+            client_mock,
+            artifact_list=artifact_list,
+            knowledge_base=self._GetKB(),
+            creator=self.test_username,
+            client_id=self.client_id,
+            split_output_by_artifact=True)
 
-      # Check MultiGetFile got called for our runkey files
-      # TODO(user): RunKeys for S-1-5-20 are not found because users.sid only
-      # expands to users with profiles.
-      pathspecs = getfile_instrument.args[0][0].args.pathspecs
-      self.assertCountEqual([x.path for x in pathspecs],
-                            [u"C:\\Windows\\TEMP\\A.exe"])
+        # Check MultiGetFile got called for our runkey files
+        # TODO(user): RunKeys for S-1-5-20 are not found because users.sid
+        # only expands to users with profiles.
+        pathspecs = getfile_instrument.args[0][0].args.pathspecs
+        self.assertCountEqual([x.path for x in pathspecs],
+                              [u"C:\\Windows\\TEMP\\A.exe"])
+
+  def testBrokenArtifact(self):
+    """Tests a broken artifact."""
+    self.client_id = self.SetupClient(0, system="Windows", os_version="6.2")
+
+    client_mock = action_mocks.FileFinderClientMock()
 
     artifact_list = ["BadPathspecArtifact"]
     with test_lib.Instrument(transfer.MultiGetFile,
@@ -153,8 +159,8 @@ supported_os: [ "Linux" ]
           collectors.ArtifactCollectorFlow.__name__,
           client_mock,
           artifact_list=artifact_list,
-          knowledge_base=kb,
-          token=self.token,
+          knowledge_base=self._GetKB(),
+          creator=self.test_username,
           client_id=self.client_id,
           split_output_by_artifact=True)
 

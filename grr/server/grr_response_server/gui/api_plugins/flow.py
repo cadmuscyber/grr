@@ -1,17 +1,13 @@
 #!/usr/bin/env python
-# Lint as: python3
 """API handlers for dealing with flows."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import collections
 import itertools
 import re
-from typing import Iterable, Optional, Type
-
+from typing import DefaultDict, Iterable, List, Mapping, Optional, Tuple, Type
 
 from grr_response_core import config
+from grr_response_core.lib import parsers
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import registry
 from grr_response_core.lib import utils
@@ -19,9 +15,9 @@ from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_core.lib.util import compatibility
 from grr_response_proto.api import flow_pb2
 from grr_response_server import access_control
+from grr_response_server import artifact
 from grr_response_server import data_store
 from grr_response_server import data_store_utils
 from grr_response_server import flow
@@ -30,6 +26,8 @@ from grr_response_server import instant_output_plugin
 from grr_response_server import notification
 from grr_response_server import output_plugin
 from grr_response_server.databases import db
+from grr_response_server.flows.general import collectors
+from grr_response_server.gui import api_call_context
 from grr_response_server.gui import api_call_handler_base
 from grr_response_server.gui import api_call_handler_utils
 from grr_response_server.gui import archive_generator
@@ -136,16 +134,16 @@ class ApiFlowDescriptor(rdf_structs.RDFProtoStruct):
     return "%s\n\n%s" % (getattr(flow_cls, "__doc__",
                                  ""), self._GetFlowArgsHelpAsString(flow_cls))
 
-  def InitFromFlowClass(self, flow_cls, token=None):
-    if not token:
-      raise ValueError("token can't be None")
+  def InitFromFlowClass(self, flow_cls, context=None):
+    if not context:
+      raise ValueError("context can't be None")
 
     self.name = flow_cls.__name__
     self.friendly_name = flow_cls.friendly_name
     self.category = flow_cls.category.strip("/")
     self.doc = self._GetFlowDocumentation(flow_cls)
     self.args_type = flow_cls.args_type.__name__
-    self.default_args = flow_cls.GetDefaultArgs(username=token.username)
+    self.default_args = flow_cls.GetDefaultArgs(username=context.username)
     self.behaviours = sorted(flow_cls.behaviours)
 
     return self
@@ -179,6 +177,7 @@ class ApiFlow(rdf_structs.RDFProtoStruct):
       ApiFlowId,
       ApiFlowReference,
       rdf_flow_runner.FlowContext,
+      rdf_flow_objects.FlowResultMetadata,
       rdf_flow_runner.FlowRunnerArgs,
       rdfvalue.RDFDatetime,
       rdfvalue.SessionID,
@@ -218,16 +217,20 @@ class ApiFlow(rdf_structs.RDFProtoStruct):
       self.started_at = flow_obj.create_time
       self.last_active_at = flow_obj.last_update_time
       self.creator = flow_obj.creator
+      self.is_robot = flow_obj.creator in access_control.SYSTEM_USERS
 
       if flow_obj.client_crash_info:
         self.state = "CLIENT_CRASHED"
-      elif flow_obj.pending_termination:
-        self.state = "ERROR"
-        self.status = ("Pending termination: %s" %
-                       flow_obj.pending_termination.reason)
       else:
         context_state_map = {1: "RUNNING", 2: "TERMINATED", 3: "ERROR"}
         self.state = context_state_map[int(flow_obj.flow_state)]
+
+      if flow_obj.error_message or flow_obj.backtrace:
+        err_desc = flow_obj.error_message or flow_obj.backtrace
+
+        max_len = 4000
+        self.error_description = (err_desc[:max_len - 1] +
+                                  "…") if len(err_desc) > max_len else err_desc
 
       if with_state_and_context:
         outstanding_requests = (
@@ -271,7 +274,9 @@ class ApiFlow(rdf_structs.RDFProtoStruct):
       if with_progress:
         flow_cls = self._GetFlowClass()
         if flow_cls:
-          self.progress = flow_cls(flow_obj).GetProgress()
+          flow_instance = flow_cls(flow_obj)
+          self.progress = flow_instance.GetProgress()
+          self.result_metadata = flow_instance.GetResultMetadata()
 
       self.runner_args = rdf_flow_runner.FlowRunnerArgs(
           client_id=flow_obj.client_id,
@@ -321,9 +326,11 @@ class ApiFlowResult(rdf_structs.RDFProtoStruct):
 
   def InitFromFlowResult(self, result):
     p = result.payload
-    self.payload_type = compatibility.GetName(p.__class__)
+    self.payload_type = p.__class__.__name__
     self.payload = p
     self.timestamp = result.timestamp
+    if result.tag:
+      self.tag = result.tag
 
     return self
 
@@ -357,7 +364,7 @@ class ApiGetFlowHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiGetFlowArgs
   result_type = ApiFlow
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     flow_obj = data_store.REL_DB.ReadFlowObject(
         str(args.client_id), str(args.flow_id))
     return ApiFlow().InitFromFlowObject(
@@ -385,7 +392,7 @@ class ApiListFlowRequestsHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiListFlowRequestsArgs
   result_type = ApiListFlowRequestsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     client_id = args.client_id.ToString()
     requests_and_responses = data_store.REL_DB.ReadAllFlowRequestsAndResponses(
         client_id, str(args.flow_id))
@@ -440,19 +447,204 @@ class ApiListFlowResultsHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiListFlowResultsArgs
   result_type = ApiListFlowResultsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     results = data_store.REL_DB.ReadFlowResults(
         str(args.client_id),
         str(args.flow_id),
         args.offset,
         args.count or db.MAX_COUNT,
-        with_substring=args.filter or None)
-    total_count = data_store.REL_DB.CountFlowResults(
-        str(args.client_id), str(args.flow_id))
+        with_substring=args.filter or None,
+        with_tag=args.with_tag or None,
+        with_type=args.with_type or None)
+
+    if args.filter:
+      # TODO: with_substring is implemented in a hacky way,
+      #   searching for a string in the serialized protobuf bytes. We decided
+      #   to omit the same hacky implementation in CountFlowResults. Until
+      #   CountFlowResults implements the same, or we generally improve this
+      #   string search, total_count will be unset if `filter` is specified.
+      total_count = None
+    else:
+      total_count = data_store.REL_DB.CountFlowResults(
+          str(args.client_id),
+          str(args.flow_id),
+          # TODO: Add with_substring to CountFlowResults().
+          with_tag=args.with_tag or None,
+          with_type=args.with_type or None)
+
     wrapped_items = [ApiFlowResult().InitFromFlowResult(r) for r in results]
 
     return ApiListFlowResultsResult(
         items=wrapped_items, total_count=total_count)
+
+
+class ApiListParsedFlowResultsArgs(rdf_structs.RDFProtoStruct):
+  """An RDF wrapper for the arguments of the method for parsing flow results."""
+
+  protobuf = flow_pb2.ApiListParsedFlowResultsArgs
+  rdf_deps = [
+      client.ApiClientId,
+      ApiFlowId,
+  ]
+
+
+class ApiListParsedFlowResultsResult(rdf_structs.RDFProtoStruct):
+  """An RDF wrapper for the results of the method for parsing flow results."""
+
+  protobuf = flow_pb2.ApiListParsedFlowResultsResult
+  rdf_deps = [
+      ApiFlowResult,
+  ]
+
+
+class ApiListParsedFlowResultsHandler(api_call_handler_base.ApiCallHandler):
+  """An API handler for the method for on-demand parsing of flow results."""
+
+  args_type = ApiListParsedFlowResultsArgs
+  result_type = ApiListParsedFlowResultsResult
+
+  def Handle(
+      self,
+      args: ApiListParsedFlowResultsArgs,
+      context: Optional[api_call_context.ApiCallContext] = None,
+  ) -> ApiListParsedFlowResultsResult:
+    client_id = str(args.client_id)
+    flow_id = str(args.flow_id)
+
+    flow_obj = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+    if flow_obj.flow_class_name != collectors.ArtifactCollectorFlow.__name__:
+      message = "Not an artifact-collector flow: {}"
+      raise ValueError(message.format(flow_obj.flow_class_name))
+
+    if flow_obj.args.apply_parsers:
+      message = "Flow already parsed its results"
+      raise ValueError(message)
+
+    flow_results = data_store.REL_DB.ReadFlowResults(
+        client_id=client_id,
+        flow_id=flow_id,
+        offset=args.offset,
+        count=args.count)
+    flow_results_by_artifact = _GroupFlowResultsByArtifact(flow_results)
+
+    # We determine results collection timestamp as the maximum of timestamps of
+    # individual flow results. We cannot use just the flow timestamp for this,
+    # because flows can be modified, affecting the timestamp. We also don't want
+    # to use flow start time, because it can be to "early" to do parsing.
+    if flow_results:
+      flow_results_timestamp = max([_.timestamp for _ in flow_results])
+    else:
+      flow_results_timestamp = None
+
+    knowledge_base = flow_obj.persistent_data["knowledge_base"]
+
+    result = ApiListParsedFlowResultsResult()
+
+    for artifact_name, flow_results in flow_results_by_artifact.items():
+      factory = parsers.ArtifactParserFactory(artifact_name)
+
+      applicator = artifact.ParserApplicator(
+          factory,
+          client_id=client_id,
+          knowledge_base=knowledge_base,
+          timestamp=flow_results_timestamp)
+      applicator.Apply([flow_result.payload for flow_result in flow_results])
+
+      for response in applicator.Responses():
+        item = ApiFlowResult()
+        item.payload_type = response.__class__.__name__
+        item.payload = response
+        item.tag = f"artifact:{artifact_name}"
+        result.items.Append(item)
+
+      result.errors.Extend(map(str, applicator.Errors()))
+
+    return result
+
+
+class ApiParserDescriptor(rdf_structs.RDFProtoStruct):
+  """An RDF wrapper for parser descriptor protobuf."""
+
+  protobuf = flow_pb2.ApiParserDescriptor
+  rdf_deps = []
+
+
+class ApiListFlowApplicableParsersArgs(rdf_structs.RDFProtoStruct):
+  """An RDF wrapper for arguments of the method listing applicable parsers."""
+
+  protobuf = flow_pb2.ApiListFlowApplicableParsersArgs
+  rdf_deps = [
+      client.ApiClientId,
+      ApiFlowId,
+  ]
+
+
+class ApiListFlowApplicableParsersResult(rdf_structs.RDFProtoStruct):
+  """An RDF wrapper for result of the method listing applicable parsers."""
+
+  protobuf = flow_pb2.ApiListFlowApplicableParsersResult
+  rdf_deps = [
+      ApiParserDescriptor,
+  ]
+
+
+class ApiListFlowApplicableParsersHandler(api_call_handler_base.ApiCallHandler):
+  """An API handler for the method for listing applicable parsers."""
+
+  args_type = ApiListFlowApplicableParsersArgs
+  result_type = ApiListFlowApplicableParsersResult
+
+  _FLOW_RESULTS_BATCH_SIZE = 5000
+
+  def Handle(
+      self,
+      args: ApiListFlowApplicableParsersArgs,
+      context: Optional[api_call_context.ApiCallContext] = None,
+  ) -> ApiListFlowApplicableParsersResult:
+    client_id = str(args.client_id)
+    flow_id = str(args.flow_id)
+
+    flow_obj = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+    if flow_obj.flow_class_name != collectors.ArtifactCollectorFlow.__name__:
+      message = "Not an artifact-collector flow: {}"
+      raise ValueError(message.format(flow_obj.flow_class_name))
+
+    if flow_obj.args.apply_parsers:
+      # The parsers were already applied, there is nothing applicable anymore.
+      return ApiListFlowApplicableParsersResult()
+
+    parser_names_by_type: DefaultDict[int, List[str]] = (
+        collections.defaultdict(list))
+
+    flow_results_offset = 0
+    while True:
+      flow_results = data_store.REL_DB.ReadFlowResults(
+          client_id=client_id,
+          flow_id=flow_id,
+          offset=flow_results_offset,
+          count=self._FLOW_RESULTS_BATCH_SIZE)
+      flow_results_offset += self._FLOW_RESULTS_BATCH_SIZE
+
+      if not flow_results:
+        break
+
+      for artifact_name in _GroupFlowResultsByArtifact(flow_results):
+        factory = parsers.ArtifactParserFactory(artifact_name)
+        parser_names_by_type[ApiParserDescriptor.Type.SINGLE_RESPONSE].extend(
+            factory.SingleResponseParserNames())
+        parser_names_by_type[ApiParserDescriptor.Type.MULTI_RESPONSE].extend(
+            factory.MultiResponseParserNames())
+        parser_names_by_type[ApiParserDescriptor.Type.SINGLE_FILE].extend(
+            factory.SingleFileParserNames())
+        parser_names_by_type[ApiParserDescriptor.Type.MULTI_FILE].extend(
+            factory.MultiFileParserNames())
+
+    result = ApiListFlowApplicableParsersResult()
+    for tpe, parser_names in parser_names_by_type.items():
+      for parser_name in parser_names:
+        result.parsers.append(ApiParserDescriptor(type=tpe, name=parser_name))
+
+    return result
 
 
 class ApiListFlowLogsArgs(rdf_structs.RDFProtoStruct):
@@ -474,7 +666,7 @@ class ApiListFlowLogsHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiListFlowLogsArgs
   result_type = ApiListFlowLogsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     count = args.count or db.MAX_COUNT
 
     logs = data_store.REL_DB.ReadFlowLogEntries(
@@ -508,7 +700,7 @@ class ApiGetFlowResultsExportCommandHandler(api_call_handler_base.ApiCallHandler
   args_type = ApiGetFlowResultsExportCommandArgs
   result_type = ApiGetFlowResultsExportCommandResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     output_fname = re.sub("[^0-9a-zA-Z]+", "_",
                           "%s_%s" % (args.client_id, args.flow_id))
     code_to_execute = ("""grrapi.Client("%s").Flow("%s").GetFilesArchive()."""
@@ -536,37 +728,37 @@ class ApiGetFlowFilesArchiveHandler(api_call_handler_base.ApiCallHandler):
 
   args_type = ApiGetFlowFilesArchiveArgs
 
-  def __init__(self, path_globs_blacklist=None, path_globs_whitelist=None):
+  def __init__(self, exclude_path_globs=None, include_only_path_globs=None):
     """Constructor.
 
     Args:
-      path_globs_blacklist: List of paths.GlobExpression values. Blacklist will
-        be applied before the whitelist.
-      path_globs_whitelist: List of paths.GlobExpression values. Whitelist will
-        be applied after the blacklist.
+      exclude_path_globs: List of paths.GlobExpression values. Exclusion will be
+        applied before include_only_path_globs.
+      include_only_path_globs: List of paths.GlobExpression values. Inclusion
+        will be applied after the exclude_path_globs.
 
     Raises:
-      ValueError: If path_globs_blacklist/whitelist is passed, but
-          the other blacklist/whitelist argument is not.
+      ValueError: If exactly one of exclude/include_only_path_globs is passed,
+        but the other argument is not.
 
-    Note that path_globs_blacklist/whitelist arguments can only be passed
+    Note that exclude/include_only_path_globs arguments can only be passed
     together. The algorithm of applying the lists is the following:
     1. If the lists are not set, include the file into the archive. Otherwise:
-    2. If the file matches the blacklist, skip the file. Otherwise:
-    3. If the file does match the whitelist, skip the file.
+    2. If the file matches the exclude list, skip the file. Otherwise:
+    3. If the file does match the include list, skip the file.
     """
     super(api_call_handler_base.ApiCallHandler, self).__init__()
 
     if len([
-        x for x in (path_globs_blacklist, path_globs_whitelist) if x is None
+        x for x in (exclude_path_globs, include_only_path_globs) if x is None
     ]) == 1:
-      raise ValueError("path_globs_blacklist/path_globs_whitelist have to "
+      raise ValueError("exclude_path_globs/include_only_path_globs have to be "
                        "set/unset together.")
 
-    self.path_globs_blacklist = path_globs_blacklist
-    self.path_globs_whitelist = path_globs_whitelist
+    self.exclude_path_globs = exclude_path_globs
+    self.include_only_path_globs = include_only_path_globs
 
-  def _WrapContentGenerator(self, generator, flow_results, args, token=None):
+  def _WrapContentGenerator(self, generator, flow_results, args, context=None):
     flow_ref = rdf_objects.FlowReference(
         client_id=args.client_id, flow_id=args.flow_id)
     object_reference = rdf_objects.ObjectReference(
@@ -576,7 +768,7 @@ class ApiGetFlowFilesArchiveHandler(api_call_handler_base.ApiCallHandler):
         yield item
 
       notification.Notify(
-          token.username,
+          context.username,
           rdf_objects.UserNotification.Type.TYPE_FILE_ARCHIVE_GENERATED,
           "Downloaded archive of flow %s from client %s (archived %d "
           "out of %d items, archive size is %d)" %
@@ -585,49 +777,84 @@ class ApiGetFlowFilesArchiveHandler(api_call_handler_base.ApiCallHandler):
 
     except Exception as e:
       notification.Notify(
-          token.username,
+          context.username,
           rdf_objects.UserNotification.Type.TYPE_FILE_ARCHIVE_GENERATION_FAILED,
           "Archive generation failed for flow %s on client %s: %s" %
           (args.flow_id, args.client_id, e), object_reference)
 
       raise
 
-  def _BuildPredicate(self, client_id, token=None):
-    if self.path_globs_whitelist is None:
+  def _WrapContentGeneratorWithMappings(self,
+                                        generator,
+                                        mappings,
+                                        args,
+                                        context=None):
+    flow_ref = rdf_objects.FlowReference(
+        client_id=args.client_id, flow_id=args.flow_id)
+    object_reference = rdf_objects.ObjectReference(
+        reference_type=rdf_objects.ObjectReference.Type.FLOW, flow=flow_ref)
+    try:
+      for item in generator.Generate(mappings):
+        yield item
+
+      notification.Notify(
+          context.username,
+          rdf_objects.UserNotification.Type.TYPE_FILE_ARCHIVE_GENERATED,
+          "Downloaded archive of flow %s from client %s (archived %d files, "
+          "archive size is %d)" %
+          (args.flow_id, args.client_id, generator.num_archived_files,
+           generator.output_size), object_reference)
+
+    except Exception as e:
+      notification.Notify(
+          context.username,
+          rdf_objects.UserNotification.Type.TYPE_FILE_ARCHIVE_GENERATION_FAILED,
+          "Archive generation failed for flow %s on client %s: %s" %
+          (args.flow_id, args.client_id, e), object_reference)
+
+      raise
+
+  def _BuildPredicate(self, client_id, context=None):
+    if self.include_only_path_globs is None:
       return None
 
     kb = data_store_utils.GetClientKnowledgeBase(client_id)
 
-    blacklist_regexes = []
-    for expression in self.path_globs_blacklist:
+    exclude_regexes = []
+    for expression in self.exclude_path_globs:
       for pattern in expression.Interpolate(knowledge_base=kb):
-        blacklist_regexes.append(rdf_paths.GlobExpression(pattern).AsRegEx())
+        exclude_regexes.append(rdf_paths.GlobExpression(pattern).AsRegEx())
 
-    whitelist_regexes = []
-    for expression in self.path_globs_whitelist:
+    include_only_regexes = []
+    for expression in self.include_only_path_globs:
       for pattern in expression.Interpolate(knowledge_base=kb):
-        whitelist_regexes.append(rdf_paths.GlobExpression(pattern).AsRegEx())
+        include_only_regexes.append(rdf_paths.GlobExpression(pattern).AsRegEx())
 
     def Predicate(client_path):
       # Enforce leading / since Regexes require it.
       path = "/" + client_path.Path().lstrip("/")
-      return (not any(r.Match(path) for r in blacklist_regexes) and
-              any(r.Match(path) for r in whitelist_regexes))
+      return (not any(r.Match(path) for r in exclude_regexes) and
+              any(r.Match(path) for r in include_only_regexes))
 
     return Predicate
 
-  def _GetFlow(self, args, token=None):
+  def _GetFlow(self, args, context=None):
     client_id = str(args.client_id)
     flow_id = str(args.flow_id)
     flow_obj = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
-    flow_api_object = ApiFlow().InitFromFlowObject(flow_obj)
     flow_results = data_store.REL_DB.ReadFlowResults(client_id, flow_id, 0,
                                                      db.MAX_COUNT)
-    flow_results = [r.payload for r in flow_results]
-    return flow_api_object, flow_results
 
-  def Handle(self, args, token=None):
-    flow_api_object, flow_results = self._GetFlow(args, token)
+    return flow_obj, flow_results
+
+  def Handle(self, args, context=None):
+    flow_object, flow_results = self._GetFlow(args, context)
+    flow_api_object = ApiFlow().InitFromFlowObject(flow_object)
+    flow_instance = flow_base.FlowBase.CreateFlowInstance(flow_object)
+    try:
+      mappings = flow_instance.GetFilesArchiveMappings(flow_results)
+    except NotImplementedError:
+      mappings = None
 
     description = ("Files downloaded by flow %s (%s) that ran on client %s by "
                    "user %s on %s" %
@@ -647,14 +874,23 @@ class ApiGetFlowFilesArchiveHandler(api_call_handler_base.ApiCallHandler):
     else:
       raise ValueError("Unknown archive format: %s" % args.archive_format)
 
-    generator = archive_generator.CollectionArchiveGenerator(
-        prefix=target_file_prefix,
-        description=description,
-        archive_format=archive_format,
-        predicate=self._BuildPredicate(str(args.client_id), token=token),
-        client_id=args.client_id.ToString())
-    content_generator = self._WrapContentGenerator(
-        generator, flow_results, args, token=token)
+    # Only use the new-style flow archive generator for the flows that
+    # have the GetFilesArchiveMappings defined.
+    if mappings:
+      a_gen = archive_generator.FlowArchiveGenerator(flow_object,
+                                                     archive_format)
+      content_generator = self._WrapContentGeneratorWithMappings(
+          a_gen, mappings, args, context=context)
+    else:
+      a_gen = archive_generator.CollectionArchiveGenerator(
+          prefix=target_file_prefix,
+          description=description,
+          archive_format=archive_format,
+          predicate=self._BuildPredicate(str(args.client_id), context=context),
+          client_id=args.client_id.ToString())
+      content_generator = self._WrapContentGenerator(
+          a_gen, flow_results, args, context=context)
+
     return api_call_handler_base.ApiBinaryStream(
         target_file_prefix + file_extension,
         content_generator=content_generator)
@@ -681,7 +917,7 @@ class ApiListFlowOutputPluginsHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiListFlowOutputPluginsArgs
   result_type = ApiListFlowOutputPluginsResult
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     flow_obj = data_store.REL_DB.ReadFlowObject(
         str(args.client_id), str(args.flow_id))
     output_plugins_states = flow_obj.output_plugins_states
@@ -763,7 +999,7 @@ class ApiListFlowOutputPluginLogsHandlerBase(
 
   log_entry_type = None
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     flow_obj = data_store.REL_DB.ReadFlowObject(
         str(args.client_id), str(args.flow_id))
 
@@ -859,29 +1095,34 @@ class ApiListFlowsHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiListFlowsArgs
   result_type = ApiListFlowsResult
 
-  def _HandleTopFlowsOnly(self, args, token=None):
+  def _HandleTopFlowsOnly(self, args, context=None):
     top_flows = data_store.REL_DB.ReadAllFlowObjects(
         client_id=str(args.client_id),
         min_create_time=args.min_started_at,
         max_create_time=args.max_started_at,
-        include_child_flows=False)
-
+        include_child_flows=False,
+        not_created_by=access_control.SYSTEM_USERS
+        if args.human_flows_only else None)
     result = [
         ApiFlow().InitFromFlowObject(
             f_data, with_args=True, with_progress=True) for f_data in top_flows
     ]
-    result.sort(key=lambda f: f.started_at, reverse=True)
+    # TODO(hanuszczak): Consult with the team what should we do in case of flows
+    # with missing information.
+    result.sort(key=lambda f: f.started_at or 0, reverse=True)
     result = result[args.offset:]
     if args.count:
       result = result[:args.count]
     return ApiListFlowsResult(items=result)
 
-  def _HandleAllFlows(self, args, token=None):
+  def _HandleAllFlows(self, args, context=None):
     all_flows = data_store.REL_DB.ReadAllFlowObjects(
         client_id=str(args.client_id),
         min_create_time=args.min_started_at,
         max_create_time=args.max_started_at,
-        include_child_flows=True)
+        include_child_flows=True,
+        not_created_by=access_control.SYSTEM_USERS
+        if args.human_flows_only else None)
     api_flow_dict = {
         rdf_flow.flow_id:
         ApiFlow().InitFromFlowObject(rdf_flow, with_args=False)
@@ -906,17 +1147,19 @@ class ApiListFlowsHandler(api_call_handler_base.ApiCallHandler):
     result = [
         f for f in api_flow_dict.values() if f.flow_id not in child_flow_ids
     ]
-    result.sort(key=lambda f: f.started_at, reverse=True)
+    # TODO(hanuszczak): Consult with the team what should we do in case of flows
+    # with missing information.
+    result.sort(key=lambda f: f.started_at or 0, reverse=True)
     result = result[args.offset:]
     if args.count:
       result = result[:args.count]
     return ApiListFlowsResult(items=result)
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     if args.top_flows_only:
-      return self._HandleTopFlowsOnly(args, token=token)
+      return self._HandleTopFlowsOnly(args, context=context)
     else:
-      return self._HandleAllFlows(args, token=token)
+      return self._HandleAllFlows(args, context=context)
 
 
 class ApiCreateFlowArgs(rdf_structs.RDFProtoStruct):
@@ -928,39 +1171,47 @@ class ApiCreateFlowArgs(rdf_structs.RDFProtoStruct):
   ]
 
 
+def _SanitizeApiCreateFlowArgs(
+    args: ApiCreateFlowArgs
+) -> Tuple[Type[flow_base.FlowBase], rdf_flow_runner.FlowRunnerArgs]:
+  """Validates and sanitizes args for flow scheduling and starting."""
+  if not args.client_id:
+    raise ValueError("client_id must be provided")
+
+  runner_args = args.flow.runner_args.Copy()
+  flow_name = args.flow.name
+  if not flow_name:
+    flow_name = runner_args.flow_name
+  if not flow_name:
+    raise RuntimeError("Flow name is not specified.")
+
+  # Clear all fields marked with HIDDEN, except for output_plugins - they are
+  # marked HIDDEN, because we have a separate UI for them, not because they
+  # shouldn't be shown to the user at all.
+  #
+  # TODO(user): Refactor the code to remove the HIDDEN label from
+  # FlowRunnerArgs.output_plugins.
+  runner_args.ClearFieldsWithLabel(
+      rdf_structs.SemanticDescriptor.Labels.HIDDEN, exceptions="output_plugins")
+
+  if args.original_flow:
+    runner_args.original_flow = rdf_objects.FlowReference(
+        flow_id=str(args.original_flow.flow_id),
+        client_id=str(args.original_flow.client_id))
+
+  flow_cls = registry.FlowRegistry.FlowClassByName(flow_name)
+  return flow_cls, runner_args
+
+
 class ApiCreateFlowHandler(api_call_handler_base.ApiCallHandler):
   """Starts a flow on a given client with given parameters."""
 
   args_type = ApiCreateFlowArgs
   result_type = ApiFlow
 
-  def Handle(self, args, token=None):
-    if not args.client_id:
-      raise ValueError("client_id must be provided")
+  def Handle(self, args, context=None):
+    flow_cls, runner_args = _SanitizeApiCreateFlowArgs(args)
 
-    runner_args = args.flow.runner_args
-    flow_name = args.flow.name
-    if not flow_name:
-      flow_name = runner_args.flow_name
-    if not flow_name:
-      raise RuntimeError("Flow name is not specified.")
-
-    # Clear all fields marked with HIDDEN, except for output_plugins - they are
-    # marked HIDDEN, because we have a separate UI for them, not because they
-    # shouldn't be shown to the user at all.
-    #
-    # TODO(user): Refactor the code to remove the HIDDEN label from
-    # FlowRunnerArgs.output_plugins.
-    runner_args.ClearFieldsWithLabel(
-        rdf_structs.SemanticDescriptor.Labels.HIDDEN,
-        exceptions="output_plugins")
-
-    if args.original_flow:
-      runner_args.original_flow = rdf_objects.FlowReference(
-          flow_id=str(args.original_flow.flow_id),
-          client_id=str(args.original_flow.client_id))
-
-    flow_cls = registry.FlowRegistry.FlowClassByName(flow_name)
     cpu_limit = None
     if runner_args.HasField("cpu_limit"):
       cpu_limit = runner_args.cpu_limit
@@ -971,13 +1222,12 @@ class ApiCreateFlowHandler(api_call_handler_base.ApiCallHandler):
     flow_id = flow.StartFlow(
         client_id=str(args.client_id),
         cpu_limit=cpu_limit,
-        creator=token.username,
+        creator=context.username,
         flow_args=args.flow.args,
         flow_cls=flow_cls,
         network_bytes_limit=network_bytes_limit,
         original_flow=runner_args.original_flow,
         output_plugins=runner_args.output_plugins,
-        parent_flow_obj=None,
     )
     flow_obj = data_store.REL_DB.ReadFlowObject(str(args.client_id), flow_id)
 
@@ -1000,9 +1250,10 @@ class ApiCancelFlowHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiCancelFlowArgs
   result_type = ApiFlow
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     flow_base.TerminateFlow(
-        str(args.client_id), str(args.flow_id), reason="Cancelled in GUI")
+        str(args.client_id), str(args.flow_id), reason="Cancelled by user"
+    )
     flow_obj = data_store.REL_DB.ReadFlowObject(
         str(args.client_id), str(args.flow_id))
     return ApiFlow().InitFromFlowObject(flow_obj)
@@ -1024,7 +1275,7 @@ class ApiListFlowDescriptorsHandler(api_call_handler_base.ApiCallHandler):
     super().__init__()
     self.access_check_fn = access_check_fn
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     """Renders list of descriptors for all the flows."""
 
     result = []
@@ -1037,11 +1288,11 @@ class ApiListFlowDescriptorsHandler(api_call_handler_base.ApiCallHandler):
       # Only show flows that the user is allowed to start.
       try:
         if self.access_check_fn:
-          self.access_check_fn(token.username, name)
+          self.access_check_fn(context.username, name)
       except access_control.UnauthorizedAccess:
         continue
 
-      result.append(ApiFlowDescriptor().InitFromFlowClass(cls, token=token))
+      result.append(ApiFlowDescriptor().InitFromFlowClass(cls, context=context))
 
     return ApiListFlowDescriptorsResult(items=result)
 
@@ -1061,15 +1312,15 @@ class ApiGetExportedFlowResultsHandler(api_call_handler_base.ApiCallHandler):
 
   _RESULTS_PAGE_SIZE = 1000
 
-  def Handle(self, args, token=None):
+  def Handle(self, args, context=None):
     iop_cls = instant_output_plugin.InstantOutputPlugin
     plugin_cls = iop_cls.GetPluginClassByPluginName(args.plugin_name)
 
-    # TODO(user): Instant output plugins shouldn't depend on tokens
+    # TODO(user): Instant output plugins shouldn't depend on contexts
     # and URNs.
     flow_urn = rdfvalue.RDFURN("{}/flows/{}".format(args.client_id,
                                                     args.flow_id))
-    plugin = plugin_cls(source_urn=flow_urn, token=token)
+    plugin = plugin_cls(source_urn=flow_urn)
 
     client_id = str(args.client_id)
     flow_id = str(args.flow_id)
@@ -1100,3 +1351,160 @@ class ApiGetExportedFlowResultsHandler(api_call_handler_base.ApiCallHandler):
 
     return api_call_handler_base.ApiBinaryStream(
         plugin.output_file_name, content_generator=content_generator)
+
+
+class ApiExplainGlobExpressionArgs(rdf_structs.RDFProtoStruct):
+  """Args for ApiExplainGlobExpressionHandler."""
+  protobuf = flow_pb2.ApiExplainGlobExpressionArgs
+  rdf_deps = [
+      client.ApiClientId,
+  ]
+
+
+class ApiExplainGlobExpressionResult(rdf_structs.RDFProtoStruct):
+  """Results of ApiExplainGlobExpressionHandler."""
+  protobuf = flow_pb2.ApiExplainGlobExpressionResult
+  rdf_deps = [
+      rdf_paths.GlobComponentExplanation,
+  ]
+
+
+class ApiExplainGlobExpressionHandler(api_call_handler_base.ApiCallHandler):
+  """Gives examples for the components of a GlobExpression."""
+
+  args_type = ApiExplainGlobExpressionArgs
+  result_type = ApiExplainGlobExpressionResult
+
+  def Handle(self, args, context=None):
+    ge = rdf_paths.GlobExpression(args.glob_expression)
+    ge.Validate()
+
+    kb = data_store_utils.GetClientKnowledgeBase(str(args.client_id))
+    components = ge.ExplainComponents(args.example_count, kb)
+
+    return ApiExplainGlobExpressionResult(components=components)
+
+
+class ApiScheduledFlow(rdf_structs.RDFProtoStruct):
+  protobuf = flow_pb2.ApiScheduledFlow
+  rdf_deps = [
+      rdf_flow_runner.FlowRunnerArgs,
+      rdfvalue.RDFDatetime,
+  ]
+
+  @classmethod
+  def FromScheduledFlow(cls, scheduled_flow):
+    return cls(
+        scheduled_flow_id=scheduled_flow.scheduled_flow_id,
+        client_id=scheduled_flow.client_id,
+        creator=scheduled_flow.creator,
+        flow_name=scheduled_flow.flow_name,
+        flow_args=scheduled_flow.flow_args,
+        runner_args=scheduled_flow.runner_args,
+        create_time=scheduled_flow.create_time)
+
+
+class ApiScheduleFlowHandler(api_call_handler_base.ApiCallHandler):
+  """Schedules a flow on a client, to be started upon approval grant."""
+
+  args_type = ApiCreateFlowArgs
+  result_type = ApiScheduledFlow
+
+  def Handle(self, args, context=None):
+    flow_cls, runner_args = _SanitizeApiCreateFlowArgs(args)
+
+    args.flow.args.Validate()
+
+    # TODO: Handle the case where the requesting user already has
+    # approval to start the flow on the client.
+
+    scheduled_flow = flow.ScheduleFlow(
+        client_id=str(args.client_id),
+        creator=context.username,
+        flow_name=flow_cls.__name__,
+        flow_args=args.flow.args,
+        runner_args=runner_args)
+
+    return ApiScheduledFlow.FromScheduledFlow(scheduled_flow)
+
+
+class ApiListScheduledFlowsArgs(rdf_structs.RDFProtoStruct):
+  """Args for ApiListScheduledFlowsHandler."""
+  protobuf = flow_pb2.ApiListScheduledFlowsArgs
+  rdf_deps = []
+
+
+class ApiListScheduledFlowsResult(rdf_structs.RDFProtoStruct):
+  """Results of ApiListScheduledFlowsHandler."""
+  protobuf = flow_pb2.ApiListScheduledFlowsResult
+  rdf_deps = [ApiScheduledFlow]
+
+
+class ApiListScheduledFlowsHandler(api_call_handler_base.ApiCallHandler):
+  """Lists all scheduled flows from a user on a client."""
+  args_type = ApiListScheduledFlowsArgs
+  result_type = ApiListScheduledFlowsResult
+
+  def Handle(self, args, context=None):
+    results = flow.ListScheduledFlows(
+        client_id=args.client_id, creator=args.creator)
+    results = sorted(results, key=lambda sf: sf.create_time)
+    results = [ApiScheduledFlow.FromScheduledFlow(sf) for sf in results]
+
+    return ApiListScheduledFlowsResult(scheduled_flows=results)
+
+
+class ApiUnscheduleFlowArgs(rdf_structs.RDFProtoStruct):
+  """Args for ApiUnscheduleFlowHandler."""
+  protobuf = flow_pb2.ApiUnscheduleFlowArgs
+  rdf_deps = []
+
+
+class ApiUnscheduleFlowResult(rdf_structs.RDFProtoStruct):
+  """Results of ApiUnscheduleFlowHandler."""
+  protobuf = flow_pb2.ApiUnscheduleFlowResult
+  rdf_deps = []
+
+
+class ApiUnscheduleFlowHandler(api_call_handler_base.ApiCallHandler):
+  """Unschedules and deletes a previously scheduled flow."""
+  args_type = ApiUnscheduleFlowArgs
+  result_type = ApiUnscheduleFlowResult
+
+  def Handle(self, args, context=None):
+    flow.UnscheduleFlow(
+        client_id=args.client_id,
+        creator=context.username,
+        scheduled_flow_id=args.scheduled_flow_id)
+    return ApiUnscheduleFlowResult()
+
+
+_TAG_ARTIFACT_NAME = re.compile(r"artifact:(?P<name>\w+)")
+
+
+def _GroupFlowResultsByArtifact(
+    results: Iterable[rdf_flow_objects.FlowResult],
+) -> Mapping[str, rdf_flow_objects.FlowResult]:
+  """Groups flow results by the artifact that caused their collection.
+
+  Note that flow results that did not originate from any artifact are going to
+  be ignored and will not be included in the output.
+
+  Args:
+    results: Flow results to group.
+
+  Returns:
+    A dictionary mapping artifact names to flow result sequences.
+  """
+  flow_results_by_artifact = {}
+
+  for result in results:
+    artifact_name_match = _TAG_ARTIFACT_NAME.match(result.tag)
+    if artifact_name_match is None:
+      continue
+
+    artifact_name = artifact_name_match["name"]
+    artifact_results = flow_results_by_artifact.setdefault(artifact_name, [])
+    artifact_results.append(result)
+
+  return flow_results_by_artifact

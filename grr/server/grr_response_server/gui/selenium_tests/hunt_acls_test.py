@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Tests Hunt ACLs."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -33,7 +28,7 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
   reason = "Felt like it!"
 
   def testHuntACLWorkflow(self):
-    hunt_id = self.StartHunt(paused=True, creator=self.token.username)
+    hunt_id = self.StartHunt(paused=True, creator=self.test_username)
 
     # Open up and click on View Hunts.
     self.Open("/")
@@ -56,7 +51,7 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
 
     # This asks our user to approve the request.
     self.Type("css=grr-request-approval-dialog input[name=acl_approver]",
-              self.token.username)
+              self.test_username)
     self.Type("css=grr-request-approval-dialog input[name=acl_reason]",
               self.reason)
     self.Click(
@@ -65,7 +60,7 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
     # "Request Approval" dialog should go away
     self.WaitUntilNot(self.IsVisible, "css=.modal-open")
 
-    self.WaitForNotification(self.token.username)
+    self.WaitForNotification(self.test_username)
     self.Open("/")
 
     self.WaitUntil(lambda: self.GetText("notification_button") != "0")
@@ -76,7 +71,7 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
     self.WaitUntilContains("Grant access", self.GetText,
                            "css=h2:contains('Grant')")
     self.WaitUntil(self.IsTextPresent,
-                   "The user %s has requested" % self.token.username)
+                   "The user %s has requested" % self.test_username)
 
     # Hunt overview should be visible
     self.WaitUntil(self.IsTextPresent, "Hunt ID")
@@ -85,7 +80,7 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
     self.Click("css=button:contains('Approve')")
     self.WaitUntil(self.IsTextPresent, "Approval granted.")
 
-    self.WaitForNotification(self.token.username)
+    self.WaitForNotification(self.test_username)
     self.Open("/")
 
     # We should be notified that we have an approval
@@ -107,15 +102,15 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
                            self.GetText, "css=grr-request-approval-dialog")
 
     # Lets add another approver.
-    approval_id = self.ListHuntApprovals(requestor=self.token.username)[0].id
+    approval_id = self.ListHuntApprovals(requestor=self.test_username)[0].id
     self.GrantHuntApproval(
         hunt_id,
         approval_id=approval_id,
         approver=u"approver",
-        requestor=self.token.username,
+        requestor=self.test_username,
         admin=False)
 
-    self.WaitForNotification(self.token.username)
+    self.WaitForNotification(self.test_username)
     self.Open("/")
 
     # We should be notified that we have an approval
@@ -170,7 +165,7 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
     # Create 2 hunts. Hunt1 by "otheruser" and hunt2 by us.
     # Both hunts will be approved by user "approver".
     hunt1_id = self.StartHunt(paused=True, creator="otheruser")
-    hunt2_id = self.StartHunt(paused=True, creator=self.token.username)
+    hunt2_id = self.StartHunt(paused=True, creator=self.test_username)
     self.CreateAdminUser(u"approver")
 
     self.RequestAndGrantHuntApproval(
@@ -182,7 +177,7 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
         hunt2_id,
         reason=self.reason,
         approver=u"approver",
-        requestor=self.token.username)
+        requestor=self.test_username)
 
     return hunt1_id, hunt2_id
 
@@ -242,7 +237,7 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
     # Check that test user can start/stop/modify hunt2.
     #
     self.Click("css=tr:contains('%s') td:contains('%s')" %
-               (hunt2_id, self.token.username))
+               (hunt2_id, self.test_username))
 
     # Modify hunt
 
@@ -302,17 +297,17 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
     self.RequestHuntApproval(
         hunt_id,
         reason=self.reason,
-        approver=self.token.username,
-        requestor=self.token.username)
+        approver=self.test_username,
+        requestor=self.test_username)
 
-    self.WaitForNotification(self.token.username)
+    self.WaitForNotification(self.test_username)
     self.Open("/")
     self.WaitUntil(lambda: self.GetText("notification_button") != "0")
     self.Click("notification_button")
     self.Click("css=td:contains('Please grant access to hunt')")
 
   def testWarningIsShownIfReviewedHuntIsNotACopy(self):
-    hunt_id = self.StartHunt(paused=True, creator=self.token.username)
+    hunt_id = self.StartHunt(paused=True, creator=self.test_username)
     self._RequestAndOpenApprovalFromSelf(hunt_id)
 
     self.WaitUntil(self.IsTextPresent,
@@ -367,8 +362,8 @@ class TestHuntACLWorkflow(gui_test_lib.GRRSeleniumHuntTest):
         "css=tr.diff-changed:contains('Action'):contains('DOWNLOAD')")
     self.WaitUntil(
         self.IsElementPresent,
-        "css=tr.diff-added:contains('Conditions'):contains('Size')"
-        ":contains('42')")
+        "css=tr:not(:contains('Args')):contains('Conditions')"
+        ":has('.diff-added'):contains('Size'):contains('42')")
 
   def testOriginalFlowLinkIsShownIfHuntCreatedFromFlow(self):
     h_id, flow_id = self._CreateHuntFromFlow()

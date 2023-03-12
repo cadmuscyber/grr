@@ -1,7 +1,15 @@
-import {ChangeDetectionStrategy, ChangeDetectorRef, Component, ComponentFactoryResolver, ComponentRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild, ViewContainerRef} from '@angular/core';
-import {Plugin as FlowDetailsPlugin} from '@app/components/flow_details/plugins/plugin';
-import {Flow, FlowDescriptor, FlowListEntry} from '@app/lib/models/flow';
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component, ComponentRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild, ViewContainerRef} from '@angular/core';
+import {BehaviorSubject, combineLatest, Observable} from 'rxjs';
+import {map, startWith} from 'rxjs/operators';
 
+import {ExportMenuItem, Plugin as FlowDetailsPlugin} from '../../components/flow_details/plugins/plugin';
+import {Flow, FlowDescriptor, FlowState} from '../../lib/models/flow';
+import {isNonNull} from '../../lib/preconditions';
+import {FlowResultsLocalStore} from '../../store/flow_results_local_store';
+import {UserGlobalStore} from '../../store/user_global_store';
+import {FlowArgsViewData} from '../flow_args_view/flow_args_view';
+
+import {ColorScheme} from './helpers/result_accordion';
 import {FLOW_DETAILS_DEFAULT_PLUGIN, FLOW_DETAILS_PLUGIN_REGISTRY} from './plugin_registry';
 
 /** Enum of Actions that can be triggered in the Flow Context Menu. */
@@ -11,7 +19,7 @@ export enum FlowMenuAction {
   DUPLICATE,
   CREATE_HUNT,
   START_VIA_API,
-  DEBUG
+  DEBUG,
 }
 
 /**
@@ -22,24 +30,62 @@ export enum FlowMenuAction {
   templateUrl: './flow_details.ng.html',
   styleUrls: ['./flow_details.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [FlowResultsLocalStore],
 })
 export class FlowDetails implements OnChanges {
+  readonly colorScheme = ColorScheme;
+
+  private detailsComponent: ComponentRef<FlowDetailsPlugin>|undefined;
+
+  flowState = FlowState;
   flowMenuAction = FlowMenuAction;
+
+  private readonly flow$ = new BehaviorSubject<Flow|null>(null);
+  private readonly flowDescriptor$ =
+      new BehaviorSubject<FlowDescriptor|null>(null);
+  readonly flowArgsViewData$: Observable<FlowArgsViewData|null> =
+      combineLatest([this.flow$, this.flowDescriptor$])
+          .pipe(
+              map(([flow, flowDescriptor]) => {
+                if (!flow || !flowDescriptor) {
+                  return null;
+                }
+                return {
+                  flowDescriptor,
+                  flowArgs: this.flow!.args as {},
+                };
+              }),
+              startWith(null));
 
   /**
    * Flow list entry to display.
    */
-  @Input() flowListEntry!: FlowListEntry;
-  /**
-   * Flow descriptor of the flow to display. May be undefined (for example,
-   * if a flow got renamed on the backend).
-   */
-  @Input() flowDescriptor!: FlowDescriptor;
+  @Input()
+  set flow(flow: Flow|null|undefined) {
+    this.flow$.next(flow ?? null);
+  }
+
+  get flow() {
+    return this.flow$.value;
+  }
 
   /**
-   * Event that is triggered when a user expands the details view.
+   * Flow descriptor of the flow to display. May be undefined if user is not
+   * allowed to start this flow or flow class has been deprecated/removed.
    */
-  @Output() expansionToggle = new EventEmitter<void>();
+  @Input()
+  set flowDescriptor(desc: FlowDescriptor|null|undefined) {
+    this.flowDescriptor$.next(desc ?? null);
+  }
+
+  get flowDescriptor() {
+    return this.flowDescriptor$.value;
+  }
+
+  /**
+   * Whether show "Create a hunt" in the menu.
+   */
+  @Input() showContextMenu = true;
 
   /**
    * Event that is triggered when a flow context menu action is selected.
@@ -49,26 +95,32 @@ export class FlowDetails implements OnChanges {
   @ViewChild('detailsContainer', {read: ViewContainerRef, static: true})
   detailsContainer!: ViewContainerRef;
 
-  private detailsComponent: ComponentRef<FlowDetailsPlugin>|undefined;
+  readonly canaryMode$ = this.userGlobalStore.currentUser$.pipe(
+      map(user => user.canaryMode),
+      startWith(false),
+  );
 
-  constructor(
-      private readonly componentFactoryResolver: ComponentFactoryResolver,
-  ) {}
+  constructor(private readonly userGlobalStore: UserGlobalStore) {}
 
   ngOnChanges(changes: SimpleChanges) {
-    if (this.flowListEntry === undefined) {
-      throw new Error('@Input() "flow" is required');
+    if (!this.flow) {
+      this.detailsContainer.clear();
+      return;
     }
 
-    const componentClass =
-        FLOW_DETAILS_PLUGIN_REGISTRY[this.flowListEntry.flow.name] ||
-        FLOW_DETAILS_DEFAULT_PLUGIN;
+    let componentClass = FLOW_DETAILS_PLUGIN_REGISTRY[this.flow.name];
+
+    // As fallback for flows without details plugin and flows that do not report
+    // resultCount metadata, show a default view that links to the old UI.
+    if (!componentClass || this.flow.resultCounts === undefined) {
+      componentClass = FLOW_DETAILS_DEFAULT_PLUGIN;
+    }
+
     // Only recreate the component if the component class has changed.
     if (componentClass !== this.detailsComponent?.instance.constructor) {
-      const factory =
-          this.componentFactoryResolver.resolveComponentFactory(componentClass);
       this.detailsContainer.clear();
-      this.detailsComponent = this.detailsContainer.createComponent(factory);
+      this.detailsComponent =
+          this.detailsContainer.createComponent(componentClass);
     }
 
     if (!this.detailsComponent) {
@@ -76,7 +128,7 @@ export class FlowDetails implements OnChanges {
           'detailsComponentInstance was expected to be defined at this point.');
     }
 
-    this.detailsComponent.instance.flowListEntry = this.flowListEntry;
+    this.detailsComponent.instance.flow = this.flow;
     // If the input bindings are set programmatically and not through a
     // template, and you have OnPush strategy, then change detection won't
     // trigger. We have to explicitly mark the dynamically created component
@@ -96,19 +148,27 @@ export class FlowDetails implements OnChanges {
     this.detailsComponent.injector.get(ChangeDetectorRef).markForCheck();
   }
 
-  get flow(): Flow {
-    return this.flowListEntry.flow;
-  }
-
-  get isExpanded(): boolean {
-    return this.flowListEntry.isExpanded;
-  }
-
-  triggerExpansionToggle() {
-    this.expansionToggle.emit();
-  }
-
   triggerMenuEvent(action: FlowMenuAction) {
     this.menuActionTriggered.emit(action);
+  }
+
+  get resultDescription() {
+    return this.flow ?
+        this.detailsComponent?.instance?.getResultDescription(this.flow) :
+        undefined;
+  }
+
+  get exportMenuItems() {
+    return (this.flow?.state === FlowState.FINISHED) ?
+        this.detailsComponent?.instance?.getExportMenuItems(this.flow) :
+        undefined;
+  }
+
+  get hasResults() {
+    return isNonNull(this.flow?.resultCounts?.find(rc => rc.count > 0));
+  }
+
+  trackExportMenuItem(index: number, entry: ExportMenuItem) {
+    return entry.title;
   }
 }

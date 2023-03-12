@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Linux only tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import builtins
 import glob
 import os
+from unittest import mock
 
 from absl import app
 
@@ -64,7 +60,7 @@ class LinuxOnlyTest(client_test_lib.EmptyActionTest):
       mnt_point = "/"
       yield device, fs_type, mnt_point
 
-    with utils.Stubber(linux, "CheckMounts", MockCheckMounts):
+    with mock.patch.object(linux, "CheckMounts", MockCheckMounts):
       results = self.RunAction(linux.EnumerateFilesystems)
 
     expected = rdf_client_fs.Filesystem(

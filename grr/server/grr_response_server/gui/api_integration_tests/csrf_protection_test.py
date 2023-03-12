@@ -1,16 +1,12 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for CSRF protection logic."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+import json
+from unittest import mock
 
 from absl import app
 import requests
 
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib import utils
-from grr_response_core.lib.util.compat import json
 from grr_response_server.gui import api_integration_test_lib
 from grr_response_server.gui import webauth
 from grr_response_server.gui import wsgiapp
@@ -21,7 +17,7 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
   """Tests GRR's CSRF protection logic for the HTTP API."""
 
   def setUp(self):
-    super(CSRFProtectionTest, self).setUp()
+    super().setUp()
 
     self.base_url = self.endpoint
 
@@ -48,7 +44,8 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
     data = {"client_ids": ["C.0000000000000000"], "labels": ["foo", "bar"]}
 
     response = requests.post(
-        self.base_url + "/api/clients/labels/add", data=json.Dump(data))
+        self.base_url + "/api/clients/labels/add", data=json.dumps(data)
+    )
 
     self.assertEqual(response.status_code, 403)
     self.assertIn("CSRF", response.text)
@@ -63,8 +60,9 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
 
     response = requests.post(
         self.base_url + "/api/clients/labels/add",
-        data=json.Dump(data),
-        cookies=cookies)
+        data=json.dumps(data),
+        cookies=cookies,
+    )
 
     self.assertEqual(response.status_code, 403)
     self.assertIn("CSRF", response.text)
@@ -83,8 +81,9 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
     response = requests.post(
         self.base_url + "/api/clients/labels/add",
         headers=headers,
-        data=json.Dump(data),
-        cookies=cookies)
+        data=json.dumps(data),
+        cookies=cookies,
+    )
     self.assertEqual(response.status_code, 200)
 
   def testPOSTRequestFailsIfCSRFTokenIsExpired(self):
@@ -101,8 +100,9 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
       response = requests.post(
           self.base_url + "/api/clients/labels/add",
           headers=headers,
-          data=json.Dump(data),
-          cookies=cookies)
+          data=json.dumps(data),
+          cookies=cookies,
+      )
       self.assertEqual(response.status_code, 200)
 
     # This should still succeed as we use strict check in wsgiapp.py:
@@ -113,8 +113,9 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
       response = requests.post(
           self.base_url + "/api/clients/labels/add",
           headers=headers,
-          data=json.Dump(data),
-          cookies=cookies)
+          data=json.dumps(data),
+          cookies=cookies,
+      )
       self.assertEqual(response.status_code, 200)
 
     with test_lib.FakeTime(
@@ -123,8 +124,9 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
       response = requests.post(
           self.base_url + "/api/clients/labels/add",
           headers=headers,
-          data=json.Dump(data),
-          cookies=cookies)
+          data=json.dumps(data),
+          cookies=cookies,
+      )
       self.assertEqual(response.status_code, 403)
       self.assertIn("Expired CSRF token", response.text)
 
@@ -139,8 +141,9 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
     response = requests.post(
         self.base_url + "/api/clients/labels/add",
         headers=headers,
-        data=json.Dump(data),
-        cookies=cookies)
+        data=json.dumps(data),
+        cookies=cookies,
+    )
     self.assertEqual(response.status_code, 403)
     self.assertIn("Malformed", response.text)
 
@@ -159,8 +162,9 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
     response = requests.post(
         self.base_url + "/api/clients/labels/add",
         headers=headers,
-        data=json.Dump(data),
-        cookies=cookies)
+        data=json.dumps(data),
+        cookies=cookies,
+    )
     self.assertEqual(response.status_code, 403)
     self.assertIn("Non-matching", response.text)
 
@@ -249,7 +253,7 @@ class CSRFProtectionTest(api_integration_test_lib.ApiIntegrationTest):
   def testCSRFTokenIsNotUpdtedIfUserIsUnknown(self):
     fake_manager = webauth.NullWebAuthManager()
     fake_manager.SetUserName("")
-    with utils.Stubber(webauth, "WEBAUTH_MANAGER", fake_manager):
+    with mock.patch.object(webauth, "WEBAUTH_MANAGER", fake_manager):
       index_response = requests.get(self.base_url)
       csrf_token = index_response.cookies.get("csrftoken")
       self.assertIsNone(csrf_token)

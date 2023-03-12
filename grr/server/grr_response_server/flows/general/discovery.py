@@ -1,21 +1,19 @@
 #!/usr/bin/env python
-# Lint as: python3
 """These are flows designed to discover information about the host."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
-
+from typing import Any
+from typing import List
+from typing import Sequence
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
+from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import cloud as rdf_cloud
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_core.lib.util import compatibility
 from grr_response_core.stats import metrics
 from grr_response_proto import flows_pb2
 from grr_response_server import artifact
@@ -32,6 +30,8 @@ from grr_response_server.flows.general import collectors
 from grr_response_server.rdfvalues import objects as rdf_objects
 
 FLEETSPEAK_UNLABELED_CLIENTS = metrics.Counter("fleetspeak_unlabeled_clients")
+CLOUD_METADATA_COLLECTION_ERRORS = metrics.Counter(
+    "cloud_metadata_collection_errors")
 
 
 class InterrogateArgs(rdf_structs.RDFProtoStruct):
@@ -50,39 +50,46 @@ class Interrogate(flow_base.FlowBase):
   def Start(self):
     """Start off all the tests."""
     self.state.client = rdf_objects.ClientSnapshot(client_id=self.client_id)
+    self.state.client.metadata.source_flow_id = self.rdf_flow.flow_id
     self.state.fqdn = None
     self.state.os = None
 
     # ClientInfo should be collected early on since we might need the client
     # version later on to know what actions a client supports.
     self.CallClient(
-        server_stubs.GetClientInfo,
-        next_state=compatibility.GetName(self.ClientInfo))
+        server_stubs.GetClientInfo, next_state=self.ClientInfo.__name__)
     self.CallClient(
-        server_stubs.GetPlatformInfo,
-        next_state=compatibility.GetName(self.Platform))
+        server_stubs.GetPlatformInfo, next_state=self.Platform.__name__)
     self.CallClient(
-        server_stubs.GetMemorySize,
-        next_state=compatibility.GetName(self.StoreMemorySize))
+        server_stubs.GetMemorySize, next_state=self.StoreMemorySize.__name__)
     self.CallClient(
-        server_stubs.GetInstallDate,
-        next_state=compatibility.GetName(self.InstallDate))
+        server_stubs.GetInstallDate, next_state=self.InstallDate.__name__)
     self.CallClient(
         server_stubs.GetConfiguration,
-        next_state=compatibility.GetName(self.ClientConfiguration))
+        next_state=self.ClientConfiguration.__name__)
     self.CallClient(
         server_stubs.GetLibraryVersions,
-        next_state=compatibility.GetName(self.ClientLibraries))
+        next_state=self.ClientLibraries.__name__)
     self.CallClient(
         server_stubs.EnumerateInterfaces,
-        next_state=compatibility.GetName(self.EnumerateInterfaces))
+        next_state=self.EnumerateInterfaces.__name__)
     self.CallClient(
         server_stubs.EnumerateFilesystems,
-        next_state=compatibility.GetName(self.EnumerateFilesystems))
+        next_state=self.EnumerateFilesystems.__name__)
+
+    flow_args_cls = rdf_artifacts.ArtifactCollectorFlowArgs
+    if config.CONFIG["Artifacts.edr_agents"]:
+      self.CallFlow(
+          collectors.ArtifactCollectorFlow.__name__,
+          artifact_list=config.CONFIG["Artifacts.edr_agents"],
+          dependencies=flow_args_cls.Dependency.IGNORE_DEPS,
+          next_state=self.ProcessEdrAgents.__name__)
 
   def CloudMetadata(self, responses):
     """Process cloud metadata and store in the client."""
     if not responses.success:
+      CLOUD_METADATA_COLLECTION_ERRORS.Increment()
+
       # We want to log this but it's not serious enough to kill the whole flow.
       self.Log("Failed to collect cloud metadata: %s" % responses.status)
       return
@@ -138,7 +145,7 @@ class Interrogate(flow_base.FlowBase):
         self.CallClient(
             server_stubs.GetCloudVMMetadata,
             rdf_cloud.BuildCloudMetadataRequests(),
-            next_state=compatibility.GetName(self.CloudMetadata))
+            next_state=self.CloudMetadata.__name__)
 
       known_system_type = True
     else:
@@ -156,7 +163,7 @@ class Interrogate(flow_base.FlowBase):
           artifact.KnowledgeBaseInitializationFlow.__name__,
           require_complete=False,
           lightweight=self.args.lightweight,
-          next_state=compatibility.GetName(self.ProcessKnowledgeBase))
+          next_state=self.ProcessKnowledgeBase.__name__)
     else:
       self.Log("Unknown system type, skipping KnowledgeBaseInitializationFlow")
 
@@ -206,7 +213,7 @@ class Interrogate(flow_base.FlowBase):
           collectors.ArtifactCollectorFlow.__name__,
           artifact_list=non_kb_artifacts,
           knowledge_base=kb,
-          next_state=compatibility.GetName(self.ProcessArtifactResponses))
+          next_state=self.ProcessArtifactResponses.__name__)
 
     try:
       # Update the client index for the rdf_objects.ClientSnapshot.
@@ -272,6 +279,8 @@ class Interrogate(flow_base.FlowBase):
           self.client_id)
       if fleetspeak_labels:
         response.labels = fleetspeak_labels
+        data_store.REL_DB.AddClientLabels(
+            client_id=self.client_id, owner="GRR", labels=fleetspeak_labels)
       else:
         FLEETSPEAK_UNLABELED_CLIENTS.Increment()
         logging.warning("Failed to get labels for Fleetspeak client %s.",
@@ -288,6 +297,11 @@ class Interrogate(flow_base.FlowBase):
     response.labels = sanitized_labels
 
     self.state.client.startup_info.client_info = response
+
+    metadata = data_store.REL_DB.ReadClientMetadata(self.client_id)
+    if metadata and metadata.last_fleetspeak_validation_info:
+      self.state.client.fleetspeak_validation_info = (
+          metadata.last_fleetspeak_validation_info)
 
   def ClientConfiguration(self, responses):
     """Process client config."""
@@ -307,6 +321,20 @@ class Interrogate(flow_base.FlowBase):
     response = responses.First()
     for k, v in response.items():
       self.state.client.library_versions.Append(key=k, value=str(v))
+
+  def ProcessEdrAgents(self, responses: Sequence[Any]) -> None:
+    if not responses.success:
+      return
+
+    edr_agents: List[rdf_client.EdrAgent] = []
+
+    for response in responses:
+      if not isinstance(response, rdf_client.EdrAgent):
+        raise TypeError(f"Unexpected EDR agent response type: {type(response)}")
+
+      edr_agents.append(response)
+
+    self.state.client.edr_agents = edr_agents
 
   def NotifyAboutEnd(self):
     notification.Notify(
@@ -331,7 +359,7 @@ class Interrogate(flow_base.FlowBase):
     summary.timestamp = rdfvalue.RDFDatetime.Now()
     summary.last_ping = summary.timestamp
 
-    events.Events.PublishEvent("Discovery", summary, token=self.token)
+    events.Events.PublishEvent("Discovery", summary, username=self.creator)
 
     self.SendReply(summary)
 
@@ -347,9 +375,9 @@ class EnrolmentInterrogateEvent(events.EventListener):
   """An event handler which will schedule interrogation on client enrollment."""
   EVENTS = ["ClientEnrollment"]
 
-  def ProcessMessages(self, msgs=None, token=None):
+  def ProcessEvents(self, msgs=None, publisher_username=None):
     for msg in msgs:
       flow.StartFlow(
           client_id=msg.Basename(),
           flow_cls=Interrogate,
-          creator=token.username if token else None)
+          creator=publisher_username)

@@ -1,17 +1,13 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Test client RDFValues."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import platform
 import socket
+from unittest import mock
 
 from absl import app
 from absl.testing import absltest
-import mock
 import psutil
 
 from grr_response_core.lib import rdfvalue
@@ -29,15 +25,6 @@ class UserTests(rdf_test_base.RDFValueTestMixin, test_lib.GRRBaseTest):
   """Test the User ProtoStruct implementation."""
 
   rdfvalue_class = rdf_client.User
-
-  USER_ACCOUNT = dict(
-      username=u"user",
-      full_name=u"John Smith",
-      comment=u"This is a user",
-      last_logon=10000,
-      domain=u"Some domain name",
-      homedir=u"/home/user",
-      sid=u"some sid")
 
   def GenerateSample(self, number=0):
     result = rdf_client.User(username="user%s" % number)
@@ -218,7 +205,7 @@ class UnameTests(rdf_test_base.RDFValueTestMixin, test_lib.GRRBaseTest):
   rdfvalue_class = rdf_client.Uname
 
   def GenerateSample(self, number=0):
-    # Make the hostname slighly different for comparison tests.
+    # Make the hostname slightly different for comparison tests.
     result = self.rdfvalue_class.FromCurrentSystem()
     parts = result.fqdn.split(".")
     parts[0] += str(number)

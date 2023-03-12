@@ -1,4 +1,3 @@
-// ProtoBestPractices: ignore
 /**
  * NOTE: DO NOT USE PROTOBUFS FROM THIS FILE.
  *
@@ -12,6 +11,7 @@ import "grr_response_proto/jobs.proto";
 import "grr_response_proto/output_plugin.proto";
 import "grr_response_proto/semantic.proto";
 
+package grr;
 
 message CollectArtifactDependenciesArgs {
   repeated string artifact_list = 1 [(sem_type) = {
@@ -342,4 +342,31 @@ message ApiAff4AttributeDescriptor {
 
 message ApiListAff4AttributeDescriptorsResult {
   repeated ApiAff4AttributeDescriptor items = 1;
+}
+
+// Next field: 9
+message ACLToken {
+  optional string username = 1;
+
+  // A reason for access (e.g. case name, investigation id).
+  optional string reason = 2;
+
+  reserved 3;
+
+  optional uint64 expiry = 5 [(sem_type) = {
+    type: "RDFDatetime",
+    description: "When does this token expire?",
+  }];
+
+  // The IP this request originated from as well as proxies on the way.
+  repeated string source_ips = 6;
+
+  // The issuing process.
+  optional string process = 7;
+
+  reserved 8;
+}
+
+message PendingFlowTermination {
+  reserved 1;
 }

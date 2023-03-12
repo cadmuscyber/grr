@@ -1,22 +1,8 @@
 #!/usr/bin/env python
-# Lint as: python3
-"""This is a backend analysis worker which will be deployed on the server.
-
-We basically pull a new task from the task master, and run the plugin
-it specifies.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+"""This is a backend analysis worker which will be deployed on the server."""
 
 from absl import app
 from absl import flags
-
-
-# pylint: disable=unused-import,g-bad-import-order
-from grr_response_server import server_plugins
-# pylint: enable=unused-import,g-bad-import-order
 
 from grr_response_core import config
 from grr_response_core.config import contexts
@@ -26,8 +12,7 @@ from grr_response_server import server_startup
 from grr_response_server import worker_lib
 
 
-
-flags.DEFINE_bool(
+_VERSION = flags.DEFINE_bool(
     "version",
     default=False,
     allow_override=True,
@@ -38,7 +23,7 @@ def main(argv):
   """Main."""
   del argv  # Unused.
 
-  if flags.FLAGS.version:
+  if _VERSION.value:
     print("GRR worker {}".format(config_server.VERSION["packageversion"]))
     return
 
@@ -49,7 +34,6 @@ def main(argv):
   server_startup.Init()
 
   fleetspeak_connector.Init()
-
 
   worker_obj = worker_lib.GRRWorker()
   worker_obj.Run()

@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Client actions related to administrating the client and its configuration."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import logging
 import os
@@ -19,9 +15,11 @@ import pytsk3
 import yara
 
 from grr_response_client import actions
+from grr_response_client import communicator
 from grr_response_client.client_actions import tempfiles
+from grr_response_client.client_actions import timeline
+from grr_response_client.unprivileged import sandbox
 from grr_response_core import config
-from grr_response_core.lib import communicator
 from grr_response_core.lib import config_lib
 from grr_response_core.lib import queues
 from grr_response_core.lib import rdfvalue
@@ -233,14 +231,16 @@ class UpdateConfiguration(actions.ActionPlugin):
     self._UpdateConfig(smart_arg, config.CONFIG)
 
 
-def GetClientInformation():
+def GetClientInformation() -> rdf_client.ClientInformation:
   return rdf_client.ClientInformation(
       client_name=config.CONFIG["Client.name"],
       client_binary_name=psutil.Process().name(),
       client_description=config.CONFIG["Client.description"],
       client_version=int(config.CONFIG["Source.version_numeric"]),
       build_time=config.CONFIG["Client.build_time"],
-      labels=config.CONFIG.Get("Client.labels", default=None))
+      labels=config.CONFIG.Get("Client.labels", default=None),
+      timeline_btime_support=timeline.BTIME_SUPPORT,
+      sandbox_support=sandbox.IsSandboxInitialized())
 
 
 class GetClientInfo(actions.ActionPlugin):
@@ -305,12 +305,44 @@ class SendStartupInfo(actions.ActionPlugin):
 
   well_known_session_id = rdfvalue.SessionID(flow_name="Startup")
 
+  def _CheckInterrogateTrigger(self) -> bool:
+    interrogate_trigger_path = config.CONFIG["Client.interrogate_trigger_path"]
+    if not interrogate_trigger_path:
+      logging.info(
+          "Client.interrogate_trigger_path not set, skipping the check.")
+      return False
+
+    if not os.path.exists(interrogate_trigger_path):
+      logging.info("Interrogate trigger file (%s) does not exist.",
+                   interrogate_trigger_path)
+      return False
+
+    logging.info("Interrogate trigger file exists: %s",
+                 interrogate_trigger_path)
+
+    # First try to remove the file and return True only if the removal
+    # is successful. This is to prevent a permission error + a crash loop from
+    # trigger infinite amount of interrogations.
+    try:
+      os.remove(interrogate_trigger_path)
+    except (OSError, IOError) as e:
+      logging.exception(
+          "Not triggering interrogate - failed to remove the "
+          "interrogate trigger file (%s): %s", interrogate_trigger_path, e)
+      return False
+
+    return True
+
   def Run(self, unused_arg, ttl=None):
     """Returns the startup information."""
     logging.debug("Sending startup information.")
+
     boot_time = rdfvalue.RDFDatetime.FromSecondsSinceEpoch(psutil.boot_time())
     response = rdf_client.StartupInfo(
-        boot_time=boot_time, client_info=GetClientInformation())
+        boot_time=boot_time,
+        client_info=GetClientInformation(),
+        interrogate_requested=self._CheckInterrogateTrigger(),
+    )
 
     self.grr_worker.SendReply(
         response,

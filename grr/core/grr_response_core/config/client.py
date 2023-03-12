@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Configuration parameters for the client."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from grr_response_core.lib import config_lib
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
@@ -136,6 +132,26 @@ config_lib.DEFINE_list(
           " relative to the given root. Format is os:/mount/disk."),
     default=[])
 
+config_lib.DEFINE_bool(
+    name="Client.use_filesystem_sandboxing",
+    help="Whether to use the sandboxed implementation for filesystem parsing.",
+    default=False)
+
+config_lib.DEFINE_bool(
+    name="Client.use_memory_sandboxing",
+    help="Whether to use the sandboxed implementation for memory scanning.",
+    default=False)
+
+config_lib.DEFINE_string(
+    name="Client.unprivileged_user",
+    help="Name of (UNIX) user to run sandboxed code as.",
+    default="")
+
+config_lib.DEFINE_string(
+    name="Client.unprivileged_group",
+    help="Name of (UNIX) group to run sandboxed code as.",
+    default="")
+
 # Windows client specific options.
 config_lib.DEFINE_string(
     "Client.config_hive",
@@ -248,6 +264,19 @@ config_lib.DEFINE_string(
     "%(Client.name)_fleetspeak_service_config.txt",
     "File-name for the Fleetspeak service config generated "
     "when repacking templates.")
+
+config_lib.DEFINE_list(
+    "Client.allowed_commands",
+    default=[],
+    help="Commands that the client is allowed to execute. Each command must be "
+    "specified in the format that is supported by the Python's `shlex` module.")
+
+config_lib.DEFINE_string(
+    "Client.interrogate_trigger_path",
+    default="",
+    help="When set, the client will check for the presence of this file at "
+    "every startup and, if the file is present, will remove it and trigger "
+    "an interrogate on the server.")
 
 # osquery options.
 

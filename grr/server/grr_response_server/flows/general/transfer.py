@@ -1,13 +1,12 @@
 #!/usr/bin/env python
-# Lint as: python3
 """These flows are designed for high performance transfers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
+import logging
 import stat
+from typing import Any
+from typing import Mapping
+from typing import Optional
+from typing import Sequence
 import zlib
-
 
 from grr_response_core.lib import constants
 from grr_response_core.lib import rdfvalue
@@ -18,7 +17,6 @@ from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import text
 from grr_response_proto import flows_pb2
 from grr_response_server import data_store
@@ -28,6 +26,7 @@ from grr_response_server import message_handlers
 from grr_response_server import notification
 from grr_response_server import server_stubs
 from grr_response_server.databases import db
+from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
 from grr_response_server.rdfvalues import objects as rdf_objects
 
 
@@ -77,25 +76,33 @@ class GetFile(flow_base.FlowBase):
     self.state.file_size = 0
     self.state.blobs = []
     self.state.stat_entry = None
+    self.state.num_bytes_collected = 0
+    self.state.target_pathspec = self.args.pathspec.Copy()
 
     # TODO(hanuszczak): Support for old clients ends on 2021-01-01.
     # This conditional should be removed after that date.
-    if self.client_version >= 3221:
+    if not self.client_version or self.client_version >= 3221:
       stub = server_stubs.GetFileStat
       request = rdf_client_action.GetFileStatRequest(
-          pathspec=self.args.pathspec, follow_symlink=True)
+          pathspec=self.state.target_pathspec, follow_symlink=True)
     else:
       stub = server_stubs.StatFile
-      request = rdf_client_action.ListDirRequest(pathspec=self.args.pathspec)
+      request = rdf_client_action.ListDirRequest(
+          pathspec=self.state.target_pathspec)
 
-    self.CallClient(stub, request, next_state=compatibility.GetName(self.Stat))
+    self.CallClient(stub, request, next_state=self.Stat.__name__)
 
   def Stat(self, responses):
     """Fix up the pathspec of the file."""
     response = responses.First()
+
+    file_size_known = True
     if responses.success and response:
       if stat.S_ISDIR(int(response.st_mode)):
         raise ValueError("`GetFile` called on a directory")
+
+      if not stat.S_ISREG(int(response.st_mode)) and response.st_size == 0:
+        file_size_known = False
 
       self.state.stat_entry = response
     else:
@@ -104,13 +111,37 @@ class GetFile(flow_base.FlowBase):
 
       # Just fill up a bogus stat entry.
       self.state.stat_entry = rdf_client_fs.StatEntry(
-          pathspec=self.args.pathspec)
+          pathspec=self.state.target_pathspec)
+      file_size_known = False
+
+    # File size is not known, so we have to use user-provided read_length
+    # or pathspec.file_size_override to limit the amount of bytes we're
+    # going to try to read.
+    if not file_size_known:
+      if not self.state.target_pathspec.HasField(
+          "file_size_override") and not self.args.read_length:
+        raise ValueError("The file couldn't be stat-ed. Its size is not known."
+                         " Either read_length or pathspec.file_size_override"
+                         " has to be provided.")
+
+      # This is not a regular file and the size is 0. Let's use read_length or
+      # file_size_override as a best guess for the file size.
+      if self.args.read_length == 0:
+        self.state.stat_entry.st_size = self.state.target_pathspec.file_size_override
+      else:
+        self.state.stat_entry.st_size = (
+            self.state.target_pathspec.offset + self.args.read_length)
 
     # Adjust the size from st_size if read length is not specified.
     if self.args.read_length == 0:
-      self.state.file_size = self.state.stat_entry.st_size
+      self.state.file_size = max(
+          0,
+          self.state.stat_entry.st_size - self.state.stat_entry.pathspec.offset)
     else:
       self.state.file_size = self.args.read_length
+      if not self.state.target_pathspec.HasField("file_size_override"):
+        self.state.target_pathspec.file_size_override = (
+            self.state.target_pathspec.offset + self.args.read_length)
 
     self.state.max_chunk_number = (self.state.file_size // self.CHUNK_SIZE) + 1
 
@@ -128,14 +159,39 @@ class GetFile(flow_base.FlowBase):
         return
 
       request = rdf_client.BufferReference(
-          pathspec=self.args.pathspec,
+          pathspec=self.state.target_pathspec,
           offset=next_offset,
-          length=self.CHUNK_SIZE)
+          length=min(self.state.file_size - next_offset, self.CHUNK_SIZE))
       self.CallClient(
           server_stubs.TransferBuffer,
           request,
-          next_state=compatibility.GetName(self.ReadBuffer))
+          next_state=self.ReadBuffer.__name__)
       self.state.current_chunk_number += 1
+
+  def _AddFileToFileStore(self):
+    stat_entry = self.state.stat_entry
+    path_info = rdf_objects.PathInfo.FromStatEntry(stat_entry)
+
+    blob_refs = []
+    offset = 0
+    for data, size in self.state.blobs:
+      blob_refs.append(
+          rdf_objects.BlobReference(
+              offset=offset,
+              size=size,
+              blob_id=rdf_objects.BlobID.FromSerializedBytes(data)))
+      offset += size
+
+    client_path = db.ClientPath.FromPathInfo(self.client_id, path_info)
+    hash_id = file_store.AddFileWithUnknownHash(client_path, blob_refs)
+
+    path_info.hash_entry.sha256 = hash_id.AsBytes()
+    path_info.hash_entry.num_bytes = offset
+
+    data_store.REL_DB.WritePathInfos(self.client_id, [path_info])
+
+    # Save some space.
+    del self.state["blobs"]
 
   def ReadBuffer(self, responses):
     """Read the buffer and write to the file."""
@@ -147,6 +203,8 @@ class GetFile(flow_base.FlowBase):
     if not response:
       raise IOError("Missing hash for offset %s missing" % response.offset)
 
+    self.state.num_bytes_collected += response.length
+
     if response.offset <= self.state.max_chunk_number * self.CHUNK_SIZE:
       # Response.data is the hash of the block (32 bytes) and
       # response.length is the length of the block.
@@ -157,40 +215,12 @@ class GetFile(flow_base.FlowBase):
       # Add one more chunk to the window.
       self.FetchWindow(1)
 
-    if response.offset + response.length >= self.state.file_size:
-      # File is complete.
-      stat_entry = self.state.stat_entry
-
-      path_info = rdf_objects.PathInfo.FromStatEntry(stat_entry)
-
-      blob_refs = []
-      offset = 0
-      for data, size in self.state.blobs:
-        blob_refs.append(
-            rdf_objects.BlobReference(
-                offset=offset,
-                size=size,
-                blob_id=rdf_objects.BlobID.FromSerializedBytes(data)))
-        offset += size
-
-      client_path = db.ClientPath.FromPathInfo(self.client_id, path_info)
-      hash_id = file_store.AddFileWithUnknownHash(client_path, blob_refs)
-
-      path_info.hash_entry.sha256 = hash_id.AsBytes()
-      path_info.hash_entry.num_bytes = offset
-
-      data_store.REL_DB.WritePathInfos(self.client_id, [path_info])
-
-      # Save some space.
-      del self.state["blobs"]
-      self.state.success = True
-
   def NotifyAboutEnd(self):
-    super(GetFile, self).NotifyAboutEnd()
+    super().NotifyAboutEnd()
 
     stat_entry = self.state.stat_entry
     if not stat_entry:
-      stat_entry = rdf_client_fs.StatEntry(pathspec=self.args.pathspec)
+      stat_entry = rdf_client_fs.StatEntry(pathspec=self.state.target_pathspec)
 
     urn = stat_entry.AFF4Path(self.client_urn)
     components = urn.Split()
@@ -201,38 +231,55 @@ class GetFile(flow_base.FlowBase):
           path_type=components[2].upper(),
           path_components=components[3:])
 
-    if not self.state.get("success"):
+    if self.state.num_bytes_collected >= self.state.file_size:
       notification.Notify(
-          self.token.username,
-          rdf_objects.UserNotification.Type.TYPE_VFS_FILE_COLLECTION_FAILED,
-          "File transfer failed.",
+          self.creator,
+          rdf_objects.UserNotification.Type.TYPE_VFS_FILE_COLLECTED,
+          "File transferred successfully.",
+          rdf_objects.ObjectReference(
+              reference_type=rdf_objects.ObjectReference.Type.VFS_FILE,
+              vfs_file=file_ref))
+    elif self.state.num_bytes_collected > 0:
+      notification.Notify(
+          self.creator,
+          rdf_objects.UserNotification.Type.TYPE_VFS_FILE_COLLECTED,
+          "File transferred partially (%d bytes out of %d)." %
+          (self.state.num_bytes_collected, self.state.file_size),
           rdf_objects.ObjectReference(
               reference_type=rdf_objects.ObjectReference.Type.VFS_FILE,
               vfs_file=file_ref))
     else:
       notification.Notify(
-          self.token.username,
-          rdf_objects.UserNotification.Type.TYPE_VFS_FILE_COLLECTED,
-          "File transferred successfully.",
+          self.creator,
+          rdf_objects.UserNotification.Type.TYPE_VFS_FILE_COLLECTION_FAILED,
+          "File transfer failed.",
           rdf_objects.ObjectReference(
               reference_type=rdf_objects.ObjectReference.Type.VFS_FILE,
               vfs_file=file_ref))
 
   def End(self, responses):
     """Finalize reading the file."""
-    if not self.state.get("success"):
-      self.Log("File transfer failed.")
-    else:
+    if self.state.num_bytes_collected >= 0:
+      self._AddFileToFileStore()
+
       stat_entry = self.state.stat_entry
-      self.Log("File %s transferred successfully.",
-               stat_entry.AFF4Path(self.client_urn))
+      if self.state.num_bytes_collected >= self.state.file_size:
+        self.Log("File %s transferred successfully.",
+                 stat_entry.AFF4Path(self.client_urn))
+      else:
+        self.Log("File %s transferred partially (%d bytes out of %d).",
+                 stat_entry.AFF4Path(self.client_urn),
+                 self.state.num_bytes_collected, self.state.file_size)
 
       # Notify any parent flows the file is ready to be used now.
       self.SendReply(stat_entry)
+    else:
+      self.Log("File transfer failed.")
 
-    super(GetFile, self).End(responses)
+    super().End(responses)
 
 
+# TODO: Improve typing and testing situation.
 class MultiGetFileLogic(object):
   """A flow mixin to efficiently retrieve a number of files.
 
@@ -266,8 +313,19 @@ class MultiGetFileLogic(object):
     self.state.files_skipped = 0
     self.state.files_failed = 0
 
+    # Controls how far to go on the collection: stat, hash and collect contents.
+    # By default we go through the whole process (collecting file contents), but
+    # we can stop when we finish getting the stat or hash.
+    self.state.stop_at_stat = False
+    self.state.stop_at_hash = False
+
     # Counter to batch up hash checking in the filestore
     self.state.files_hashed_since_check = 0
+
+    # A dict of file trackers which are waiting to be stat'd.
+    # Keys are vfs urns and values are FileTrack instances.  Values are
+    # copied to pending_hashes for download if not present in FileStore.
+    self.state.pending_stats: Mapping[int, Mapping[str, Any]] = {}
 
     # A dict of file trackers which are waiting to be checked by the file
     # store.  Keys are vfs urns and values are FileTrack instances.  Values are
@@ -307,11 +365,8 @@ class MultiGetFileLogic(object):
   def _TryToStartNextPathspec(self):
     """Try to schedule the next pathspec if there is enough capacity."""
 
-    # Nothing to do here.
-    if self.state.maximum_pending_files <= len(self.state.pending_files):
-      return
-
-    if self.state.maximum_pending_files <= len(self.state.pending_hashes):
+    # If there's no capacity, there's nothing to do here.
+    if not self._HasEnoughCapacity():
       return
 
     try:
@@ -322,15 +377,42 @@ class MultiGetFileLogic(object):
       # We did all the pathspecs, nothing left to do here.
       return
 
-    # Add the file tracker to the pending hashes list where it waits until the
-    # hash comes back.
-    self.state.pending_hashes[index] = {"index": index}
+    # First stat the file, then hash the file if needed.
+    self._ScheduleStatFile(index, pathspec)
+    if getattr(self.state, "stop_at_stat", False):
+      return
 
-    # First state the file, then hash the file.
+    self._ScheduleHashFile(index, pathspec)
+
+  def _HasEnoughCapacity(self) -> bool:
+    """Checks whether there is enough capacity to schedule next pathspec."""
+
+    if self.state.maximum_pending_files <= len(self.state.pending_files):
+      return False
+
+    if self.state.maximum_pending_files <= len(self.state.pending_hashes):
+      return False
+
+    if self.state.maximum_pending_files <= len(self.state.pending_stats):
+      return False
+
+    return True
+
+  def _ScheduleStatFile(self, index: int, pathspec: rdf_paths.PathSpec) -> None:
+    """Schedules the appropriate Stat File Client Action.
+
+    Args:
+      index: Index of the current file to get Stat for.
+      pathspec: Pathspec of the current file to get Stat for.
+    """
+
+    # Add the file tracker to the pending stats list where it waits until the
+    # stat comes back.
+    self.state.pending_stats[index] = {"index": index}
 
     # TODO(hanuszczak): Support for old clients ends on 2021-01-01.
     # This conditional should be removed after that date.
-    if self.client_version >= 3221:
+    if not self.client_version or self.client_version >= 3221:
       stub = server_stubs.GetFileStat
       request = rdf_client_action.GetFileStatRequest(pathspec=pathspec)
       request.follow_symlink = True
@@ -343,8 +425,20 @@ class MultiGetFileLogic(object):
     self.CallClient(
         stub,
         request,
-        next_state=compatibility.GetName(self._StoreStat),
+        next_state=self._ReceiveFileStat.__name__,
         request_data=dict(index=index, request_name=request_name))
+
+  def _ScheduleHashFile(self, index: int, pathspec: rdf_paths.PathSpec) -> None:
+    """Schedules the HashFile Client Action.
+
+    Args:
+      index: Index of the current file to be hashed.
+      pathspec: Pathspec of the current file to be hashed.
+    """
+
+    # Add the file tracker to the pending hashes list where it waits until the
+    # hash comes back.
+    self.state.pending_hashes[index] = {"index": index}
 
     request = rdf_client_action.FingerprintRequest(
         pathspec=pathspec, max_filesize=self.state.file_size)
@@ -359,7 +453,7 @@ class MultiGetFileLogic(object):
     self.CallClient(
         server_stubs.HashFile,
         request,
-        next_state=compatibility.GetName(self._ReceiveFileHash),
+        next_state=self._ReceiveFileHash.__name__,
         request_data=dict(index=index))
 
   def _RemoveCompletedPathspec(self, index):
@@ -369,6 +463,7 @@ class MultiGetFileLogic(object):
 
     self.state.indexed_pathspecs[index] = None
     self.state.request_data_list[index] = None
+    self.state.pending_stats.pop(index, None)
     self.state.pending_hashes.pop(index, None)
     self.state.pending_files.pop(index, None)
 
@@ -406,7 +501,8 @@ class MultiGetFileLogic(object):
         found in the filestore.
     """
 
-  def _FileFetchFailed(self, index):
+  def _FileFetchFailed(self, index: int,
+                       status: Optional[rdf_flow_objects.FlowStatus]):
     """Remove pathspec for this index and call the FileFetchFailed method."""
 
     pathspec, request_data = self._RemoveCompletedPathspec(index)
@@ -417,37 +513,70 @@ class MultiGetFileLogic(object):
     self.state.files_failed += 1
 
     # Report the request_data for this flow's caller.
-    self.FileFetchFailed(pathspec, request_data=request_data)
+    self.FileFetchFailed(pathspec, request_data=request_data, status=status)
 
-  def FileFetchFailed(self, pathspec, request_data=None):
+  def FileFetchFailed(self,
+                      pathspec: rdf_paths.PathSpec,
+                      request_data: Any = None,
+                      status: Optional[rdf_flow_objects.FlowStatus] = None):
     """This method will be called when stat or hash requests fail.
 
     Args:
       pathspec: Pathspec of a file that failed to be fetched.
       request_data: Arbitrary dictionary that was passed to the corresponding
         StartFileFetch call.
+      status: FlowStatus that contains more error details.
     """
 
-  def _StoreStat(self, responses):
+  def _ReceiveFileStat(self, responses):
     """Stores stat entry in the flow's state."""
+
     index = responses.request_data["index"]
     if not responses.success:
       self.Log("Failed to stat file: %s", responses.status)
+      self.state.pending_stats.pop(index, None)
       # Report failure.
-      self._FileFetchFailed(index)
+      self._FileFetchFailed(index, status=responses.status)
       return
 
-    tracker = self.state.pending_hashes[index]
-    tracker["stat_entry"] = responses.First()
+    stat_entry = responses.First()
+
+    # This stat is no longer pending, so we free the tracker.
+    self.state.pending_stats.pop(index, None)
+
+    request_data = self.state.request_data_list[index]
+    self.ReceiveFetchedFileStat(stat_entry, request_data)
+
+    if getattr(self.state, "stop_at_stat", False):
+      self._RemoveCompletedPathspec(index)
+      return
+
+    # Propagate stat information to hash queue (same index is used across).
+    hash_tracker = self.state.pending_hashes[index]
+    hash_tracker["stat_entry"] = stat_entry
+
+  def ReceiveFetchedFileStat(
+      self,
+      stat_entry: rdf_client_fs.StatEntry,
+      request_data: Optional[Mapping[str, Any]] = None) -> None:
+    """This method will be called for each new file stat successfully fetched.
+
+    Args:
+      stat_entry: rdf_client_fs.StatEntry object describing the file.
+      request_data: Arbitrary dictionary that was passed to the corresponding
+        StartFileFetch call.
+    """
+    pass
 
   def _ReceiveFileHash(self, responses):
     """Add hash digest to tracker and check with filestore."""
+
     index = responses.request_data["index"]
     if not responses.success:
       self.Log("Failed to hash file: %s", responses.status)
       self.state.pending_hashes.pop(index, None)
       # Report the error.
-      self._FileFetchFailed(index)
+      self._FileFetchFailed(index, status=responses.status)
       return
 
     self.state.files_hashed += 1
@@ -478,15 +607,38 @@ class MultiGetFileLogic(object):
       tracker = self.state.pending_hashes[index]
     except KeyError:
       # Hashing the file failed, but we did stat it.
-      self._FileFetchFailed(index)
+      self._FileFetchFailed(index, status=responses.status)
       return
 
     tracker["hash_obj"] = hash_obj
     tracker["bytes_read"] = response.bytes_read
 
+    stat_entry = tracker["stat_entry"]
+    request_data = self.state.request_data_list[index]
+    self.ReceiveFetchedFileHash(stat_entry, hash_obj, request_data)
+
+    if getattr(self.state, "stop_at_hash", False):
+      self._RemoveCompletedPathspec(index)
+      return
+
     self.state.files_hashed_since_check += 1
     if self.state.files_hashed_since_check >= self.MIN_CALL_TO_FILE_STORE:
       self._CheckHashesWithFileStore()
+
+  def ReceiveFetchedFileHash(
+      self,
+      stat_entry: rdf_client_fs.StatEntry,
+      file_hash: rdf_crypto.Hash,
+      request_data: Optional[Mapping[str, Any]] = None) -> None:
+    """This method will be called for each new file hash successfully fetched.
+
+    Args:
+      stat_entry: rdf_client_fs.StatEntry object describing the file.
+      file_hash: rdf_crypto.Hash object with file hashes.
+      request_data: Arbitrary dictionary that was passed to the corresponding
+        StartFileFetch call.
+    """
+    pass
 
   def _CheckHashesWithFileStore(self):
     """Check all queued up hashes for existence in file store.
@@ -594,7 +746,7 @@ class MultiGetFileLogic(object):
             pathspec=file_tracker["stat_entry"].pathspec,
             offset=i * self.CHUNK_SIZE,
             length=length,
-            next_state=compatibility.GetName(self._CheckHash),
+            next_state=self._CheckHash.__name__,
             request_data=dict(index=index))
 
     if self.state.files_hashed % 100 == 0:
@@ -616,7 +768,7 @@ class MultiGetFileLogic(object):
     if not responses.success or not hash_response:
       urn = file_tracker["stat_entry"].pathspec.AFF4Path(self.client_urn)
       self.Log("Failed to read %s: %s", urn, responses.status)
-      self._FileFetchFailed(index)
+      self._FileFetchFailed(index, status=responses.status)
       return
 
     file_tracker.setdefault("hash_list", []).append(hash_response)
@@ -648,7 +800,7 @@ class MultiGetFileLogic(object):
     self.state.blob_hashes_pending = 0
 
     # If we encounter hashes that we already have, we will update
-    # self.state.pending_files right away so we can't use an iterator here.
+    # self.state.pending_files right away.
     for index, file_tracker in list(self.state.pending_files.items()):
       for i, hash_response in enumerate(file_tracker.get("hash_list", [])):
         # Make sure we read the correct pathspec on the client.
@@ -659,14 +811,14 @@ class MultiGetFileLogic(object):
           # If we have the data we may call our state directly.
           self.CallStateInline(
               messages=[hash_response],
-              next_state=compatibility.GetName(self._WriteBuffer),
+              next_state=self._WriteBuffer.__name__,
               request_data=dict(index=index, blob_index=i))
         else:
           # We dont have this blob - ask the client to transmit it.
           self.CallClient(
               server_stubs.TransferBuffer,
               hash_response,
-              next_state=compatibility.GetName(self._WriteBuffer),
+              next_state=self._WriteBuffer.__name__,
               request_data=dict(index=index, blob_index=i))
 
   def _WriteBuffer(self, responses):
@@ -678,7 +830,7 @@ class MultiGetFileLogic(object):
 
     # Failed to read the file - ignore it.
     if not responses.success:
-      self._FileFetchFailed(index)
+      self._FileFetchFailed(index, status=responses.status)
       return
 
     response = responses.First()
@@ -791,7 +943,7 @@ class MultiGetFile(MultiGetFileLogic, flow_base.FlowBase):
 
   def Start(self):
     """Start state of the flow."""
-    super(MultiGetFile, self).Start(
+    super().Start(
         file_size=self.args.file_size,
         maximum_pending_files=self.args.maximum_pending_files,
         use_external_stores=self.args.use_external_stores)
@@ -827,7 +979,7 @@ class MultiGetFile(MultiGetFileLogic, flow_base.FlowBase):
 
     self.SendReply(stat_entry)
 
-  def FileFetchFailed(self, pathspec, request_data=None):
+  def FileFetchFailed(self, pathspec, request_data=None, status=None):
     """This method will be called when stat or hash requests fail."""
     self.state.pathspecs_progress[
         request_data].status = PathSpecProgress.Status.FAILED
@@ -873,9 +1025,7 @@ class GetMBR(flow_base.FlowBase):
           offset=i * buffer_size,
           length=min(bytes_we_need, buffer_size))
       self.CallClient(
-          server_stubs.ReadBuffer,
-          request,
-          next_state=compatibility.GetName(self.StoreMBR))
+          server_stubs.ReadBuffer, request, next_state=self.StoreMBR.__name__)
       bytes_we_need -= buffer_size
 
   def StoreMBR(self, responses):
@@ -904,11 +1054,17 @@ class BlobHandler(message_handlers.MessageHandler):
 
   handler_name = "BlobHandler"
 
-  def ProcessMessages(self, msgs):
+  def ProcessMessages(
+      self,
+      msgs: Sequence[rdf_objects.MessageHandlerRequest],
+  ) -> None:
     blobs = []
     for msg in msgs:
       blob = msg.request.payload
+
       data = blob.data
+      logging.info("Received of length %s from '%s'", len(data), msg.client_id)
+
       if not data:
         continue
 
@@ -944,9 +1100,7 @@ class SendFile(flow_base.FlowBase):
   def Start(self):
     """This issues the sendfile request."""
     self.CallClient(
-        server_stubs.SendFile,
-        self.args,
-        next_state=compatibility.GetName(self.Done))
+        server_stubs.SendFile, self.args, next_state=self.Done.__name__)
 
   def Done(self, responses):
     if not responses.success:

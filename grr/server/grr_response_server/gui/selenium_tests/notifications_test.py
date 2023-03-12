@@ -1,14 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test the fileview interface."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from unittest import mock
 
 from absl import app
 
-from grr_response_core.lib import utils
 from grr_response_server import flow_base
 from grr_response_server import notification
 from grr_response_server.flows.general import discovery
@@ -23,14 +18,13 @@ class TestNotifications(gui_test_lib.GRRSeleniumTest):
   """Test the fileview interface."""
 
   @classmethod
-  def GenerateNotifications(cls, client_id, token):
+  def GenerateNotifications(cls, client_id, username):
     """Generates fake notifications of different notification types."""
     session_id = flow_test_lib.StartFlow(
-        discovery.Interrogate, client_id=client_id, creator=token.username)
+        discovery.Interrogate, client_id=client_id, creator=username)
 
     notification.Notify(
-        token.username,
-        rdf_objects.UserNotification.Type.TYPE_CLIENT_INTERROGATED,
+        username, rdf_objects.UserNotification.Type.TYPE_CLIENT_INTERROGATED,
         "Fake discovery message",
         rdf_objects.ObjectReference(
             reference_type=rdf_objects.ObjectReference.Type.CLIENT,
@@ -38,8 +32,7 @@ class TestNotifications(gui_test_lib.GRRSeleniumTest):
 
     # ViewObject: VirtualFileSystem
     notification.Notify(
-        token.username,
-        rdf_objects.UserNotification.Type.TYPE_VFS_FILE_COLLECTED,
+        username, rdf_objects.UserNotification.Type.TYPE_VFS_FILE_COLLECTED,
         "File fetch completed",
         rdf_objects.ObjectReference(
             reference_type=rdf_objects.ObjectReference.Type.VFS_FILE,
@@ -53,8 +46,7 @@ class TestNotifications(gui_test_lib.GRRSeleniumTest):
 
     # ViewObject: Flow
     notification.Notify(
-        token.username,
-        rdf_objects.UserNotification.Type.TYPE_FLOW_RUN_COMPLETED,
+        username, rdf_objects.UserNotification.Type.TYPE_FLOW_RUN_COMPLETED,
         "Fake view flow message",
         rdf_objects.ObjectReference(
             reference_type=rdf_objects.ObjectReference.Type.FLOW,
@@ -67,11 +59,12 @@ class TestNotifications(gui_test_lib.GRRSeleniumTest):
     return session_id
 
   def setUp(self):
-    super(TestNotifications, self).setUp()
+    super().setUp()
 
     # Have something for us to look at.
     self.client_id = self.SetupClient(0)
-    self.session_id = self.GenerateNotifications(self.client_id, self.token)
+    self.session_id = self.GenerateNotifications(self.client_id,
+                                                 self.test_username)
     self.RequestAndGrantClientApproval(self.client_id)
 
   def testNotifications(self):
@@ -158,13 +151,13 @@ class TestNotifications(gui_test_lib.GRRSeleniumTest):
 
   def testServerErrorInApiShowsErrorButton(self):
 
-    def MockRender(self, args, token):  # pylint: disable=unused-argument
+    def MockRender(self, args, context):  # pylint: disable=unused-argument
       """Fake render method to force an exception."""
       raise RuntimeError("This is a another forced exception")
 
     with self.DisableHttpErrorChecks():
       # By mocking out Handle, we can force an exception.
-      with utils.Stubber(ApiSearchClientsHandler, "Handle", MockRender):
+      with mock.patch.object(ApiSearchClientsHandler, "Handle", MockRender):
         self.Open("/")
         self.Click("client_query_submit")
 

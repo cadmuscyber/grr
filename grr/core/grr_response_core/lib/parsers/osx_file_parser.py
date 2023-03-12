@@ -1,41 +1,48 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Simple parsers for OS X files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import datetime
 import io
 import os
+import plistlib
 import stat
+from typing import IO
+from typing import Iterable
+from typing import Iterator
 
-import biplist
 
 from grr_response_core.lib import parser
 from grr_response_core.lib import parsers
+from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import client as rdf_client
+from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
+from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import plist as rdf_plist
 
 
-class OSXUsersParser(parser.ArtifactFilesMultiParser):
+class OSXUsersParser(parsers.MultiResponseParser[rdf_client.User]):
   """Parser for Glob of /Users/*."""
 
   output_types = [rdf_client.User]
-  supported_artifacts = ["MacOSUsers"]
-  blacklist = ["Shared"]
+  supported_artifacts = ["UsersDirectory"]
 
-  def ParseMultiple(self, stat_entries, knowledge_base):
-    """Parse the StatEntry objects."""
-    _ = knowledge_base
+  _ignore_users = ["Shared"]
 
-    for stat_entry in stat_entries:
+  def ParseResponses(
+      self,
+      knowledge_base: rdf_client.KnowledgeBase,
+      responses: Iterable[rdfvalue.RDFValue],
+  ) -> Iterator[rdf_client.User]:
+    for response in responses:
+      if not isinstance(response, rdf_client_fs.StatEntry):
+        raise TypeError(f"Unexpected response type: `{type(response)}`")
+
       # TODO: `st_mode` has to be an `int`, not `StatMode`.
-      if stat.S_ISDIR(int(stat_entry.st_mode)):
-        homedir = stat_entry.pathspec.path
+      if stat.S_ISDIR(int(response.st_mode)):
+        homedir = response.pathspec.path
         username = os.path.basename(homedir)
-        if username not in self.blacklist:
+        if username not in self._ignore_users:
           yield rdf_client.User(username=username, homedir=homedir)
 
 
@@ -51,8 +58,8 @@ class OSXSPHardwareDataTypeParser(parser.CommandParser):
     self.CheckReturn(cmd, return_val)
 
     try:
-      plist = biplist.readPlist(io.BytesIO(stdout))
-    except biplist.InvalidPlistException as error:
+      plist = plistlib.load(io.BytesIO(stdout))
+    except plistlib.InvalidFileException as error:
       raise parsers.ParseError("Failed to parse a plist file", cause=error)
 
     if len(plist) > 1:
@@ -69,23 +76,23 @@ class OSXSPHardwareDataTypeParser(parser.CommandParser):
         system_product_name=system_product_name)
 
 
-class OSXLaunchdPlistParser(parsers.SingleFileParser):
+class OSXLaunchdPlistParser(parsers.SingleFileParser[rdf_plist.LaunchdPlist]):
   """Parse Launchd plist files into LaunchdPlist objects."""
 
   output_types = [rdf_plist.LaunchdPlist]
   supported_artifacts = [
-      "MacOSLaunchAgentsPlistFiles", "MacOSLaunchDaemonsPlistFiles"
+      "MacOSLaunchAgentsPlistFile", "MacOSLaunchDaemonsPlistFile"
   ]
 
-  def ParseFile(self, knowledge_base, pathspec, filedesc):
+  def ParseFile(
+      self,
+      knowledge_base: rdf_client.KnowledgeBase,
+      pathspec: rdf_paths.PathSpec,
+      filedesc: IO[bytes],
+  ) -> Iterator[rdf_plist.LaunchdPlist]:
     del knowledge_base  # Unused.
-    del pathspec  # Unused.
 
-    kwargs = {}
-    try:
-      kwargs["aff4path"] = filedesc.urn
-    except AttributeError:
-      pass
+    kwargs = {"path": pathspec.last.path}
 
     direct_copy_items = [
         "Label", "Disabled", "UserName", "GroupName", "Program",
@@ -107,8 +114,8 @@ class OSXLaunchdPlistParser(parsers.SingleFileParser):
     plist = {}
 
     try:
-      plist = biplist.readPlist(filedesc)
-    except (biplist.InvalidPlistException, ValueError, IOError) as e:
+      plist = plistlib.load(filedesc)
+    except (plistlib.InvalidFileException, ValueError, IOError) as e:
       plist["Label"] = "Could not parse plist: %s" % e
 
     # These are items that can be directly copied
@@ -130,8 +137,8 @@ class OSXLaunchdPlistParser(parsers.SingleFileParser):
       if plist.get(key):
         kwargs[key] = True
 
-    if plist.get("inetdCompatability") is not None:
-      kwargs["inetdCompatabilityWait"] = plist.get("inetdCompatability").get(
+    if plist.get("inetdCompatibility") is not None:
+      kwargs["inetdCompatibilityWait"] = plist.get("inetdCompatibility").get(
           "Wait")
 
     keepalive = plist.get("KeepAlive")
@@ -192,19 +199,25 @@ class OSXLaunchdPlistParser(parsers.SingleFileParser):
     yield rdf_plist.LaunchdPlist(**kwargs)
 
 
-class OSXInstallHistoryPlistParser(parsers.SingleFileParser):
+class OSXInstallHistoryPlistParser(
+    parsers.SingleFileParser[rdf_client.SoftwarePackages]):
   """Parse InstallHistory plist files into SoftwarePackage objects."""
 
   output_types = [rdf_client.SoftwarePackages]
   supported_artifacts = ["MacOSInstallationHistory"]
 
-  def ParseFile(self, knowledge_base, pathspec, filedesc):
+  def ParseFile(
+      self,
+      knowledge_base: rdf_client.KnowledgeBase,
+      pathspec: rdf_paths.PathSpec,
+      filedesc: IO[bytes],
+  ) -> Iterator[rdf_client.SoftwarePackages]:
     del knowledge_base  # Unused.
     del pathspec  # Unused.
 
     try:
-      plist = biplist.readPlist(filedesc)
-    except biplist.InvalidPlistException as error:
+      plist = plistlib.load(filedesc)
+    except plistlib.InvalidFileException as error:
       raise parsers.ParseError("Failed to parse a plist file", cause=error)
 
     if not isinstance(plist, list):
@@ -217,7 +230,7 @@ class OSXInstallHistoryPlistParser(parsers.SingleFileParser):
           rdf_client.SoftwarePackage.Installed(
               name=sw.get("displayName"),
               version=sw.get("displayVersion"),
-              description=",".join(sw.get("packageIdentifiers")),
+              description=",".join(sw.get("packageIdentifiers", [])),
               # TODO(hanuszczak): make installed_on an RDFDatetime
               installed_on=_DateToEpoch(sw.get("date"))))
 

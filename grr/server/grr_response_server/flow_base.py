@@ -1,19 +1,17 @@
 #!/usr/bin/env python
-# Lint as: python3
 """The base class for flow objects."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
+import collections
 import logging
 import traceback
+from typing import Any, Iterator, Mapping, NamedTuple, Optional, Sequence, Tuple, Type
 
 from grr_response_core.lib import rdfvalue
+from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
 from grr_response_core.lib.registry import FlowRegistry
-from grr_response_core.lib.util import compatibility
 from grr_response_core.stats import metrics
 from grr_response_server import access_control
 from grr_response_server import action_registry
@@ -24,7 +22,11 @@ from grr_response_server import flow
 from grr_response_server import flow_responses
 from grr_response_server import hunt
 from grr_response_server import notification as notification_lib
+from grr_response_server import output_plugin as output_plugin_lib
+from grr_response_server import server_stubs
+from grr_response_server.databases import db
 from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
+from grr_response_server.rdfvalues import flow_runner as rdf_flow_runner
 from grr_response_server.rdfvalues import objects as rdf_objects
 
 FLOW_STARTS = metrics.Counter("flow_starts", fields=[("flow", str)])
@@ -97,59 +99,13 @@ BEHAVIOUR_BASIC = FlowBehaviour("ADVANCED", "BASIC")
 BEHAVIOUR_DEBUG = FlowBehaviour("DEBUG")
 
 
-def _TerminateFlow(rdf_flow,
-                   reason=None,
-                   flow_state=rdf_flow_objects.Flow.FlowState.ERROR):
-  """Does the actual termination."""
-  flow_cls = FlowRegistry.FlowClassByName(rdf_flow.flow_class_name)
-  flow_obj = flow_cls(rdf_flow)
+# This is a mypy-friendly way of defining named tuples:
+# https://mypy.readthedocs.io/en/stable/kinds_of_types.html#named-tuples
+class ClientPathArchiveMapping(NamedTuple):
+  """Mapping between a client path and a path inside an archive."""
 
-  if not flow_obj.IsRunning():
-    # Nothing to do.
-    return
-
-  logging.info("Terminating flow %s on %s, reason: %s", rdf_flow.flow_id,
-               rdf_flow.client_id, reason)
-
-  rdf_flow.flow_state = flow_state
-  rdf_flow.error_message = reason
-  flow_obj.NotifyCreatorOfError()
-
-  data_store.REL_DB.UpdateFlow(
-      rdf_flow.client_id,
-      rdf_flow.flow_id,
-      flow_obj=rdf_flow,
-      processing_on=None,
-      processing_since=None,
-      processing_deadline=None)
-  data_store.REL_DB.DeleteAllFlowRequestsAndResponses(rdf_flow.client_id,
-                                                      rdf_flow.flow_id)
-
-
-def TerminateFlow(client_id,
-                  flow_id,
-                  reason=None,
-                  flow_state=rdf_flow_objects.Flow.FlowState.ERROR):
-  """Terminates a flow and all of its children.
-
-  Args:
-    client_id: Client ID of a flow to terminate.
-    flow_id: Flow ID of a flow to terminate.
-    reason: String with a termination reason.
-    flow_state: Flow state to be assigned to a flow after termination. Defaults
-      to FlowState.ERROR.
-  """
-
-  to_terminate = [data_store.REL_DB.ReadFlowObject(client_id, flow_id)]
-
-  while to_terminate:
-    next_to_terminate = []
-    for rdf_flow in to_terminate:
-      _TerminateFlow(rdf_flow, reason=reason, flow_state=flow_state)
-      next_to_terminate.extend(
-          data_store.REL_DB.ReadChildFlowObjects(rdf_flow.client_id,
-                                                 rdf_flow.flow_id))
-    to_terminate = next_to_terminate
+  client_path: db.ClientPath
+  archive_path: str
 
 
 class FlowBase(metaclass=FlowRegistry):
@@ -159,10 +115,11 @@ class FlowBase(metaclass=FlowRegistry):
   # provide the args.
   args_type = rdf_flows.EmptyFlowArgs
 
-  # (Optional) An RDFProtoStruct to be produced by the flow's 'progress'
+  # An RDFProtoStruct to be produced by the flow's 'progress'
   # property. To be used by the API/UI to report on the flow's progress in a
-  # structured way.
-  progress_type = None
+  # structured way. Can be overridden and has to match GetProgress's
+  # return type.
+  progress_type = rdf_flow_objects.DefaultFlowProgress
 
   # This is used to arrange flows into a tree view
   category = ""
@@ -173,10 +130,10 @@ class FlowBase(metaclass=FlowRegistry):
   behaviours = BEHAVIOUR_ADVANCED
 
   # Tuple, containing the union of all possible types this flow might
-  # return. By default, any RDFValue migth be returned.
+  # return. By default, any RDFValue might be returned.
   result_types = (rdfvalue.RDFValue,)
 
-  def __init__(self, rdf_flow):
+  def __init__(self, rdf_flow: rdf_flow_objects.Flow):
     self.rdf_flow = rdf_flow
     self.flow_requests = []
     self.flow_responses = []
@@ -185,19 +142,19 @@ class FlowBase(metaclass=FlowRegistry):
     self.replies_to_process = []
     self.replies_to_write = []
 
-    # TODO(amoser): Remove when AFF4 is gone.
-    self.token = access_control.ACLToken(username=self.creator)
-
     self._state = None
 
     self._client_version = None
     self._client_os = None
     self._client_knowledge_base = None
+    self._client_info: Optional[rdf_client.ClientInformation] = None
 
-  def Start(self):
+    self._num_replies_per_type_tag = collections.Counter()
+
+  def Start(self) -> None:
     """The first state of the flow."""
 
-  def End(self, responses):
+  def End(self, responses: flow_responses.Responses) -> None:
     """Final state.
 
     This method is called prior to destruction of the flow.
@@ -206,11 +163,13 @@ class FlowBase(metaclass=FlowRegistry):
       responses: The responses for this state.
     """
 
-  def HeartBeat(self):
+  def HeartBeat(self) -> None:
     """New-style flows don't need heart-beat, keeping for compatibility."""
     pass
 
-  def CallState(self, next_state="", start_time=None):
+  def CallState(self,
+                next_state: str = "",
+                start_time: Optional[rdfvalue.RDFDatetime] = None) -> None:
     """This method is used to schedule a new state on a different worker.
 
     This is basically the same as CallFlow() except we are calling
@@ -240,20 +199,21 @@ class FlowBase(metaclass=FlowRegistry):
 
   def CallStateInline(self,
                       messages=None,
-                      next_state="",
-                      request_data=None,
-                      responses=None):
+                      next_state: str = "",
+                      request_data: Optional[Mapping[str, Any]] = None,
+                      responses: Optional[flow_responses.Responses] = None):
     if responses is None:
       responses = flow_responses.FakeResponses(messages, request_data)
 
     getattr(self, next_state)(responses)
 
   def CallClient(self,
-                 action_cls,
-                 request=None,
-                 next_state=None,
-                 request_data=None,
-                 **kwargs):
+                 action_cls: Type[server_stubs.ClientActionStub],
+                 request: Optional[rdfvalue.RDFValue] = None,
+                 next_state: Optional[str] = None,
+                 callback_state: Optional[str] = None,
+                 request_data: Optional[Mapping[str, Any]] = None,
+                 **kwargs: Any):
     """Calls the client asynchronously.
 
     This sends a message to the client to invoke an Action. The run action may
@@ -267,6 +227,8 @@ class FlowBase(metaclass=FlowRegistry):
          new RDFValue using the kwargs.
        next_state: The state in this flow, that responses to this message should
          go to.
+       callback_state: (optional) The state to call whenever a new response is
+         arriving.
        request_data: A dict which will be available in the RequestState
          protobuf. The Responses object maintains a reference to this protobuf
          for use in the execution of the state method. (so you can access this
@@ -303,7 +265,8 @@ class FlowBase(metaclass=FlowRegistry):
         client_id=self.rdf_flow.client_id,
         flow_id=self.rdf_flow.flow_id,
         request_id=outbound_id,
-        next_state=next_state)
+        next_state=next_state,
+        callback_state=callback_state)
 
     if request_data is not None:
       flow_request.request_data = rdf_protodict.Dict().FromDict(request_data)
@@ -355,10 +318,10 @@ class FlowBase(metaclass=FlowRegistry):
     self.client_action_requests.append(client_action_request)
 
   def CallFlow(self,
-               flow_name=None,
-               next_state=None,
-               request_data=None,
-               **kwargs):
+               flow_name: Optional[str] = None,
+               next_state: Optional[str] = None,
+               request_data: Optional[Mapping[str, Any]] = None,
+               **kwargs: Any) -> str:
     """Creates a new flow and send its responses to a state.
 
     This creates a new flow. The flow may send back many responses which will be
@@ -398,16 +361,19 @@ class FlowBase(metaclass=FlowRegistry):
 
     flow_cls = FlowRegistry.FlowClassByName(flow_name)
 
-    flow.StartFlow(
+    return flow.StartFlow(
         client_id=self.rdf_flow.client_id,
         flow_cls=flow_cls,
-        parent_flow_obj=self,
+        parent=flow.FlowParent.FromFlow(self),
         **kwargs)
 
-  def SendReply(self, response, tag=None):
+  def SendReply(self,
+                response: rdfvalue.RDFValue,
+                tag: Optional[str] = None) -> None:
     """Allows this flow to send a message to its parent flow.
 
-    If this flow does not have a parent, the message is ignored.
+    If this flow does not have a parent, the message is saved to the database
+    as flow result.
 
     Args:
       response: An RDFValue() instance to be sent to the parent.
@@ -449,7 +415,18 @@ class FlowBase(metaclass=FlowRegistry):
 
     self.rdf_flow.num_replies_sent += 1
 
-  def SaveResourceUsage(self, status):
+    # Keeping track of result types/tags in a plain Python
+    # _num_replies_per_type_tag dict. In RDFValues/proto2 we have to represent
+    # dictionaries as lists of key-value pairs (i.e. there's no library
+    # support for dicts as data structures). Hence, updating a key would require
+    # iterating over the pairs - which might get expensive for hundreds of
+    # thousands of results. To avoid the issue we keep a non-serialized Python
+    # dict to be later accumulated into a serializable FlowResultCount
+    # in PersistState().
+    key = (type(response).__name__, tag or "")
+    self._num_replies_per_type_tag[key] += 1
+
+  def SaveResourceUsage(self, status: rdf_flows.GrrStatus) -> None:
     """Method to tally resources."""
     user_cpu = status.cpu_time_used.user_cpu_time
     system_cpu = status.cpu_time_used.system_cpu_time
@@ -486,9 +463,12 @@ class FlowBase(metaclass=FlowRegistry):
           "Runtime limit exceeded {} {}.".format(self.rdf_flow.flow_class_name,
                                                  self.rdf_flow.flow_id))
 
-  def Error(self, error_message=None, backtrace=None, status=None):
+  def Error(self,
+            error_message: Optional[str] = None,
+            backtrace: Optional[str] = None,
+            status: Optional[rdf_structs.EnumNamedValue] = None) -> None:
     """Terminates this flow with an error."""
-    FLOW_ERRORS.Increment(fields=[compatibility.GetName(self.__class__)])
+    FLOW_ERRORS.Increment(fields=[self.__class__.__name__])
 
     client_id = self.rdf_flow.client_id
     flow_id = self.rdf_flow.flow_id
@@ -534,7 +514,7 @@ class FlowBase(metaclass=FlowRegistry):
 
     self.NotifyCreatorOfError()
 
-  def NotifyCreatorOfError(self):
+  def NotifyCreatorOfError(self) -> None:
     if self.ShouldSendNotifications():
       client_id = self.rdf_flow.client_id
       flow_id = self.rdf_flow.flow_id
@@ -547,7 +527,7 @@ class FlowBase(metaclass=FlowRegistry):
               reference_type=rdf_objects.ObjectReference.Type.FLOW,
               flow=flow_ref))
 
-  def _ClearAllRequestsAndResponses(self):
+  def _ClearAllRequestsAndResponses(self) -> None:
     """Clears all requests and responses."""
     client_id = self.rdf_flow.client_id
     flow_id = self.rdf_flow.flow_id
@@ -560,7 +540,7 @@ class FlowBase(metaclass=FlowRegistry):
 
     data_store.REL_DB.DeleteAllFlowRequestsAndResponses(client_id, flow_id)
 
-  def NotifyAboutEnd(self):
+  def NotifyAboutEnd(self) -> None:
     # Sum up number of replies to write with the number of already
     # written results.
     num_results = (
@@ -579,7 +559,7 @@ class FlowBase(metaclass=FlowRegistry):
 
   def MarkDone(self, status=None):
     """Marks this flow as done."""
-    FLOW_COMPLETIONS.Increment(fields=[compatibility.GetName(self.__class__)])
+    FLOW_COMPLETIONS.Increment(fields=[self.__class__.__name__])
 
     # Notify our parent flow or hunt that we are done (if there's a parent flow
     # or hunt).
@@ -605,21 +585,34 @@ class FlowBase(metaclass=FlowRegistry):
     if self.ShouldSendNotifications():
       self.NotifyAboutEnd()
 
-  def Log(self, format_str, *args):
+  def Log(self, format_str: str, *args: object) -> None:
     """Logs the message using the flow's standard logging.
 
     Args:
       format_str: Format string
       *args: arguments to the format string
     """
+    # If there are no formatting arguments given, we do not format the message.
+    # This behaviour is in-line with `logging.*` functions and allows one to log
+    # messages with `%` without weird workarounds.
+    if not args:
+      message = format_str
+    else:
+      message = format_str % args
+
     log_entry = rdf_flow_objects.FlowLogEntry(
         client_id=self.rdf_flow.client_id,
         flow_id=self.rdf_flow.flow_id,
         hunt_id=self.rdf_flow.parent_hunt_id,
-        message=format_str % args)
-    data_store.REL_DB.WriteFlowLogEntries([log_entry])
+        message=message)
+    data_store.REL_DB.WriteFlowLogEntry(log_entry)
 
-  def RunStateMethod(self, method_name, request=None, responses=None):
+  def RunStateMethod(
+      self,
+      method_name: str,
+      request: Optional[rdf_flow_runner.RequestState] = None,
+      responses: Optional[Sequence[rdf_flow_objects.FlowMessage]] = None
+  ) -> None:
     """Completes the request by calling the state method.
 
     Args:
@@ -630,10 +623,6 @@ class FlowBase(metaclass=FlowRegistry):
     Raises:
       FlowError: Processing time for the flow has expired.
     """
-    if self.rdf_flow.pending_termination:
-      self.Error(error_message=self.rdf_flow.pending_termination.reason)
-      return
-
     client_id = self.rdf_flow.client_id
 
     deadline = self.rdf_flow.processing_deadline
@@ -687,37 +676,88 @@ class FlowBase(metaclass=FlowRegistry):
     # We don't know here what exceptions can be thrown in the flow but we have
     # to continue. Thus, we catch everything.
     except Exception as e:  # pylint: disable=broad-except
-      # TODO(amoser): We don't know what's in this exception so we have to deal
-      # with all eventualities. Replace this code with a simple str(e) once
-      # Python 2 support has been dropped.
-      msg = compatibility.NativeStr(e)
-      if compatibility.PY2:
-        msg = msg.decode("utf-8", "replace")
-
+      msg = str(e)
       FLOW_ERRORS.Increment(fields=[self.rdf_flow.flow_class_name])
 
       self.Error(error_message=msg, backtrace=traceback.format_exc())
 
-  def ProcessAllReadyRequests(self):
+  def ProcessAllReadyRequests(self) -> Tuple[int, int]:
     """Processes all requests that are due to run.
 
     Returns:
-      The number of processed requests.
+      (processed, incrementally_processed) The number of completed processed
+      requests and the number of incrementally processed ones.
     """
     request_dict = data_store.REL_DB.ReadFlowRequestsReadyForProcessing(
         self.rdf_flow.client_id,
         self.rdf_flow.flow_id,
         next_needed_request=self.rdf_flow.next_request_to_process)
     if not request_dict:
-      return 0
+      return (0, 0)
 
     processed = 0
-    while self.rdf_flow.next_request_to_process in request_dict:
+    incrementally_processed = 0
+    next_response_id_map = {}
+    # Process incremental requests' updates first. Incremental requests have
+    # the 'callback_state' attribute set and the callback state is called
+    # every time new responses arrive. Note that the id of the next expected
+    # response is kept in request's 'next_response_id' attribute to guarantee
+    # that responses are going to be processed in the right order.
+    for request_id, (request, responses) in list(request_dict.items()):
+      if not self.IsRunning():
+        break
+
+      if not request.callback_state:
+        continue
+
+      # Responses have to be processed in the correct order, no response
+      # can be skipped.
+      next_response_id = request.next_response_id
+      to_process = []
+      for r in responses:
+        if r.response_id == next_response_id:
+          to_process.append(r)
+        else:
+          break
+        next_response_id += 1
+
+      if to_process:
+        self.RunStateMethod(request.callback_state, request, to_process)
+
+      # When dealing with a callback flow, increment the
+      # 'incrementally_processed' counter even if to_process is empty, as it's
+      # expected that messages might arrive in the wrong order and therefore
+      # not always be suitable for processing.
+      incrementally_processed += 1
+
+      # The request is incremental, but not complete yet.
+      if not request.needs_processing:
+        del request_dict[request_id]
+
+        # If the request was processed, update the next_response_id.
+        if to_process:
+          next_response_id_map[
+              request.request_id] = to_process[-1].response_id + 1
+
+    if next_response_id_map:
+      data_store.REL_DB.UpdateIncrementalFlowRequests(self.rdf_flow.client_id,
+                                                      self.rdf_flow.flow_id,
+                                                      next_response_id_map)
+
+    # Process completed requests.
+    #
+    # If the flow gets a bunch of requests to process and processing one of
+    # them leads to flow termination, other requests should be ignored.
+    # Hence: self.IsRunning check in the loop's condition.
+    while (self.IsRunning() and
+           self.rdf_flow.next_request_to_process in request_dict):
+
       request, responses = request_dict[self.rdf_flow.next_request_to_process]
-      self.RunStateMethod(request.next_state, request, responses)
-      self.rdf_flow.next_request_to_process += 1
-      processed += 1
-      self.completed_requests.append(request)
+      if request.needs_processing:
+        self.RunStateMethod(request.next_state, request, responses)
+        self.rdf_flow.next_request_to_process += 1
+        processed += 1
+        self.completed_requests.append(request)
 
     if processed and self.IsRunning() and not self.outstanding_requests:
       self.RunStateMethod("End")
@@ -731,10 +771,10 @@ class FlowBase(metaclass=FlowRegistry):
       # All requests and responses can now be deleted.
       self._ClearAllRequestsAndResponses()
 
-    return processed
+    return processed, incrementally_processed
 
   @property
-  def outstanding_requests(self):
+  def outstanding_requests(self) -> int:
     """Returns the number of all outstanding requests.
 
     This is used to determine if the flow needs to be destroyed yet.
@@ -745,19 +785,19 @@ class FlowBase(metaclass=FlowRegistry):
     return (self.rdf_flow.next_outbound_id -
             self.rdf_flow.next_request_to_process)
 
-  def GetNextOutboundId(self):
+  def GetNextOutboundId(self) -> int:
     my_id = self.rdf_flow.next_outbound_id
     self.rdf_flow.next_outbound_id += 1
     return my_id
 
-  def GetCurrentOutboundId(self):
+  def GetCurrentOutboundId(self) -> int:
     return self.rdf_flow.next_outbound_id - 1
 
-  def GetNextResponseId(self):
+  def GetNextResponseId(self) -> int:
     self.rdf_flow.response_count += 1
     return self.rdf_flow.response_count
 
-  def FlushQueuedMessages(self):
+  def FlushQueuedMessages(self) -> None:
     """Flushes queued messages."""
     # TODO(amoser): This could be done in a single db call, might be worth
     # optimizing.
@@ -795,7 +835,8 @@ class FlowBase(metaclass=FlowRegistry):
         data_store.REL_DB.WriteFlowResults(self.replies_to_write)
       self.replies_to_write = []
 
-  def _ProcessRepliesWithHuntOutputPlugins(self, replies):
+  def _ProcessRepliesWithHuntOutputPlugins(
+      self, replies: Sequence[rdf_flow_objects.FlowResponse]) -> None:
     """Applies output plugins to hunt results."""
     hunt_obj = data_store.REL_DB.ReadHuntObject(self.rdf_flow.parent_hunt_id)
     self.rdf_flow.output_plugins = hunt_obj.output_plugins
@@ -830,17 +871,22 @@ class FlowBase(metaclass=FlowRegistry):
       else:
         HUNT_OUTPUT_PLUGIN_ERRORS.Increment(fields=[plugin_def.plugin_name])
 
-  def _ProcessRepliesWithFlowOutputPlugins(self, replies):
+  def _ProcessRepliesWithFlowOutputPlugins(
+      self, replies: Sequence[rdf_flow_objects.FlowResponse]
+  ) -> Sequence[Optional[output_plugin_lib.OutputPlugin]]:
     """Processes replies with output plugins."""
     created_output_plugins = []
     for index, output_plugin_state in enumerate(
         self.rdf_flow.output_plugins_states):
       plugin_descriptor = output_plugin_state.plugin_descriptor
       output_plugin_cls = plugin_descriptor.GetPluginClass()
+      # TODO: Stop reading `plugin_args` at all (no fallback).
+      if plugin_descriptor.HasField("args"):
+        args = plugin_descriptor.args
+      else:
+        args = plugin_descriptor.plugin_args
       output_plugin = output_plugin_cls(
-          source_urn=self.rdf_flow.long_flow_id,
-          args=plugin_descriptor.plugin_args,
-          token=access_control.ACLToken(username=self.rdf_flow.creator))
+          source_urn=self.rdf_flow.long_flow_id, args=args)
 
       try:
         # TODO(user): refactor output plugins to use FlowResponse
@@ -851,7 +897,7 @@ class FlowBase(metaclass=FlowRegistry):
         output_plugin.Flush(output_plugin_state.plugin_state)
         output_plugin.UpdateState(output_plugin_state.plugin_state)
 
-        data_store.REL_DB.WriteFlowOutputPluginLogEntries([
+        data_store.REL_DB.WriteFlowOutputPluginLogEntry(
             rdf_flow_objects.FlowOutputPluginLogEntry(
                 client_id=self.rdf_flow.client_id,
                 flow_id=self.rdf_flow.flow_id,
@@ -859,8 +905,7 @@ class FlowBase(metaclass=FlowRegistry):
                 output_plugin_id="%d" % index,
                 log_entry_type=rdf_flow_objects.FlowOutputPluginLogEntry
                 .LogEntryType.LOG,
-                message="Processed %d replies." % len(replies))
-        ])
+                message="Processed %d replies." % len(replies)))
 
         self.Log("Plugin %s successfully processed %d flow replies.",
                  plugin_descriptor, len(replies))
@@ -871,7 +916,7 @@ class FlowBase(metaclass=FlowRegistry):
                           plugin_descriptor, len(replies))
         created_output_plugins.append(None)
 
-        data_store.REL_DB.WriteFlowOutputPluginLogEntries([
+        data_store.REL_DB.WriteFlowOutputPluginLogEntry(
             rdf_flow_objects.FlowOutputPluginLogEntry(
                 client_id=self.rdf_flow.client_id,
                 flow_id=self.rdf_flow.flow_id,
@@ -880,15 +925,14 @@ class FlowBase(metaclass=FlowRegistry):
                 log_entry_type=rdf_flow_objects.FlowOutputPluginLogEntry
                 .LogEntryType.ERROR,
                 message="Error while processing %d replies: %s" %
-                (len(replies), str(e)))
-        ])
+                (len(replies), str(e))))
 
         self.Log("Plugin %s failed to process %d replies due to: %s",
                  plugin_descriptor, len(replies), e)
 
     return created_output_plugins
 
-  def MergeQueuedMessages(self, flow_obj):
+  def MergeQueuedMessages(self, flow_obj: "FlowBase") -> None:
     """Merges queued messages."""
     self.flow_requests.extend(flow_obj.flow_requests)
     flow_obj.flow_requests = []
@@ -901,58 +945,104 @@ class FlowBase(metaclass=FlowRegistry):
     self.replies_to_write.extend(flow_obj.replies_to_write)
     flow_obj.replies_to_write = []
 
-  def ShouldSendNotifications(self):
+  def ShouldSendNotifications(self) -> bool:
     return bool(not self.rdf_flow.parent_flow_id and
                 not self.rdf_flow.parent_hunt_id and self.creator and
                 self.creator not in access_control.SYSTEM_USERS)
 
-  def IsRunning(self):
+  def IsRunning(self) -> bool:
     return self.rdf_flow.flow_state == self.rdf_flow.FlowState.RUNNING
 
   def GetProgress(self) -> rdf_structs.RDFProtoStruct:
-    if self.__class__.progress_type is not None:
-      raise NotImplementedError(
-          "GetProgress() methods has to be implemented "
-          "on a flow with defined 'progress_type' attribute.")
+    return rdf_flow_objects.DefaultFlowProgress()
+
+  def GetResultMetadata(self) -> rdf_flow_objects.FlowResultMetadata:
+    if hasattr(self.state, "_result_metadata"):
+      return self.state._result_metadata.Copy()  # pylint: disable=protected-access
+    else:
+      return rdf_flow_objects.FlowResultMetadata()
+
+  def GetFilesArchiveMappings(
+      self, flow_results: Iterator[rdf_flow_objects.FlowResult]
+  ) -> Iterator[ClientPathArchiveMapping]:
+    """Returns a mapping used to generate flow results archive.
+
+    If this is implemented by a flow, then instead of generating
+    a general-purpose archive with all files referenced in the
+    results present, an archive would be generated with
+    just the files referenced in the mappings.
+
+    Args:
+      flow_results: An iterator for flow results.
+
+    Returns:
+      An iterator of mappings from REL_DB's ClientPaths to archive paths.
+    Raises:
+      NotImplementedError: if not implemented by a subclass.
+    """
+    raise NotImplementedError("GetFilesArchiveMappings() not implemented")
 
   @property
-  def client_id(self):
+  def client_id(self) -> str:
     return self.rdf_flow.client_id
 
   @property
-  def client_urn(self):
+  def client_urn(self) -> rdfvalue.RDFURN:
     return rdfvalue.RDFURN(self.client_id)
 
   @property
-  def state(self):
+  def state(self) -> Any:
     if self._state is None:
       self._state = flow.AttributedDict(self.rdf_flow.persistent_data.ToDict())
     return self._state
 
-  def PersistState(self):
-    if self._state is not None:
-      self.rdf_flow.persistent_data = self._state
+  def PersistState(self) -> None:
+    """Persists flow state."""
+    if hasattr(self.state, "_result_metadata"):
+      result_metadata = self.state._result_metadata  # pylint: disable=protected-access
+    else:
+      result_metadata = rdf_flow_objects.FlowResultMetadata()
+      result_metadata.is_metadata_set = True
+
+    for r in result_metadata.num_results_per_type_tag:
+      key = (r.type, r.tag)
+      # This removes the item from _num_replies_per_type_tag if it's present in
+      # result_metadata.
+      count = self._num_replies_per_type_tag.pop(key, 0)
+      r.count += count
+
+    # Iterate over remaining items - i.e. items that were not present in
+    # result_metadata.
+    for (result_type,
+         result_tag), count in self._num_replies_per_type_tag.items():
+      result_metadata.num_results_per_type_tag.append(
+          rdf_flow_objects.FlowResultCount(
+              type=result_type, tag=result_tag, count=count))
+
+    self.state._result_metadata = result_metadata  # pylint: disable=protected-access
+    self._num_replies_per_type_tag = collections.Counter()
+    self.rdf_flow.persistent_data = self.state
 
   @property
-  def args(self):
+  def args(self) -> Any:
     return self.rdf_flow.args
 
   @property
-  def client_version(self):
+  def client_version(self) -> int:
     if self._client_version is None:
       self._client_version = data_store_utils.GetClientVersion(self.client_id)
 
     return self._client_version
 
   @property
-  def client_os(self):
+  def client_os(self) -> str:
     if self._client_os is None:
       self._client_os = data_store_utils.GetClientOs(self.client_id)
 
     return self._client_os
 
   @property
-  def client_knowledge_base(self):
+  def client_knowledge_base(self) -> rdf_client.KnowledgeBase:
     if self._client_knowledge_base is None:
       self._client_knowledge_base = data_store_utils.GetClientKnowledgeBase(
           self.client_id)
@@ -960,10 +1050,86 @@ class FlowBase(metaclass=FlowRegistry):
     return self._client_knowledge_base
 
   @property
-  def creator(self):
+  def client_info(self) -> rdf_client.ClientInformation:
+    if self._client_info is not None:
+      return self._client_info
+
+    client_info = data_store_utils.GetClientInformation(self.client_id)
+    self._client_info = client_info
+
+    return client_info
+
+  @property
+  def creator(self) -> str:
     return self.rdf_flow.creator
 
   @classmethod
-  def GetDefaultArgs(cls, username=None):
+  def GetDefaultArgs(cls, username: Optional[str] = None) -> Any:
     del username  # Unused.
     return cls.args_type()
+
+  @classmethod
+  def CreateFlowInstance(cls, flow_object: rdf_flow_objects.Flow) -> "FlowBase":
+    flow_cls = FlowRegistry.FlowClassByName(flow_object.flow_class_name)
+    return flow_cls(flow_object)
+
+
+def _TerminateFlow(
+    rdf_flow: rdf_flow_objects.Flow,
+    reason: Optional[str] = None,
+    flow_state: rdf_structs.EnumNamedValue = rdf_flow_objects.Flow.FlowState
+    .ERROR
+) -> None:
+  """Does the actual termination."""
+  flow_cls = FlowRegistry.FlowClassByName(rdf_flow.flow_class_name)
+  flow_obj = flow_cls(rdf_flow)
+
+  if not flow_obj.IsRunning():
+    # Nothing to do.
+    return
+
+  logging.info("Terminating flow %s on %s, reason: %s", rdf_flow.flow_id,
+               rdf_flow.client_id, reason)
+
+  rdf_flow.flow_state = flow_state
+  rdf_flow.error_message = reason
+  flow_obj.NotifyCreatorOfError()
+
+  data_store.REL_DB.UpdateFlow(
+      rdf_flow.client_id,
+      rdf_flow.flow_id,
+      flow_obj=rdf_flow,
+      processing_on=None,
+      processing_since=None,
+      processing_deadline=None)
+  data_store.REL_DB.DeleteAllFlowRequestsAndResponses(rdf_flow.client_id,
+                                                      rdf_flow.flow_id)
+
+
+def TerminateFlow(
+    client_id: str,
+    flow_id: str,
+    reason: Optional[str] = None,
+    flow_state: rdf_structs.EnumNamedValue = rdf_flow_objects.Flow.FlowState
+    .ERROR
+) -> None:
+  """Terminates a flow and all of its children.
+
+  Args:
+    client_id: Client ID of a flow to terminate.
+    flow_id: Flow ID of a flow to terminate.
+    reason: String with a termination reason.
+    flow_state: Flow state to be assigned to a flow after termination. Defaults
+      to FlowState.ERROR.
+  """
+
+  to_terminate = [data_store.REL_DB.ReadFlowObject(client_id, flow_id)]
+
+  while to_terminate:
+    next_to_terminate = []
+    for rdf_flow in to_terminate:
+      _TerminateFlow(rdf_flow, reason=reason, flow_state=flow_state)
+      next_to_terminate.extend(
+          data_store.REL_DB.ReadChildFlowObjects(rdf_flow.client_id,
+                                                 rdf_flow.flow_id))
+    to_terminate = next_to_terminate

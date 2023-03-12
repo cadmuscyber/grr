@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Client actions for cloud VMs."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import os
 import platform
@@ -19,7 +15,7 @@ from grr_response_core.lib.rdfvalues import cloud as rdf_cloud
 class GetCloudVMMetadata(actions.ActionPlugin):
   """Get metadata for cloud VMs.
 
-  To avoid waiting on dns timeouts, causing unncessary network traffic, and
+  To avoid waiting on dns timeouts, causing unnecessary network traffic, and
   getting unreliable data back we first attempt to determine if we are running
   on a cloud VM. There isn't a reliable way to do so, but we make do by
   inspecting BIOS strings on linux and looking at running services on windows.
@@ -33,8 +29,19 @@ class GetCloudVMMetadata(actions.ActionPlugin):
   LINUX_BIOS_VERSION_COMMAND = ["/usr/sbin/dmidecode", "-s", "bios-version"]
   WINDOWS_SERVICES_COMMAND = [
       "%s\\System32\\sc.exe" % os.environ.get("SYSTEMROOT", r"C:\Windows"),
-      "query"
+      "query",
+      # Make sure that stopped services are included into the list.
+      # A particular cloud service doesn't have to actually be running to
+      # be an indicator of a cloud machine.
+      "state=",
+      "all",
   ]
+
+  AMAZON_TOKEN_URL = "http://169.254.169.254/latest/api/token"
+  AMAZON_TOKEN_REQUEST_HEADERS = {
+      "X-aws-ec2-metadata-token-ttl-seconds": "21600",
+  }
+  AMAZON_TOKEN_HEADER = "X-aws-ec2-metadata-token"
 
   def IsCloud(self, request, bios_version, services):
     """Test to see if we're on a cloud machine."""
@@ -77,15 +84,35 @@ class GetCloudVMMetadata(actions.ActionPlugin):
     return rdf_cloud.CloudMetadataResponse(
         label=request.label or request.url, text=result.text)
 
+  def GetAWSMetadataToken(self) -> str:
+    """Get the session token for IMDSv2."""
+    result = requests.put(
+        self.AMAZON_TOKEN_URL,
+        headers=self.AMAZON_TOKEN_REQUEST_HEADERS,
+        timeout=1.0)
+    result.raise_for_status()
+
+    # Requests does not always raise an exception when an incorrect response
+    # is received. This fixes that behaviour.
+    if not result.ok:
+      raise requests.RequestException(response=result)
+
+    return result.text
+
   def Run(self, args: rdf_cloud.CloudMetadataRequests):
     bios_version = None
     services = None
+
+    # The output of commands is not guaranteed to contain valid Unicode text but
+    # it should most of the time. Since we are just searching for a particular
+    # pattern it is safe to replace spurious bytes with '�' as they simply have
+    # no significance for search results.
     if platform.system() == "Linux":
       bios_version = subprocess.check_output(self.LINUX_BIOS_VERSION_COMMAND)
-      bios_version = bios_version.decode("utf-8")
+      bios_version = bios_version.decode("utf-8", "replace")
     elif platform.system() == "Windows":
       services = subprocess.check_output(self.WINDOWS_SERVICES_COMMAND)
-      services = services.decode("utf-8")
+      services = services.decode("utf-8", "replace")
     else:
       # Interrogate shouldn't call this client action on OS X machines at all,
       # so raise.
@@ -93,9 +120,14 @@ class GetCloudVMMetadata(actions.ActionPlugin):
 
     result_list = []
     instance_type = None
+    aws_metadata_token = ""
     for request in args.requests:
       if self.IsCloud(request, bios_version, services):
         instance_type = request.instance_type
+        if instance_type == rdf_cloud.CloudInstance.InstanceType.AMAZON:
+          if not aws_metadata_token:
+            aws_metadata_token = self.GetAWSMetadataToken()
+          request.headers[self.AMAZON_TOKEN_HEADER] = aws_metadata_token
         result_list.append(self.GetMetaData(request))
     if result_list:
       self.SendReply(

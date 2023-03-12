@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Test the connections listing module."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -48,7 +44,7 @@ class NetstatFlowTest(flow_test_lib.FlowTestsBaseclass):
         network.Netstat.__name__,
         ClientMock(),
         client_id=client_id,
-        token=self.token)
+        creator=self.test_username)
 
     # Check the results are correct.
     conns = flow_test_lib.GetFlowResults(client_id, session_id)
@@ -66,7 +62,7 @@ class NetstatFlowTest(flow_test_lib.FlowTestsBaseclass):
         ClientMock(),
         client_id=client_id,
         listening_only=True,
-        token=self.token)
+        creator=self.test_username)
 
     # Check the results are correct.
     conns = flow_test_lib.GetFlowResults(client_id, session_id)

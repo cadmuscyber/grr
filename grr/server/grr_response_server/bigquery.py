@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Library for interacting with Google BigQuery service."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
-
+import json
 import logging
 import time
 
@@ -15,7 +11,6 @@ import httplib2
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
-from grr_response_core.lib.util.compat import json
 
 
 # pylint: disable=g-import-not-at-top
@@ -34,7 +29,7 @@ class Error(Exception):
 
 
 class BigQueryJobUploadError(Error):
-  """Failed to create BigQuery uplod job."""
+  """Failed to create BigQuery upload job."""
 
 
 def GetBigQueryClient(service_account_json=None,
@@ -52,7 +47,8 @@ def GetBigQueryClient(service_account_json=None,
                        "must be defined.")
 
   creds = ServiceAccountCredentials.from_json_keyfile_dict(
-      json.Parse(service_account_data), scopes=BIGQUERY_SCOPE)
+      json.loads(service_account_data), scopes=BIGQUERY_SCOPE
+  )
   http_obj = httplib2.Http()
   http_obj = creds.authorize(http_obj)
   service = discovery.build("bigquery", "v2", http=http_obj)

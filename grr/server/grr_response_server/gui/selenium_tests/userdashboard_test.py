@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """User dashboard tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -25,7 +21,7 @@ class TestUserDashboard(gui_test_lib.SearchClientTestBase):
         "div[name=RecentlyCreatedHunts]:contains('None')")
 
   def testShowsHuntCreatedByCurrentUser(self):
-    self.CreateSampleHunt("foo-description", creator=self.token.username)
+    self.CreateSampleHunt("foo-description", creator=self.test_username)
 
     self.Open("/")
     self.WaitUntil(
@@ -41,7 +37,7 @@ class TestUserDashboard(gui_test_lib.SearchClientTestBase):
         "div[name=RecentlyCreatedHunts]:contains('None')")
 
   def testClickingOnTheHuntRedirectsToThisHunt(self):
-    self.CreateSampleHunt("foo-description", creator=self.token.username)
+    self.CreateSampleHunt("foo-description", creator=self.test_username)
 
     self.Open("/")
     self.Click("css=grr-user-dashboard "
@@ -62,7 +58,7 @@ class TestUserDashboard(gui_test_lib.SearchClientTestBase):
           creator = "another"
         else:
           descr = "bar-%d" % i
-          creator = self.token.username
+          creator = self.test_username
         self.CreateSampleHunt(descr, creator=creator)
 
     self.Open("/")
@@ -78,10 +74,10 @@ class TestUserDashboard(gui_test_lib.SearchClientTestBase):
   def testDoesNotShowHuntsOlderThan31Days(self):
     now = rdfvalue.RDFDatetime.Now()
     with test_lib.FakeTime(now - rdfvalue.Duration.From(30, rdfvalue.DAYS)):
-      self.CreateSampleHunt("foo", creator=self.token.username)
+      self.CreateSampleHunt("foo", creator=self.test_username)
 
     with test_lib.FakeTime(now - rdfvalue.Duration.From(32, rdfvalue.DAYS)):
-      self.CreateSampleHunt("bar", creator=self.token.username)
+      self.CreateSampleHunt("bar", creator=self.test_username)
 
     with test_lib.FakeTime(now):
       self.Open("/")
@@ -106,9 +102,9 @@ class TestUserDashboard(gui_test_lib.SearchClientTestBase):
   def testShowsClientOnceIfTwoApprovalsWereRequested(self):
     client_id = self.SetupClient(0)
     self.RequestAndGrantClientApproval(
-        client_id, requestor=self.token.username, reason="foo-reason")
+        client_id, requestor=self.test_username, reason="foo-reason")
     self.RequestAndGrantClientApproval(
-        client_id, requestor=self.token.username, reason="bar-reason")
+        client_id, requestor=self.test_username, reason="bar-reason")
 
     self.Open("/")
     # Later approval request should take precedence.
@@ -157,9 +153,9 @@ class TestUserDashboard(gui_test_lib.SearchClientTestBase):
     client_id = self.SetupClient(0)
     self.RequestClientApproval(
         client_id,
-        reason=self.token.reason,
+        reason="Running tests",
         approver=u"approver",
-        requestor=self.token.username)
+        requestor=self.test_username)
 
     self.Open("/")
     self.WaitUntil(

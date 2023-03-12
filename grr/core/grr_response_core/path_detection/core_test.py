@@ -1,10 +1,6 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests core paths detection logic."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 from absl import app
 
@@ -125,7 +121,7 @@ class DetectorTest(test_lib.GRRBaseTest):
         set(["b_0_bar", "b_1_bar", "b_0_bar_bar", "b_1_bar_bar"]))
 
   def testAppliesMultiplePostProcessorsToExtractedPaths(self):
-    """Test it applies mutliple post processors to extracted paths."""
+    """Test it applies multiple post processors to extracted paths."""
     detector = core.Detector(
         extractors=[TestExtractor(multiplier=2)],
         post_processors=[TestPostProcessor("_foo"),

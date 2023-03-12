@@ -1,8 +1,24 @@
-import {ChangeDetectionStrategy, Component, OnDestroy, OnInit} from '@angular/core';
-import {ActivatedRoute} from '@angular/router';
-import {ClientSearchFacade} from '@app/store/client_search_facade';
-import {Subject} from 'rxjs';
-import {map, takeUntil} from 'rxjs/operators';
+import {ChangeDetectionStrategy, Component, OnDestroy} from '@angular/core';
+import {ActivatedRoute, Params, Router} from '@angular/router';
+import {Observable} from 'rxjs';
+import {filter, map, takeUntil} from 'rxjs/operators';
+
+import {Client, isClientId} from '../../lib/models/client';
+import {isNonNull} from '../../lib/preconditions';
+import {observeOnDestroy} from '../../lib/reactive';
+import {ClientSearchLocalStore} from '../../store/client_search_local_store';
+
+function toRow(c: Client) {
+  return {
+    clientId: c.clientId,
+    fqdn: c.knowledgeBase.fqdn,
+    labels: c.labels.map(label => label.name),
+    lastSeenAt: c.lastSeenAt,
+    users: c.knowledgeBase.users?.map(user => user.username) ?? [],
+    additionalUserCount:
+        c.knowledgeBase.users?.length ? c.knowledgeBase.users.length - 1 : 0,
+  };
+}
 
 /**
  * Component displaying the client search results.
@@ -12,44 +28,51 @@ import {map, takeUntil} from 'rxjs/operators';
   styleUrls: ['./client_search.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ClientSearch implements OnInit, OnDestroy {
-  private readonly query$ = this.route.paramMap.pipe(
-      map(params => params.get('query') || ''),
+export class ClientSearch implements OnDestroy {
+  readonly ngOnDestroy = observeOnDestroy(this);
+
+  protected readonly query$ = this.route.queryParamMap.pipe(
+      takeUntil(this.ngOnDestroy.triggered$),
+      map(params => params.get('q') ?? ''),
   );
 
-  private readonly unsubscribe$ = new Subject<void>();
+  protected readonly clientLinkParams$: Observable<Params> =
+      this.route.queryParamMap.pipe(
+          takeUntil(this.ngOnDestroy.triggered$),
+          map(params => params.get('reason')),
+          filter(isNonNull),
+          map((reason) => ({'reason': reason})),
+      );
 
   /**
    * Table rows for the MatTable component.
    */
-  readonly rows$ = this.clientSearchFacade.clients$.pipe(
-      map(clients => clients.map((c) => {
-        return {
-          clientId: c.clientId,
-          fqdn: c.knowledgeBase.fqdn,
-          lastSeenAt: c.lastSeenAt,
-        };
-      })),
-  );
-
+  protected readonly rows$ = this.clientSearchLocalStore.clients$.pipe(
+      map(clients => clients?.map(toRow) ?? []));
   /**
    * Table columns for the MatTable component.
    */
-  readonly columns = ['clientId', 'fqdn', 'lastSeenAt'];
+  protected readonly columns =
+      ['clientId', 'fqdn', 'users', 'labels', 'online', 'lastSeenAt'] as const;
 
   constructor(
       private readonly route: ActivatedRoute,
-      private readonly clientSearchFacade: ClientSearchFacade,
-  ) {}
+      protected readonly clientSearchLocalStore: ClientSearchLocalStore,
+      private readonly router: Router,
 
-  ngOnInit() {
-    this.query$.pipe(takeUntil(this.unsubscribe$)).subscribe(query => {
-      this.clientSearchFacade.searchClients(query);
+  ) {
+    this.query$.subscribe(query => {
+      this.clientSearchLocalStore.searchClients(query);
     });
   }
 
-  ngOnDestroy() {
-    this.unsubscribe$.next();
-    this.unsubscribe$.complete();
+  async onQuerySubmitted(query: string) {
+    if (isClientId(query)) {
+      await this.router.navigate(['/clients', query]);
+    } else {
+      await this.router.navigate(
+          ['/clients'],
+          {queryParams: {...this.route.snapshot.queryParams, 'q': query}});
+    }
   }
 }

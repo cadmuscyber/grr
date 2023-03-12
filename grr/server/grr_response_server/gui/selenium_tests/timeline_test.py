@@ -1,13 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
-# -*- encoding: utf-8 -*-
 """Test the timeline view."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+
+from unittest import mock
 
 from absl import app
-import mock
 
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
@@ -26,18 +22,18 @@ class TestTimeline(gui_test_lib.GRRSeleniumTest):
   TIMELINE_ITEMS_PER_FILE = 3
 
   def setUp(self):
-    super(TestTimeline, self).setUp()
+    super().setUp()
     # Prepare our fixture.
     self.client_id = "C.0000000000000001"
     fixture_test_lib.ClientFixture(self.client_id)
     self.CreateFileWithTimeline(self.client_id, "c/proc/changed.txt",
-                                rdf_paths.PathSpec.PathType.OS, self.token)
+                                rdf_paths.PathSpec.PathType.OS)
     self.CreateFileWithTimeline(self.client_id, "c/proc/other.txt",
-                                rdf_paths.PathSpec.PathType.OS, self.token)
+                                rdf_paths.PathSpec.PathType.OS)
     self.RequestAndGrantClientApproval(self.client_id)
 
   @staticmethod
-  def CreateFileWithTimeline(client_id, path, path_type, token):
+  def CreateFileWithTimeline(client_id, path, path_type):
     """Add a file with timeline."""
 
     # Add a version of the file at gui_test_lib.TIME_0. Since we write all MAC
@@ -196,7 +192,7 @@ class TestTimeline(gui_test_lib.GRRSeleniumTest):
 
     # Add a new file with several versions.
     self.CreateFileWithTimeline(self.client_id, "c/proc/newly_added.txt",
-                                rdf_paths.PathSpec.PathType.OS, self.token)
+                                rdf_paths.PathSpec.PathType.OS)
 
     # Click on tree again.
     self.Click("link=proc")
@@ -228,7 +224,7 @@ class TestTimeline(gui_test_lib.GRRSeleniumTest):
             client_id=self.client_id,
             file_path="fs/os/c/proc",
             format=api_vfs.ApiGetVfsTimelineAsCsvArgs.Format.GRR),
-        token=mock.ANY)
+        context=mock.ANY)
 
   @mock.patch.object(
       api_call_router_with_approval_checks.ApiCallRouterWithApprovalChecks,
@@ -251,7 +247,7 @@ class TestTimeline(gui_test_lib.GRRSeleniumTest):
             client_id=self.client_id,
             file_path="fs/os/c/proc",
             format=api_vfs.ApiGetVfsTimelineAsCsvArgs.Format.BODY),
-        token=mock.ANY)
+        context=mock.ANY)
 
 
 if __name__ == "__main__":

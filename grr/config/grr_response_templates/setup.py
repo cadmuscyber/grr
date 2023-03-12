@@ -1,16 +1,12 @@
 #!/usr/bin/env python
 """This package contains GRR client templates."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
+import configparser
 import glob
 import os
 import re
 import shutil
 
-import configparser
 from setuptools import setup
 from setuptools.command.sdist import sdist
 
@@ -30,7 +26,7 @@ def get_config():
     if not os.path.exists(ini_path):
       raise RuntimeError("Couldn't find version.ini")
 
-  config = configparser.SafeConfigParser()
+  config = configparser.ConfigParser()
   config.read(ini_path)
   return config
 
@@ -43,6 +39,7 @@ class Sdist(sdist):
 
   REQUIRED_TEMPLATES = [
       "GRR_maj.minor_amd64.exe.zip",
+      "GRR_maj.minor_amd64.msi.zip",
       "grr_maj.minor_amd64.deb.zip",
       "grr_maj.minor_amd64.xar.zip",
       "grr_maj.minor_amd64.rpm.zip",
@@ -111,10 +108,8 @@ setup_args = dict(
                       "installfrompip.adoc for installation instructions."),
     license="Apache License, Version 2.0",
     url="https://github.com/google/grr",
-    # TODO: Clean up str() call after Python 2 support is
-    # dropped ('data_files' elements have to be bytes in Python 2).
     data_files=(find_data_files("templates", prefix="grr-response-templates") +
-                [str("version.ini")]),
+                ["version.ini"]),
     cmdclass={
         "sdist": Sdist,
     })

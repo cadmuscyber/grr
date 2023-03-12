@@ -1,13 +1,9 @@
 #!/usr/bin/env python
-# Lint as: python3
 """Tests for AuthorizationManager."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
+from unittest import mock
 
 from absl import app
 
-from grr_response_core.lib import utils
 from grr_response_server.authorization import auth_manager
 from grr_response_server.authorization import groups
 from grr.test_lib import test_lib
@@ -24,7 +20,7 @@ class DummyAuthorization(object):
 class AuthorizationReaderTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super(AuthorizationReaderTest, self).setUp()
+    super().setUp()
     self.auth_reader = auth_manager.AuthorizationReader()
 
   def testCreateAuthorizationsInitializesAuthorizationsFromYaml(self):
@@ -77,7 +73,7 @@ router: "ApiCallRobotRouter"
 class AuthorizationManagerTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super(AuthorizationManagerTest, self).setUp()
+    super().setUp()
 
     self.group_access_manager = groups.NoGroupAccess()
     self.auth_manager = auth_manager.AuthorizationManager(
@@ -111,16 +107,16 @@ class AuthorizationManagerTest(test_lib.GRRBaseTest):
 
   def testCheckPermissionsReturnsTrueIfGroupWasAuthorized(self):
     self.auth_manager.DenyAll("subject-bar")
-    with utils.Stubber(self.group_access_manager, "MemberOfAuthorizedGroup",
-                       lambda *args: True):
+    with mock.patch.object(self.group_access_manager, "MemberOfAuthorizedGroup",
+                           lambda *args: True):
       self.assertTrue(
           self.auth_manager.CheckPermissions("user-bar", "subject-bar"))
 
   def testCheckPermissionsReturnsFalseIfGroupWasNotAuthorized(self):
     self.auth_manager.DenyAll("subject-bar")
 
-    with utils.Stubber(self.group_access_manager, "MemberOfAuthorizedGroup",
-                       lambda *args: False):
+    with mock.patch.object(self.group_access_manager, "MemberOfAuthorizedGroup",
+                           lambda *args: False):
       self.assertFalse(
           self.auth_manager.CheckPermissions("user-bar", "subject-bar"))
 

@@ -1,21 +1,28 @@
-import {async, TestBed} from '@angular/core/testing';
+import {discardPeriodicTasks, fakeAsync, TestBed, tick, waitForAsync} from '@angular/core/testing';
+import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
+import {Router} from '@angular/router';
 import {RouterTestingModule} from '@angular/router/testing';
+
+import {STORE_PROVIDERS} from '../../store/store_test_providers';
+import {CLIENT_PAGE_ROUTES} from '../client_page/routing';
 
 import {App} from './app';
 import {AppModule} from './app_module';
 
 
 describe('App Component', () => {
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed
         .configureTestingModule({
           imports: [
             AppModule,
-            NoopAnimationsModule,  // This makes test faster and more stable.
-            RouterTestingModule,
+            NoopAnimationsModule,
+            RouterTestingModule.withRoutes(CLIENT_PAGE_ROUTES),
           ],
-
+          providers: [
+            ...STORE_PROVIDERS,
+          ],
         })
         .compileComponents();
   }));
@@ -26,8 +33,18 @@ describe('App Component', () => {
     expect(componentInstance).toBeTruthy();
   });
 
-  it(`should have as title 'GRR'`, () => {
-    const fixture = TestBed.createComponent(App);
-    expect(fixture.componentInstance.title).toBe('GRR');
-  });
+  it('should link to the old ui', fakeAsync(async () => {
+       const fixture = TestBed.createComponent(App);
+       fixture.detectChanges();
+
+       await TestBed.inject(Router).navigate(['/clients/C.123']);
+       tick();
+       fixture.detectChanges();
+
+       const fallbackLink =
+           fixture.debugElement.query(By.css('#fallback-link'));
+       expect(fallbackLink.nativeElement.href).toContain('#/clients/C.123');
+
+       discardPeriodicTasks();
+     }));
 });

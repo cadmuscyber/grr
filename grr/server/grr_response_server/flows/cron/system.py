@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-# Lint as: python3
 """These flows are system-specific GRR cron flows."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import unicode_literals
 
 import collections
 
@@ -12,7 +8,6 @@ from grr_response_core import config
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import stats as rdf_stats
-from grr_response_core.lib.util import compatibility
 from grr_response_server import client_report_utils
 from grr_response_server import cronjobs
 from grr_response_server import data_store
@@ -225,19 +220,19 @@ class InterrogationHuntMixin(object):
 
   def StartInterrogationHunt(self):
     """Starts an interrogation hunt on all available clients."""
-    flow_name = compatibility.GetName(flows_discovery.Interrogate)
+    flow_name = flows_discovery.Interrogate.__name__
     flow_args = flows_discovery.InterrogateArgs(lightweight=False)
     description = "Interrogate run by cron to keep host info fresh."
 
     hunt_id = hunt.CreateAndStartHunt(
         flow_name,
         flow_args,
-        self.token.username,
+        self.username,
         client_limit=0,
-        client_rate=50,
+        client_rate=config.CONFIG["Cron.interrogate_client_rate"],
         crash_limit=config.CONFIG["Cron.interrogate_crash_limit"],
         description=description,
-        duration=rdfvalue.Duration.From(1, rdfvalue.WEEKS),
+        duration=config.CONFIG["Cron.interrogate_duration"],
         output_plugins=self.GetOutputPlugins())
     self.Log("Started hunt %s.", hunt_id)
 
@@ -269,7 +264,7 @@ class PurgeClientStatsCronJob(cronjobs.SystemCronJobBase):
 
     total_deleted_count = 0
     for deleted_count in data_store.REL_DB.DeleteOldClientStats(
-        yield_after_count=_STATS_DELETION_BATCH_SIZE, retention_time=end):
+        cutoff_time=end):
       self.HeartBeat()
       total_deleted_count += deleted_count
       self.Log("Deleted %d ClientStats that expired before %s",
