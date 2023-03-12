@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This module contains tests for reflection API handlers."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -16,7 +20,7 @@ class ApiGetRDFValueDescriptorHandlerTest(api_test_lib.ApiCallHandlerTest):
 
   def testSuccessfullyRendersReflectionDataForAllTypes(self):
     result = reflection_plugin.ApiListRDFValuesDescriptorsHandler().Handle(
-        None, context=self.context)
+        None, token=self.token)
     # TODO(user): enhance this test.
     self.assertTrue(result)
 
@@ -26,18 +30,18 @@ class DummyApiCallRouter(api_call_router.ApiCallRouter):
 
   @api_call_router.Http("GET", "/api/method1")
   @api_call_router.ArgsType(api_test_lib.SampleGetHandlerArgs)
-  def SomeRandomMethodWithArgsType(self, args, context=None):
+  def SomeRandomMethodWithArgsType(self, args, token=None):
     """Doc 1."""
 
   @api_call_router.Http("GET", "/api/method2")
   @api_call_router.ResultType(api_test_lib.SampleGetHandlerArgs)
-  def SomeRandomMethodWithResultType(self, args, context=None):
+  def SomeRandomMethodWithResultType(self, args, token=None):
     """Doc 2."""
 
   @api_call_router.Http("GET", "/api/method3")
   @api_call_router.ArgsType(api_test_lib.SampleGetHandlerArgs)
   @api_call_router.ResultType(api_test_lib.SampleGetHandlerArgs)
-  def SomeRandomMethodWithArgsTypeAndResultType(self, args, context=None):
+  def SomeRandomMethodWithArgsTypeAndResultType(self, args, token=None):
     """Doc 3."""
 
 
@@ -45,12 +49,12 @@ class ApiListApiMethodsHandlerTest(api_test_lib.ApiCallHandlerTest):
   """Test for ApiListApiMethodsHandler."""
 
   def setUp(self):
-    super().setUp()
+    super(ApiListApiMethodsHandlerTest, self).setUp()
     self.router = DummyApiCallRouter()
     self.handler = reflection_plugin.ApiListApiMethodsHandler(self.router)
 
   def testRendersMethodWithArgsCorrectly(self):
-    result = self.handler.Handle(None, context=self.context)
+    result = self.handler.Handle(None, token=self.token)
 
     method = [
         item for item in result.items
@@ -61,13 +65,13 @@ class ApiListApiMethodsHandlerTest(api_test_lib.ApiCallHandlerTest):
     self.assertEqual(method.args_type_descriptor.name, "SampleGetHandlerArgs")
     self.assertEqual(
         method.args_type_descriptor.AsPrimitiveProto().default.type_url,
-        "type.googleapis.com/grr.SampleGetHandlerArgs")
+        "type.googleapis.com/SampleGetHandlerArgs")
 
     self.assertEqual(method.result_kind, "NONE")
     self.assertFalse(method.HasField("result_type"))
 
   def testRendersMethodWithResultTypeCorrectly(self):
-    result = self.handler.Handle(None, context=self.context)
+    result = self.handler.Handle(None, token=self.token)
 
     method = [
         item for item in result.items
@@ -81,10 +85,10 @@ class ApiListApiMethodsHandlerTest(api_test_lib.ApiCallHandlerTest):
     self.assertEqual(method.result_type_descriptor.name, "SampleGetHandlerArgs")
     self.assertEqual(
         method.result_type_descriptor.AsPrimitiveProto().default.type_url,
-        "type.googleapis.com/grr.SampleGetHandlerArgs")
+        "type.googleapis.com/SampleGetHandlerArgs")
 
   def testRendersMethodWithArgsTypeAndResultTypeCorrectly(self):
-    result = self.handler.Handle(None, context=self.context)
+    result = self.handler.Handle(None, token=self.token)
 
     method = [
         item for item in result.items
@@ -95,13 +99,13 @@ class ApiListApiMethodsHandlerTest(api_test_lib.ApiCallHandlerTest):
     self.assertEqual(method.args_type_descriptor.name, "SampleGetHandlerArgs")
     self.assertEqual(
         method.args_type_descriptor.AsPrimitiveProto().default.type_url,
-        "type.googleapis.com/grr.SampleGetHandlerArgs")
+        "type.googleapis.com/SampleGetHandlerArgs")
 
     self.assertEqual(method.result_kind, "VALUE")
     self.assertEqual(method.result_type_descriptor.name, "SampleGetHandlerArgs")
     self.assertEqual(
         method.result_type_descriptor.AsPrimitiveProto().default.type_url,
-        "type.googleapis.com/grr.SampleGetHandlerArgs")
+        "type.googleapis.com/SampleGetHandlerArgs")
 
 
 def main(argv):

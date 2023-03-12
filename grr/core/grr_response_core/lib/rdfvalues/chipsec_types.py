@@ -1,6 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """RDFValues used to communicate with Chipsec."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import paths as rdf_paths

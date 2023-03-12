@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Test the process list module."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
 
@@ -7,6 +11,7 @@ from absl import app
 
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_network as rdf_client_network
+from grr_response_core.lib.util import compatibility
 from grr_response_server import data_store
 from grr_response_server.flows.general import processes as flow_processes
 from grr.test_lib import action_mocks
@@ -31,10 +36,10 @@ class ListProcessesTest(flow_test_lib.FlowTestsBaseclass):
     ])
 
     session_id = flow_test_lib.TestFlowHelper(
-        flow_processes.ListProcesses.__name__,
+        compatibility.GetName(flow_processes.ListProcesses),
         client_mock,
         client_id=client_id,
-        creator=self.test_username)
+        token=self.token)
 
     processes = flow_test_lib.GetFlowResults(client_id, session_id)
 
@@ -66,10 +71,10 @@ class ListProcessesTest(flow_test_lib.FlowTestsBaseclass):
     ])
 
     session_id = flow_test_lib.TestFlowHelper(
-        flow_processes.ListProcesses.__name__,
+        compatibility.GetName(flow_processes.ListProcesses),
         client_mock,
         client_id=client_id,
-        creator=self.test_username,
+        token=self.token,
         filename_regex=r".*cmd2.exe")
 
     # Expect one result that matches regex
@@ -118,10 +123,10 @@ class ListProcessesTest(flow_test_lib.FlowTestsBaseclass):
     client_mock = action_mocks.ListProcessesMock([p1, p2, p3])
 
     session_id = flow_test_lib.TestFlowHelper(
-        flow_processes.ListProcesses.__name__,
+        compatibility.GetName(flow_processes.ListProcesses),
         client_mock,
         client_id=client_id,
-        creator=self.test_username,
+        token=self.token,
         connection_states=["ESTABLISHED", "LISTEN"])
 
     processes = flow_test_lib.GetFlowResults(client_id, session_id)
@@ -155,7 +160,7 @@ class ListProcessesTest(flow_test_lib.FlowTestsBaseclass):
         fetch_binaries=True,
         client_id=client_id,
         connection_states=["LISTEN"],
-        creator=self.test_username)
+        token=self.token)
 
     # No output matched.
     processes = flow_test_lib.GetFlowResults(client_id, session_id)
@@ -178,7 +183,7 @@ class ListProcessesTest(flow_test_lib.FlowTestsBaseclass):
         client_mock,
         client_id=client_id,
         fetch_binaries=True,
-        creator=self.test_username)
+        token=self.token)
 
     binaries = flow_test_lib.GetFlowResults(client_id, session_id)
     self.assertLen(binaries, 1)
@@ -208,7 +213,7 @@ class ListProcessesTest(flow_test_lib.FlowTestsBaseclass):
         client_mock,
         client_id=client_id,
         fetch_binaries=True,
-        creator=self.test_username)
+        token=self.token)
 
     processes = flow_test_lib.GetFlowResults(client_id, session_id)
     self.assertLen(processes, 1)
@@ -236,46 +241,12 @@ class ListProcessesTest(flow_test_lib.FlowTestsBaseclass):
         client_mock,
         client_id=client_id,
         fetch_binaries=True,
-        creator=self.test_username,
+        token=self.token,
         check_flow_errors=False)
 
     binaries = flow_test_lib.GetFlowResults(client_id, session_id)
     self.assertLen(binaries, 1)
     self.assertEqual(binaries[0].pathspec.path, process1.exe)
-
-  def testPidFiltering(self):
-    client_id = self.SetupClient(0)
-
-    proc_foo = rdf_client.Process()
-    proc_foo.pid = 42
-    proc_foo.exe = "/usr/bin/foo"
-
-    proc_bar = rdf_client.Process()
-    proc_bar.pid = 108
-    proc_bar.exe = "/usr/bin/bar"
-
-    proc_baz = rdf_client.Process()
-    proc_baz.pid = 1337
-    proc_baz.exe = "/usr/bin/baz"
-
-    args = flow_processes.ListProcessesArgs()
-    args.pids = [42, 1337]
-
-    client_mock = action_mocks.ListProcessesMock([proc_foo, proc_bar, proc_baz])
-    flow_id = flow_test_lib.StartAndRunFlow(
-        flow_processes.ListProcesses,
-        client_mock=client_mock,
-        client_id=client_id,
-        flow_args=args,
-    )
-
-    results = flow_test_lib.GetFlowResults(client_id=client_id, flow_id=flow_id)
-    self.assertLen(results, 2)
-
-    result_exes = {result.exe for result in results}
-    self.assertIn("/usr/bin/foo", result_exes)
-    self.assertIn("/usr/bin/baz", result_exes)
-    self.assertNotIn("/usr/bin/bar", result_exes)
 
 
 def main(argv):

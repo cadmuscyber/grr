@@ -21,9 +21,9 @@ const {SemanticProtoDirective} = goog.require('grrUi.semantic.semanticProtoDirec
  * @param {Array<Object>} originalValue
  * @param {Array<Object>} newValue
  */
-const diffAnnotateArrays = function(originalValue, newValue) {
+var diffAnnotateArrays = function(originalValue, newValue) {
   angular.forEach(originalValue, function(originalItem) {
-    let found = false;
+    var found = false;
     angular.forEach(newValue, function(newItem) {
       if (angular.equals(originalItem, newItem)) {
         found = true;
@@ -36,7 +36,7 @@ const diffAnnotateArrays = function(originalValue, newValue) {
   });
 
   angular.forEach(newValue, function(newItem) {
-    let found = false;
+    var found = false;
     angular.forEach(originalValue, function(originalItem) {
       if (angular.equals(originalItem, newItem)) {
         found = true;
@@ -124,9 +124,8 @@ exports.diffAnnotate = function(originalValue, newValue) {
 
   if (angular.isArray(originalValue) && angular.isArray(newValue)) {
     // See diffAnnotateArrays for details on how arrays are diffed.
-    diffAnnotateArrays(
-        /** @type {Array<Object>} */ (originalValue),
-        /** @type {Array<Object>} */ (newValue));
+    diffAnnotateArrays(/** @type {Array<Object>} */(originalValue),
+        /** @type {Array<Object>} */(newValue));
     return;
   }
 
@@ -160,64 +159,63 @@ exports.diffAnnotate = function(originalValue, newValue) {
   // At this point both values' "value" attribute is guaranteed to be a map
   // (see comments above). We build a union of both maps so that
   // we can traverse the union of the keys.
-  const allKeys = angular.extend({}, originalValue['value'], newValue['value']);
+  var allKeys = angular.extend({}, originalValue['value'], newValue['value']);
   // For every key present in either one of two values, call diffAnnotate
   // recursively. originalValue['value'][key] and newValue['value'][key]
   // can either be undefined, be arrays or be objects of a
   // {type: ..., value: ...} structure.
-  for (const key in allKeys) {
+  for (var key in allKeys) {
     diffAnnotate(originalValue['value'][key], newValue['value'][key]);
   }
 };
-const diffAnnotate = exports.diffAnnotate;
+var diffAnnotate = exports.diffAnnotate;
 
 /**
  * Controller for SemanticProtosDiffDirective.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @constructor
+ * @ngInject
  */
-const SemanticProtosDiffController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const SemanticProtosDiffController = function(
+    $scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @type {Object} */
-    this.annotatedOriginalValue;
+  /** @type {Object} */
+  this.annotatedOriginalValue;
 
-    /** @type {Object} */
-    this.annotatedNewValue;
+  /** @type {Object} */
+  this.annotatedNewValue;
 
-    const protoType = SemanticProtoDirective.semantic_type;
-    const protoDirectiveOverride = SemanticDiffAnnotatedProtoDirective;
+  var protoType = SemanticProtoDirective.semantic_type;
+  var protoDirectiveOverride = SemanticDiffAnnotatedProtoDirective;
 
-    /** @type {Object<string, Object>} */
-    this.overrideMap = {};
-    this.overrideMap[protoType] = protoDirectiveOverride;
+  /** @type {Object<string, Object>} */
+  this.overrideMap = {};
+  this.overrideMap[protoType] = protoDirectiveOverride;
 
-    this.scope_.$watchGroup(
-        ['originalValue', 'newValue'], this.onValuesChange_.bind(this));
-  }
-
-  /**
-   * Handles changes of directive's bindings.
-   *
-   * @private
-   */
-  onValuesChange_() {
-    if (angular.isUndefined(this.scope_['originalValue']) ||
-        angular.isUndefined(this.scope_['newValue'])) {
-      return;
-    }
-
-    this.annotatedOriginalValue = angular.copy(this.scope_['originalValue']);
-    this.annotatedNewValue = angular.copy(this.scope_['newValue']);
-    diffAnnotate(this.annotatedOriginalValue, this.annotatedNewValue);
-  }
+  this.scope_.$watchGroup(['originalValue', 'newValue'],
+                          this.onValuesChange_.bind(this));
 };
 
+
+
+/**
+ * Handles changes of directive's bindings.
+ *
+ * @private
+ */
+SemanticProtosDiffController.prototype.onValuesChange_ = function() {
+  if (angular.isUndefined(this.scope_['originalValue']) ||
+      angular.isUndefined(this.scope_['newValue'])) {
+    return;
+  }
+
+  this.annotatedOriginalValue = angular.copy(this.scope_['originalValue']);
+  this.annotatedNewValue = angular.copy(this.scope_['newValue']);
+  diffAnnotate(this.annotatedOriginalValue, this.annotatedNewValue);
+};
 
 
 /**

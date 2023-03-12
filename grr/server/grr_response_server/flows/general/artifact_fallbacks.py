@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Fallback flows for artifacts that couldn't be collected normally.
 
 These flows subclass lib.artifact.ArtifactFallbackCollector.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 # pylint: disable=unused-import
 from grr_response_core.lib import parser
@@ -12,6 +16,7 @@ from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_proto import flows_pb2
 from grr_response_server import flow_base
 from grr_response_server import server_stubs
@@ -58,7 +63,7 @@ class SystemRootSystemDriveFallbackFlow(flow_base.FlowBase):
       self.CallClient(
           server_stubs.ListDirectory,
           pathspec=pathspec,
-          next_state=self.ProcessFileStats.__name__)
+          next_state=compatibility.GetName(self.ProcessFileStats))
 
   def ProcessFileStats(self, responses):
     """Extract DataBlob from Stat response."""
@@ -84,7 +89,7 @@ class SystemRootSystemDriveFallbackFlow(flow_base.FlowBase):
       raise flow_base.FlowError(
           "Couldn't guess the system root and drive location")
 
-    super().End(responses)
+    super(SystemRootSystemDriveFallbackFlow, self).End(responses)
 
 
 class WindowsAllUsersProfileFallbackFlow(flow_base.FlowBase):

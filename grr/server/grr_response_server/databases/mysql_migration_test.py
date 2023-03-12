@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for the MySQL migrations logic."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import contextlib
 import io
@@ -19,7 +23,7 @@ from grr.test_lib import test_lib
 class ListMigrationsToProcessTest(absltest.TestCase):
 
   def setUp(self):
-    super().setUp()
+    super(ListMigrationsToProcessTest, self).setUp()
     self.temp_dir = temp.TempDirPath()
     self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
 

@@ -1,5 +1,9 @@
 #!/usr/bin/env python
-import collections
+# Lint as: python3
+# -*- encoding: utf-8 -*-
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl.testing import absltest
 
@@ -111,21 +115,6 @@ class AssertDictTypeTest(absltest.TestCase):
     dct = {"foo": 1, "bar": 2, "baz": 3.14}
     with self.assertRaises(TypeError):
       precondition.AssertDictType(dct, str, int)
-
-  def testSubclassesOfDictPassAssertion(self):
-    dct = collections.UserDict({1: "foo", 2: "bar", 3: "baz"})
-    precondition.AssertDictType(dct, int, str)
-
-  def testSubclassesOfKeyAndValuePassAssertion(self):
-
-    class A:
-      pass
-
-    class B(A):
-      pass
-
-    dct = {B(): B()}
-    precondition.AssertDictType(dct, A, A)
 
 
 if __name__ == "__main__":

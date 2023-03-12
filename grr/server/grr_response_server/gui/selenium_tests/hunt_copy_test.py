@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Test of "Copy Hunt" wizard."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -26,13 +30,13 @@ class HuntCopyTest(gui_test_lib.GRRSeleniumHuntTest):
         flow_args=transfer.GetFileArgs(
             pathspec=rdf_paths.PathSpec(
                 path="/tmp/evil.txt",
-                pathtype=rdf_paths.PathSpec.PathType.NTFS,
+                pathtype=rdf_paths.PathSpec.PathType.TSK,
             )),
         client_rule_set=self._CreateForemanClientRuleSet(),
         output_plugins=[
             rdf_output_plugin.OutputPluginDescriptor(
                 plugin_name="DummyOutputPlugin",
-                args=gui_test_lib.DummyOutputPlugin.args_type(
+                plugin_args=gui_test_lib.DummyOutputPlugin.args_type(
                     filename_regex="blah!", fetch_binaries=True))
         ],
         client_rate=60,
@@ -55,7 +59,7 @@ class HuntCopyTest(gui_test_lib.GRRSeleniumHuntTest):
         "label:contains('Path') ~ * input:text")
 
     self.WaitUntilEqual(
-        "NTFS", self.GetText, "css=grr-new-hunt-wizard-form "
+        "TSK", self.GetText, "css=grr-new-hunt-wizard-form "
         "label:contains('Pathtype') ~ * select option:selected")
 
     # Click on "Next" button
@@ -114,7 +118,7 @@ class HuntCopyTest(gui_test_lib.GRRSeleniumHuntTest):
     self.WaitUntil(self.IsTextPresent, "Review")
 
     # Check that review page contains expected values.
-    self.WaitUntil(self.IsTextPresent, "NTFS")
+    self.WaitUntil(self.IsTextPresent, "TSK")
     self.WaitUntil(self.IsTextPresent, "/tmp/evil.txt")
     self.WaitUntil(self.IsTextPresent, transfer.GetFile.__name__)
     self.WaitUntil(self.IsTextPresent, "DummyOutputPlugin")
@@ -251,25 +255,25 @@ class HuntCopyTest(gui_test_lib.GRRSeleniumHuntTest):
 
     last_hunt = hunts_list[-1]
 
-    args = last_hunt.args.standard.flow_args.Unpack(transfer.GetFileArgs)
-    self.assertEqual(args.pathspec.path, "/tmp/very-evil.txt")
-    self.assertEqual(args.pathspec.pathtype, "OS")
+    self.assertEqual(last_hunt.args.standard.flow_args.pathspec.path,
+                     "/tmp/very-evil.txt")
+    self.assertEqual(last_hunt.args.standard.flow_args.pathspec.pathtype, "OS")
     self.assertEqual(last_hunt.args.standard.flow_name,
                      transfer.GetFile.__name__)
 
     self.assertLen(last_hunt.output_plugins, 2)
-    self.assertEqual(
-        last_hunt.output_plugins[0],
-        rdf_output_plugin.OutputPluginDescriptor(
-            plugin_name="DummyOutputPlugin",
-            args=gui_test_lib.DummyOutputPlugin.args_type(
-                filename_regex="foobar!")))
-    self.assertEqual(
-        last_hunt.output_plugins[1],
-        rdf_output_plugin.OutputPluginDescriptor(
-            plugin_name="DummyOutputPlugin",
-            args=gui_test_lib.DummyOutputPlugin.args_type(
-                filename_regex="blah!", fetch_binaries=True)))
+    self.assertEqual(last_hunt.output_plugins[0].plugin_name,
+                     "DummyOutputPlugin")
+    self.assertEqual(last_hunt.output_plugins[0].plugin_args.filename_regex,
+                     "foobar!")
+    self.assertEqual(last_hunt.output_plugins[0].plugin_args.fetch_binaries,
+                     False)
+    self.assertEqual(last_hunt.output_plugins[1].plugin_name,
+                     "DummyOutputPlugin")
+    self.assertEqual(last_hunt.output_plugins[1].plugin_args.filename_regex,
+                     "blah!")
+    self.assertEqual(last_hunt.output_plugins[1].plugin_args.fetch_binaries,
+                     True)
 
     self.assertAlmostEqual(last_hunt.client_rate, 42)
     self.assertEqual(last_hunt.description, "my personal copy")
@@ -344,11 +348,9 @@ class HuntCopyTest(gui_test_lib.GRRSeleniumHuntTest):
     # Check that the hunt was created with a correct literal value.
     self.assertEqual(last_hunt.args.standard.flow_name,
                      file_finder.FileFinder.__name__)
-
-    args = last_hunt.args.standard.flow_args.Unpack(
-        rdf_file_finder.FileFinderArgs)
-    self.assertEqual(args.conditions[0].contents_literal_match.literal,
-                     b"foo\x0d\xc8bar")
+    self.assertEqual(
+        last_hunt.args.standard.flow_args.conditions[0].contents_literal_match
+        .literal, b"foo\x0d\xc8bar")
 
   def testCopyHuntPreservesRuleType(self):
     self.StartHunt(
@@ -358,14 +360,14 @@ class HuntCopyTest(gui_test_lib.GRRSeleniumHuntTest):
         flow_args=transfer.GetFileArgs(
             pathspec=rdf_paths.PathSpec(
                 path="/tmp/evil.txt",
-                pathtype=rdf_paths.PathSpec.PathType.NTFS,
+                pathtype=rdf_paths.PathSpec.PathType.TSK,
             )),
         client_rule_set=foreman_rules.ForemanClientRuleSet(rules=[
             foreman_rules.ForemanClientRule(
                 rule_type=foreman_rules.ForemanClientRule.Type.OS,
                 os=foreman_rules.ForemanOsClientRule(os_darwin=True))
         ]),
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#main=ManageHunts")
     self.Click("css=tr:contains('model hunt')")
@@ -459,7 +461,7 @@ class HuntCopyTest(gui_test_lib.GRRSeleniumHuntTest):
     self.assertFalse(rule.os.os_windows)
 
   def testApprovalIndicatesThatHuntWasCopiedFromAnotherHunt(self):
-    self.CreateSampleHunt("model hunt", creator=self.test_username)
+    self.CreateSampleHunt("model hunt", creator=self.token.username)
 
     self.Open("/#main=ManageHunts")
     self.Click("css=tr:contains('model hunt')")
@@ -487,13 +489,13 @@ class HuntCopyTest(gui_test_lib.GRRSeleniumHuntTest):
     h = hunts[0]
     approval_id = self.RequestHuntApproval(
         h.hunt_id,
-        requestor=self.test_username,
+        requestor=self.token.username,
         reason="reason",
-        approver=self.test_username)
+        approver=self.token.username)
 
     # Open the approval page.
     self.Open("/#/users/%s/approvals/hunt/%s/%s" %
-              (self.test_username, h.hunt_id, approval_id))
+              (self.token.username, h.hunt_id, approval_id))
     self.WaitUntil(self.IsElementPresent,
                    "css=div.panel-body:contains('This hunt was copied from')")
 

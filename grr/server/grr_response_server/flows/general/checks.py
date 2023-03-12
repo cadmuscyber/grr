@@ -1,11 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A flow to run checks for a host."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 
 from grr_response_core.lib import parsers
 from grr_response_core.lib.rdfvalues import anomaly as rdf_anomaly
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_proto import flows_pb2
 from grr_response_server import artifact
 from grr_response_server import flow_base
@@ -16,8 +21,8 @@ from grr_response_server.flows.general import collectors
 class CheckFlowArgs(rdf_structs.RDFProtoStruct):
   protobuf = flows_pb2.CheckFlowArgs
 
-  # TODO(hanuszczak): Add a `use_raw_filesystem_access` field to the flow args
-  # because otherwise it is useless on Windows.
+  # TODO(hanuszczak): Add a `use_tsk` field to the flow args because otherwise
+  # it is useless on Windows.
   @property
   def path_type(self):
     return rdf_paths.PathSpec.PathType.OS
@@ -71,8 +76,8 @@ class CheckRunner(flow_base.FlowBase):
           artifact_list=[artifact_name],
           apply_parsers=False,
           request_data={"artifact_name": artifact_name},
-          next_state=self.AddResponses.__name__)
-    self.CallState(next_state=self.RunChecks.__name__)
+          next_state=compatibility.GetName(self.AddResponses))
+    self.CallState(next_state=compatibility.GetName(self.RunChecks))
 
   def _RunProcessors(self, artifact_name, responses):
     """Manages processing of raw data from the artifact collection.

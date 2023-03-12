@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """End to end tests for GRR checks."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_test.end_to_end_tests import test_base
 

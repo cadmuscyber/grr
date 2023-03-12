@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import datetime
 import io
@@ -8,9 +12,10 @@ import shutil
 import socket
 import subprocess
 import unittest
-from unittest import mock
 
 from absl.testing import absltest
+
+import mock
 
 from grr_response_core.lib.util import filesystem
 from grr_response_core.lib.util import temp
@@ -191,7 +196,7 @@ class StatTest(absltest.TestCase):
 class StatCacheTest(absltest.TestCase):
 
   def setUp(self):
-    super().setUp()
+    super(StatCacheTest, self).setUp()
     self.temp_dir = temp.TempDirPath()
     self.addCleanup(shutil.rmtree, self.temp_dir)
 

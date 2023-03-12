@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """REL_DB implementation of hunts."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import registry
-from grr_response_core.lib.rdfvalues import structs as rdf_structs
 from grr_response_core.lib.util import cache
 from grr_response_core.lib.util import precondition
 from grr_response_server import access_control
@@ -15,13 +18,6 @@ from grr_response_server.rdfvalues import hunt_objects as rdf_hunt_objects
 from grr_response_server.rdfvalues import objects as rdf_objects
 
 MIN_CLIENTS_FOR_AVERAGE_THRESHOLDS = 1000
-
-# pyformat: disable
-
-CANCELLED_BY_USER = "Cancelled by user"
-
-# /grr/server/grr_response_server/gui/api_plugins/hunt.py)
-# pyformat: enable
 
 
 class Error(Exception):
@@ -104,7 +100,7 @@ def StopHuntIfCrashLimitExceeded(hunt_id):
   return hunt_obj
 
 
-_TIME_BETWEEN_STOP_CHECKS = rdfvalue.Duration.From(30, rdfvalue.SECONDS)
+_TIME_BETWEEN_STOP_CHECKS = rdfvalue.Duration.From(5, rdfvalue.SECONDS)
 
 
 @cache.WithLimitedCallFrequency(_TIME_BETWEEN_STOP_CHECKS)
@@ -173,7 +169,7 @@ def StopHuntIfCPUOrNetworkLimitsExceeded(hunt_id):
 def CompleteHuntIfExpirationTimeReached(hunt_obj):
   """Marks the hunt as complete if it's past its expiry time."""
   # TODO(hanuszczak): This should not set the hunt state to `COMPLETED` but we
-  # should have a separate `EXPIRED` state instead and set that.
+  # should have a sparate `EXPIRED` state instead and set that.
   if (hunt_obj.hunt_state not in [
       rdf_hunt_objects.Hunt.HuntState.STOPPED,
       rdf_hunt_objects.Hunt.HuntState.COMPLETED
@@ -193,7 +189,9 @@ def CreateHunt(hunt_obj):
 
   if hunt_obj.HasField("output_plugins"):
     output_plugins_states = flow.GetOutputPluginStates(
-        hunt_obj.output_plugins, source="hunts/%s" % hunt_obj.hunt_id)
+        hunt_obj.output_plugins,
+        source="hunts/%s" % hunt_obj.hunt_id,
+        token=access_control.ACLToken(username=hunt_obj.creator))
     data_store.REL_DB.WriteHuntOutputPluginsStates(hunt_obj.hunt_id,
                                                    output_plugins_states)
 
@@ -208,8 +206,10 @@ def CreateAndStartHunt(flow_name, flow_args, creator, **kwargs):
   if "duration" in kwargs:
     precondition.AssertType(kwargs["duration"], rdfvalue.Duration)
 
-  hunt_args = rdf_hunt_objects.HuntArguments.Standard(
-      flow_name=flow_name, flow_args=rdf_structs.AnyValue.Pack(flow_args))
+  hunt_args = rdf_hunt_objects.HuntArguments(
+      hunt_type=rdf_hunt_objects.HuntArguments.HuntType.STANDARD,
+      standard=rdf_hunt_objects.HuntArgumentsStandard(
+          flow_name=flow_name, flow_args=flow_args))
 
   hunt_obj = rdf_hunt_objects.Hunt(
       creator=creator,
@@ -256,11 +256,8 @@ def _ScheduleVariableHunt(hunt_obj):
   now = rdfvalue.RDFDatetime.Now()
   for flow_group in hunt_obj.args.variable.flow_groups:
     flow_cls = registry.FlowRegistry.FlowClassByName(flow_group.flow_name)
-
-    if flow_group.HasField("flow_args"):
-      flow_args = flow_group.flow_args.Unpack(flow_cls.args_type)
-    else:
-      flow_args = None
+    flow_args = flow_group.flow_args if flow_group.HasField(
+        "flow_args") else None
 
     for client_id in flow_group.client_ids:
       flow.StartFlow(
@@ -274,7 +271,7 @@ def _ScheduleVariableHunt(hunt_obj):
           # process flow's Start state right away. Only the flow request
           # will be scheduled.
           start_at=now,
-          parent=flow.FlowParent.FromHuntID(hunt_obj.hunt_id))
+          parent_hunt_id=hunt_obj.hunt_id)
 
 
 def StartHunt(hunt_id):
@@ -332,12 +329,8 @@ def StopHunt(hunt_id, reason=None):
       hunt_id, hunt_state=hunt_obj.HuntState.STOPPED, hunt_state_comment=reason)
   data_store.REL_DB.RemoveForemanRule(hunt_id=hunt_obj.hunt_id)
 
-  # TODO: Match on reason enum instead of string.
-  if (
-      reason is not None
-      and reason != CANCELLED_BY_USER
-      and hunt_obj.creator not in access_control.SYSTEM_USERS
-  ):
+  if (reason is not None and
+      hunt_obj.creator not in access_control.SYSTEM_USERS):
     notification.Notify(
         hunt_obj.creator, rdf_objects.UserNotification.Type.TYPE_HUNT_STOPPED,
         reason,
@@ -406,11 +399,7 @@ def StartHuntFlowOnClient(client_id, hunt_id):
     # In REL_DB always work as if client rate is 0.
 
     flow_cls = registry.FlowRegistry.FlowClassByName(hunt_args.flow_name)
-    if hunt_args.HasField("flow_args"):
-      flow_args = hunt_args.flow_args.Unpack(flow_cls.args_type)
-    else:
-      flow_args = None
-
+    flow_args = hunt_args.flow_args if hunt_args.HasField("flow_args") else None
     flow.StartFlow(
         client_id=client_id,
         creator=hunt_obj.creator,
@@ -419,7 +408,7 @@ def StartHuntFlowOnClient(client_id, hunt_id):
         flow_cls=flow_cls,
         flow_args=flow_args,
         start_at=start_at,
-        parent=flow.FlowParent.FromHuntID(hunt_id))
+        parent_hunt_id=hunt_id)
 
     if hunt_obj.client_limit:
       if _GetNumClients(hunt_obj.hunt_id) >= hunt_obj.client_limit:

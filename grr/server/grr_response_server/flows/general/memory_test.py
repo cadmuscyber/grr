@@ -1,18 +1,18 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for Yara flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-import contextlib
 import functools
-import inspect
 import os
-import platform
 import string
 from typing import Iterable
 from typing import Optional
-import unittest
-from unittest import mock
 
 from absl import app
+import mock
 import psutil
 import yara
 
@@ -156,15 +156,13 @@ class FakeMemoryProcess(object):
       110: [
           FakeRegion(0, b"A" * 100),
           FakeRegion(1000, b"X" * ONE_MIB + b"1234" + b"X" * ONE_MIB),
-          FakeRegion(3000000, b"A" * 100),
+          FakeRegion(2000000, b"A" * 100),
       ],
   }
 
-  def __init__(self, pid=None, tmp_dir=None):
+  def __init__(self, pid=None):
     self.pid = pid
     self.regions = self.regions_by_pid[pid]
-    self._tmp_dir = tmp_dir
-    self._file_descriptor = None
 
   def __enter__(self):
     if self.pid in [101, 106]:
@@ -172,8 +170,7 @@ class FakeMemoryProcess(object):
     return self
 
   def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-    if self._file_descriptor is not None:
-      os.close(self._file_descriptor)
+    pass
 
   def ReadBytes(self, address, num_bytes):
     for region in self.regions:
@@ -199,29 +196,6 @@ class FakeMemoryProcess(object):
           is_writable=region.is_writable,
           is_readable=region.is_readable)
 
-  @property
-  def serialized_file_descriptor(self):
-    if self._file_descriptor is not None:
-      return self._file_descriptor
-    memory_path = self._WriteMemoryToFile()
-    self._file_descriptor = os.open(memory_path, os.O_RDONLY)
-    return self._file_descriptor
-
-  def _WriteMemoryToFile(self) -> str:
-    memory_path = os.path.join(self._tmp_dir, str(self.pid))
-    prev_region = None
-    with open(memory_path, "wb") as f:
-      for region in self.regions:
-        if prev_region is None:
-          prev_end = 0
-        else:
-          prev_end = prev_region.end
-        assert region.start >= prev_end
-        f.write(b"\x00" * (region.start - prev_end))
-        f.write(region.data)
-        prev_region = region
-    return memory_path
-
 
 class BaseYaraFlowsTest(flow_test_lib.FlowTestsBaseclass):
   """Tests the Yara flows."""
@@ -232,13 +206,8 @@ class BaseYaraFlowsTest(flow_test_lib.FlowTestsBaseclass):
   MATCH_BIG_REGIONS = 110
 
   def process(self, processes, pid=None):
-    for stack_frame in inspect.stack():
-      # grr_response_client/unprivileged/communication.py needs a real process.
-      if ("unprivileged" in stack_frame.filename and
-          "communication.py" in stack_frame.filename):
-        return psutil.Process.old_target(pid=pid)  # pytype: disable=attribute-error
     if not pid:
-      return psutil.Process.old_target()  # pytype: disable=attribute-error
+      return psutil.Process.old_target()
     for p in processes:
       if p.pid == pid:
         return p
@@ -261,7 +230,7 @@ class BaseYaraFlowsTest(flow_test_lib.FlowTestsBaseclass):
         (psutil, "process_iter", lambda: procs),
         (psutil, "Process", functools.partial(self.process, procs)),
         (client_utils, "OpenProcessForMemoryAccess",
-         lambda pid: FakeMemoryProcess(pid=pid, tmp_dir=self._tmp_dir))):
+         lambda pid: FakeMemoryProcess(pid=pid))):
       session_id = flow_test_lib.TestFlowHelper(
           memory.YaraProcessScan.__name__,
           client_mock,
@@ -271,7 +240,7 @@ class BaseYaraFlowsTest(flow_test_lib.FlowTestsBaseclass):
           include_errors_in_results=include_errors_in_results,
           include_misses_in_results=include_misses_in_results,
           max_results_per_process=max_results_per_process,
-          creator=self.test_username,
+          token=self.token,
           **kw)
 
     res = flow_test_lib.GetFlowResults(self.client_id, session_id)
@@ -281,12 +250,7 @@ class BaseYaraFlowsTest(flow_test_lib.FlowTestsBaseclass):
     return matches, errors, misses
 
   def setUp(self):
-    super().setUp()
-
-    stack = contextlib.ExitStack()
-    self.addCleanup(stack.close)
-    self._tmp_dir = stack.enter_context(utils.TempDirectory())
-
+    super(BaseYaraFlowsTest, self).setUp()
     self.client_id = self.SetupClient(0)
     self.procs = [
         client_test_lib.MockWindowsProcess(pid=101, name="proc101.exe"),
@@ -493,7 +457,7 @@ class YaraFlowsTest(BaseYaraFlowsTest):
     miss = misses[0]
     self.assertEqual(miss.scan_time_us, 6 * 1e6)
 
-    with test_lib.FakeTime(20000, increment=1):
+    with test_lib.FakeTime(10000, increment=1):
       matches, _, _ = self._RunYaraProcessScan(self.procs, pids=[102])
 
     self.assertLen(matches, 1)
@@ -547,7 +511,7 @@ class YaraFlowsTest(BaseYaraFlowsTest):
     procs = [
         p for p in self.procs if p.pid in [101, 102, 103, 104, 105, 106, 107]
     ]
-    with mock.patch.object(yara, "compile", lambda source: FakeRules()):
+    with utils.Stubber(rdf_memory.YaraSignature, "GetRules", FakeRules):
       self._RunYaraProcessScan(procs, per_process_timeout=50)
 
     self.assertLen(FakeRules.invocations, 7)
@@ -561,7 +525,7 @@ class YaraFlowsTest(BaseYaraFlowsTest):
     procs = [
         p for p in self.procs if p.pid in [101, 102, 103, 104, 105, 106, 107]
     ]
-    with mock.patch.object(yara, "compile", lambda source: TimeoutRules()):
+    with utils.Stubber(rdf_memory.YaraSignature, "GetRules", TimeoutRules):
       matches, errors, misses = self._RunYaraProcessScan(
           procs,
           per_process_timeout=50,
@@ -582,7 +546,7 @@ class YaraFlowsTest(BaseYaraFlowsTest):
     procs = [
         p for p in self.procs if p.pid in [101, 102, 103, 104, 105, 106, 107]
     ]
-    with mock.patch.object(yara, "compile", lambda source: TooManyHitsRules()):
+    with utils.Stubber(rdf_memory.YaraSignature, "GetRules", TooManyHitsRules):
       matches, errors, misses = self._RunYaraProcessScan(
           procs,
           include_errors_in_results="ALL_ERRORS",
@@ -601,7 +565,7 @@ class YaraFlowsTest(BaseYaraFlowsTest):
     procs = [
         p for p in self.procs if p.pid in [101, 102, 103, 104, 105, 106, 107]
     ]
-    with mock.patch.object(yara, "compile", lambda source: FakeRules()):
+    with utils.Stubber(rdf_memory.YaraSignature, "GetRules", FakeRules):
       self._RunYaraProcessScan(procs, chunk_size=100, overlap_size=10)
 
     self.assertLen(FakeRules.invocations, 21)
@@ -641,7 +605,7 @@ class YaraFlowsTest(BaseYaraFlowsTest):
         (psutil, "process_iter", lambda: procs),
         (psutil, "Process", functools.partial(self.process, procs)),
         (client_utils, "OpenProcessForMemoryAccess",
-         lambda pid: FakeMemoryProcess(pid=pid, tmp_dir=self._tmp_dir))):
+         lambda pid: FakeMemoryProcess(pid=pid))):
       client_mock = action_mocks.MultiGetFileClientMock(
           memory_actions.YaraProcessDump, tempfiles.DeleteGRRTempFiles)
       session_id = flow_test_lib.TestFlowHelper(
@@ -652,7 +616,7 @@ class YaraFlowsTest(BaseYaraFlowsTest):
           chunk_size=chunk_size,
           client_id=self.client_id,
           ignore_grr_process=True,
-          creator=self.test_username)
+          token=self.token)
     return flow_test_lib.GetFlowResults(self.client_id, session_id)
 
   def _ReadFromPathspec(self, pathspec, num_bytes):
@@ -744,7 +708,7 @@ class YaraFlowsTest(BaseYaraFlowsTest):
         client_id=self.client_id,
         ignore_grr_process=True,
         check_flow_errors=False,
-        creator=self.test_username)
+        token=self.token)
     flow_obj = data_store.REL_DB.ReadFlowObject(self.client_id, flow_id)
     self.assertEqual(flow_obj.error_message, "No processes to dump specified.")
 
@@ -801,13 +765,13 @@ class YaraFlowsTest(BaseYaraFlowsTest):
           (psutil, "process_iter", lambda: procs),
           (psutil, "Process", functools.partial(self.process, procs)),
           (client_utils, "OpenProcessForMemoryAccess",
-           lambda pid: FakeMemoryProcess(pid=pid, tmp_dir=self._tmp_dir))):
+           lambda pid: FakeMemoryProcess(pid=pid))):
         session_id = flow_test_lib.TestFlowHelper(
             memory.YaraProcessScan.__name__,
             client_mock,
             yara_signature=_TEST_YARA_SIGNATURE,
             client_id=self.client_id,
-            creator=self.test_username,
+            token=self.token,
             include_errors_in_results="ALL_ERRORS",
             include_misses_in_results=True,
             dump_process_on_match=True)
@@ -850,13 +814,13 @@ class YaraFlowsTest(BaseYaraFlowsTest):
         (psutil, "process_iter", lambda: procs),
         (psutil, "Process", functools.partial(self.process, procs)),
         (client_utils, "OpenProcessForMemoryAccess",
-         lambda pid: FakeMemoryProcess(pid=pid, tmp_dir=self._tmp_dir))):
+         lambda pid: FakeMemoryProcess(pid=pid))):
       session_id = flow_test_lib.TestFlowHelper(
           memory.YaraProcessScan.__name__,
           client_mock,
           yara_signature=_TEST_YARA_SIGNATURE,
           client_id=self.client_id,
-          creator=self.test_username,
+          token=self.token,
           include_errors_in_results="ALL_ERRORS",
           include_misses_in_results=True,
           dump_process_on_match=True)
@@ -895,13 +859,13 @@ class YaraFlowsTest(BaseYaraFlowsTest):
         (psutil, "process_iter", lambda: procs),
         (psutil, "Process", functools.partial(self.process, procs)),
         (client_utils, "OpenProcessForMemoryAccess",
-         lambda pid: FakeMemoryProcess(pid=pid, tmp_dir=self._tmp_dir))):
+         lambda pid: FakeMemoryProcess(pid=pid))):
       session_id = flow_test_lib.TestFlowHelper(
           memory.YaraProcessScan.__name__,
           client_mock,
           yara_signature=_TEST_YARA_SIGNATURE,
           client_id=self.client_id,
-          creator=self.test_username,
+          token=self.token,
           include_errors_in_results="ALL_ERRORS",
           include_misses_in_results=True,
           dump_process_on_match=True,
@@ -1008,57 +972,6 @@ class YaraFlowsTest(BaseYaraFlowsTest):
         ]))
 
 
-@unittest.skipIf(
-    platform.system() != "Linux",
-    "FakeMemoryProcess.serialized_file_descriptor works only on Linux.")
-class YaraFlowsUnprivilegedTest(YaraFlowsTest):
-
-  def setUp(self):
-    super().setUp()
-    stack = contextlib.ExitStack()
-    self.addCleanup(stack.close)
-    stack.enter_context(
-        test_lib.ConfigOverrider({"Client.use_memory_sandboxing": True}))
-    # Use smaller batch size to exercise the batching logic.
-    stack.enter_context(
-        mock.patch.object(memory_actions.BatchedUnprivilegedYaraWrapper,
-                          "BATCH_SIZE", 2))
-
-  # Tracking of time works differently in unprivileged mode.
-  # (There isn't one call to RDFDatetime.Now() per chunk due to batching).
-
-  def testScanTimingInformation(self):
-    with test_lib.FakeTime(10000, increment=1):
-      _, _, misses = self._RunYaraProcessScan(
-          self.procs, pids=[105], include_misses_in_results=True)
-
-    self.assertLen(misses, 1)
-    miss = misses[0]
-    self.assertEqual(miss.scan_time_us, 3 * 1e6)
-
-    with test_lib.FakeTime(10000, increment=1):
-      matches, _, _ = self._RunYaraProcessScan(self.procs, pids=[102])
-
-    self.assertLen(matches, 1)
-    match = matches[0]
-    self.assertEqual(match.scan_time_us, 3 * 1e6)
-
-  # The following tests don't work with sandboxing, because they mock
-  # yara.compile, which is executed in the unprivileged process.
-
-  def testPerProcessTimeout(self):
-    pass
-
-  def testPerProcessTimeoutArg(self):
-    pass
-
-  def testTooManyHitsError(self):
-    pass
-
-  def testYaraProcessScanChunkingWorks(self):
-    pass
-
-
 class YaraProcessScanTest(flow_test_lib.FlowTestsBaseclass):
 
   @classmethod
@@ -1067,7 +980,7 @@ class YaraProcessScanTest(flow_test_lib.FlowTestsBaseclass):
     testing_startup.TestInit()
 
   def setUp(self):
-    super().setUp()
+    super(YaraProcessScanTest, self).setUp()
     self.client_id = self.SetupClient(0)
 
   def testYaraSignatureReferenceDeliversFullSignatureToClient(self):
@@ -1099,7 +1012,7 @@ class YaraProcessScanTest(flow_test_lib.FlowTestsBaseclass):
     self.assertEqual(b"".join(payloads).decode("utf-8"), signature)
 
   def testYaraSignatureReferenceIncorrect(self):
-    data = "This is very c0nfidential and should not leak to the client."
+    data = "This is very confidential and should not leak to the client."
     blob_id = data_store.BLOBS.WriteBlobWithUnknownHash(data.encode("utf-8"))
 
     args = rdf_memory.YaraProcessScanRequest()
@@ -1143,7 +1056,7 @@ class YaraProcessScanTest(flow_test_lib.FlowTestsBaseclass):
         memory.YaraProcessScan.__name__,
         action_mock,
         client_id=self.client_id,
-        creator=self.test_username,
+        token=self.token,
         args=args)
 
     flow_test_lib.FinishAllFlowsOnClient(self.client_id)

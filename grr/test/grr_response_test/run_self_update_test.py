@@ -1,12 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Helper script for running end-to-end tests."""
 
-import logging
 import platform
 import subprocess
 import sys
-
-from typing import Sequence
 
 from absl import app
 from absl import flags
@@ -17,17 +15,15 @@ from grr_api_client import errors
 from grr_response_test.lib import api_helpers
 from grr_response_test.lib import self_contained_components
 
-_MYSQL_DATABASE = flags.DEFINE_string("mysql_database", "grr_test_db",
-                                      "MySQL database name to use.")
+flags.DEFINE_string("mysql_database", "grr_test_db",
+                    "MySQL database name to use.")
 
-_MYSQL_USERNAME = flags.DEFINE_string("mysql_username", None,
-                                      "MySQL username to use.")
+flags.DEFINE_string("mysql_username", None, "MySQL username to use.")
 
-_MYSQL_PASSWORD = flags.DEFINE_string("mysql_password", None,
-                                      "MySQL password to use.")
+flags.DEFINE_string("mysql_password", None, "MySQL password to use.")
 
-_LOGGING_PATH = flags.DEFINE_string(
-    "logging_path", None, "Base logging path for server components to use.")
+flags.DEFINE_string("logging_path", None,
+                    "Base logging path for server components to use.")
 
 _HIGHEST_VERSION_INI = """
 [Version]
@@ -40,27 +36,18 @@ packagedepends = %(packageversion)s
 """
 
 
-def _check_call_print_output(cmd: Sequence[str]):
-  try:
-    return subprocess.check_output(cmd)
-  except subprocess.CalledProcessError as e:
-    logging.info(e.stdout)
-    logging.error(e.stderr)
-    raise
-
-
 def main(argv):
   del argv  # Unused.
 
-  if _MYSQL_USERNAME.value is None:
+  if flags.FLAGS.mysql_username is None:
     raise ValueError("--mysql_username has to be specified.")
 
   # Generate server and client configs.
   grr_configs = self_contained_components.InitGRRConfigs(
-      _MYSQL_DATABASE.value,
-      mysql_username=_MYSQL_USERNAME.value,
-      mysql_password=_MYSQL_PASSWORD.value,
-      logging_path=_LOGGING_PATH.value)
+      flags.FLAGS.mysql_database,
+      mysql_username=flags.FLAGS.mysql_username,
+      mysql_password=flags.FLAGS.mysql_password,
+      logging_path=flags.FLAGS.logging_path)
 
   print("Building the template.")
   template_path = self_contained_components.RunBuildTemplate(
@@ -115,17 +102,16 @@ def main(argv):
   if system == "linux":
     distro_id = distro.id()
     if distro_id in ["ubuntu", "debian"]:
-      _check_call_print_output(
+      subprocess.check_call(
           ["apt", "install", "--reinstall", "-y", installer_path])
     elif distro_id in ["centos", "rhel", "fedora"]:
-      _check_call_print_output(["rpm", "-Uvh", installer_path])
+      subprocess.check_call(["rpm", "-Uvh", installer_path])
     else:
       raise RuntimeError("Unsupported linux distro: %s" % distro_id)
   elif system == "windows":
-    _check_call_print_output([installer_path])
+    subprocess.check_call([installer_path])
   elif system == "darwin":
-    _check_call_print_output(
-        ["installer", "-verbose", "-pkg", installer_path, "-target", "/"])
+    subprocess.check_call(["installer", "-pkg", installer_path, "-target", "/"])
   else:
     raise RuntimeError("Unsupported platform for self-update tests: %s" %
                        system)
@@ -146,10 +132,7 @@ def main(argv):
   args.binary_path = binary_id
   f = grrapi.Client(client_id).CreateFlow(name="UpdateClient", args=args)
   try:
-    # Timeout has to be rather significant, since at the moment installers
-    # are uploaded in chunks of 512Kb, each chunk requiring a round-trip
-    # to/from the client.
-    f.WaitUntilDone(timeout=180)
+    f.WaitUntilDone(timeout=60)
     print("Update flow finished successfully. This should never happen: "
           "the client should have been restarted.")
     sys.exit(-1)

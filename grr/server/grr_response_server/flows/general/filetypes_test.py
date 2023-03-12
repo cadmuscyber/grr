@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for grr_response_server.flows.general.filetypes."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
 
@@ -27,7 +31,7 @@ class TestPlistFlows(flow_test_lib.FlowTestsBaseclass):
         flow_name,
         client_mock,
         client_id=client_id,
-        creator=self.test_username,
+        token=self.token,
         request=request)
 
     return session_id

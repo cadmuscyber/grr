@@ -1,18 +1,18 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Parsers for Linux PAM configuration files."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
 import re
-from typing import IO
-from typing import Iterable
-from typing import Iterator
+
 
 from grr_response_core.lib import parsers
 from grr_response_core.lib import utils
 from grr_response_core.lib.parsers import config_file
-from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import config_file as rdf_config_file
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 
 
 class PAMFieldParser(config_file.FieldParser):
@@ -183,7 +183,7 @@ class PAMFieldParser(config_file.FieldParser):
     return result, external
 
 
-class PAMParser(parsers.MultiFileParser[rdf_config_file.PamConfig]):
+class PAMParser(parsers.MultiFileParser):
   """Artifact parser for PAM configurations."""
 
   output_types = [rdf_config_file.PamConfig]
@@ -193,12 +193,7 @@ class PAMParser(parsers.MultiFileParser[rdf_config_file.PamConfig]):
     super().__init__(*args, **kwargs)
     self._field_parser = PAMFieldParser()
 
-  def ParseFiles(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspecs: Iterable[rdf_paths.PathSpec],
-      filedescs: Iterable[IO[bytes]],
-  ) -> Iterator[rdf_config_file.PamConfig]:
+  def ParseFiles(self, knowledge_base, pathspecs, filedescs):
     del knowledge_base  # Unused.
 
     results, externals = self._field_parser.EnumerateAllConfigs(

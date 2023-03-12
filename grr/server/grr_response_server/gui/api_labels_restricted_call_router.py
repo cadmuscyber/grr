@@ -1,7 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Router giving access only to clients with certain labels."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-from typing import Optional
 
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
 
@@ -10,26 +13,30 @@ from grr_response_server import access_control
 
 from grr_response_server import data_store
 
-from grr_response_server.gui import api_call_context
 from grr_response_server.gui import api_call_router
 from grr_response_server.gui import api_call_router_with_approval_checks
 from grr_response_server.gui import api_call_router_without_checks
 
 from grr_response_server.gui.api_plugins import client as api_client
-from grr_response_server.gui.api_plugins import metadata as api_metadata
+
 from grr_response_server.gui.api_plugins import user as api_user
-from grr_response_server.gui.api_plugins import vfs as api_vfs
 
 
-def CheckClientLabels(client_id, allow_labels=None, allow_labels_owners=None):
-  """Checks a given client against labels/owners allowlists."""
-  allow_labels = allow_labels or []
-  allow_labels_owners = allow_labels_owners or []
+def CheckClientLabels(client_id,
+                      labels_whitelist=None,
+                      labels_owners_whitelist=None,
+                      token=None):
+  """Checks a given client against labels/owners whitelists."""
+  del token  # Unused.
+
+  labels_whitelist = labels_whitelist or []
+  labels_owners_whitelist = labels_owners_whitelist or []
 
   labels = data_store.REL_DB.ReadClientLabels(str(client_id))
 
   for label in labels:
-    if (label.name in allow_labels and label.owner in allow_labels_owners):
+    if (label.name in labels_whitelist and
+        label.owner in labels_owners_whitelist):
       return
 
   raise access_control.UnauthorizedAccess(
@@ -50,26 +57,26 @@ class ApiLabelsRestrictedCallRouter(api_call_router.ApiCallRouterStub):
 
     self.params = params = params or self.__class__.params_type()
 
-    self.allow_labels = set(params.allow_labels)
+    self.labels_whitelist = set(params.labels_whitelist)
     # "GRR" is a system label. Labels returned by the client during the
     # interrogate have owner="GRR".
-    self.allow_labels_owners = set(params.allow_labels_owners or ["GRR"])
+    self.labels_owners_whitelist = set(params.labels_owners_whitelist or
+                                       ["GRR"])
 
     if not access_checker:
-      access_checker = api_call_router_with_approval_checks.AccessChecker(
-          api_call_router_with_approval_checks
-          .ApiCallRouterWithApprovalCheckParams())
+      access_checker = api_call_router_with_approval_checks.AccessChecker()
     self.access_checker = access_checker
 
     if not delegate:
       delegate = api_call_router_without_checks.ApiCallRouterWithoutChecks()
     self.delegate = delegate
 
-  def CheckClientLabels(self, client_id):
+  def CheckClientLabels(self, client_id, token=None):
     CheckClientLabels(
         client_id,
-        allow_labels=self.allow_labels,
-        allow_labels_owners=self.allow_labels_owners)
+        labels_whitelist=self.labels_whitelist,
+        labels_owners_whitelist=self.labels_owners_whitelist,
+        token=token)
 
   def CheckVfsAccessAllowed(self):
     if not self.params.allow_vfs_access:
@@ -81,305 +88,277 @@ class ApiLabelsRestrictedCallRouter(api_call_router.ApiCallRouterStub):
       raise access_control.UnauthorizedAccess(
           "User is not allowed to work with flows.")
 
-  def CheckIfCanStartClientFlow(self, flow_name, context=None):
-    self.access_checker.CheckIfCanStartClientFlow(context.username, flow_name)
+  def CheckIfCanStartClientFlow(self, flow_name, token=None):
+    self.access_checker.CheckIfCanStartClientFlow(token.username, flow_name)
 
-  def CheckClientApproval(self, client_id, context=None):
-    self.CheckClientLabels(client_id)
-    self.access_checker.CheckClientAccess(context, client_id)
+  def CheckClientApproval(self, client_id, token=None):
+    self.CheckClientLabels(client_id, token=token)
+    self.access_checker.CheckClientAccess(token.username, client_id)
 
   # Clients methods.
   # ===============
   #
-  def SearchClients(self, args, context=None):
+  def SearchClients(self, args, token=None):
     return api_client.ApiLabelsRestrictedSearchClientsHandler(
-        allow_labels=self.allow_labels,
-        allow_labels_owners=self.allow_labels_owners)
+        labels_whitelist=self.labels_whitelist,
+        labels_owners_whitelist=self.labels_owners_whitelist)
 
-  def StructuredSearchClients(self, args, context=None):
-    return api_client.ApiLabelsRestrictedStructuredSearchClientsHandler(
-        allow_labels=self.allow_labels,
-        allow_labels_owners=self.allow_labels_owners)
+  def GetClient(self, args, token=None):
+    self.CheckClientLabels(args.client_id, token=token)
 
-  def GetClient(self, args, context=None):
-    self.CheckClientLabels(args.client_id)
+    return self.delegate.GetClient(args, token=token)
 
-    return self.delegate.GetClient(args, context=context)
+  def GetClientVersions(self, args, token=None):
+    self.CheckClientLabels(args.client_id, token=token)
 
-  def GetClientVersions(self, args, context=None):
-    self.CheckClientLabels(args.client_id)
+    return self.delegate.GetClientVersions(args, token=token)
 
-    return self.delegate.GetClientVersions(args, context=context)
+  def GetClientVersionTimes(self, args, token=None):
+    self.CheckClientLabels(args.client_id, token=token)
 
-  def GetClientVersionTimes(self, args, context=None):
-    self.CheckClientLabels(args.client_id)
-
-    return self.delegate.GetClientVersionTimes(args, context=context)
+    return self.delegate.GetClientVersionTimes(args, token=token)
 
   # Virtual file system methods.
   # ============================
   #
-  def ListFiles(self, args, context=None):
+  def ListFiles(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.ListFiles(args, context=context)
+    return self.delegate.ListFiles(args, token=token)
 
-  def BrowseFilesystem(
-      self,
-      args: api_vfs.ApiBrowseFilesystemArgs,
-      context: Optional[api_call_context.ApiCallContext] = None
-  ) -> api_vfs.ApiBrowseFilesystemHandler:
+  def GetFileDetails(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.BrowseFilesystem(args, context=context)
+    return self.delegate.GetFileDetails(args, token=token)
 
-  def GetFileDetails(self, args, context=None):
+  def GetFileText(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetFileDetails(args, context=context)
+    return self.delegate.GetFileText(args, token=token)
 
-  def GetFileText(self, args, context=None):
+  def GetFileBlob(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetFileText(args, context=context)
+    return self.delegate.GetFileBlob(args, token=token)
 
-  def GetFileBlob(self, args, context=None):
+  def GetFileVersionTimes(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetFileBlob(args, context=context)
+    return self.delegate.GetFileVersionTimes(args, token=token)
 
-  def GetFileVersionTimes(self, args, context=None):
+  def GetFileDownloadCommand(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetFileVersionTimes(args, context=context)
+    return self.delegate.GetFileDownloadCommand(args, token=token)
 
-  def GetFileDownloadCommand(self, args, context=None):
+  def CreateVfsRefreshOperation(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetFileDownloadCommand(args, context=context)
+    return self.delegate.CreateVfsRefreshOperation(args, token=token)
 
-  def CreateVfsRefreshOperation(self, args, context=None):
-    self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
-
-    return self.delegate.CreateVfsRefreshOperation(args, context=context)
-
-  def GetVfsRefreshOperationState(self, args, context=None):
+  def GetVfsRefreshOperationState(self, args, token=None):
     self.CheckVfsAccessAllowed()
 
     # No ACL checks are required at this stage, since the user can only check
-    # operations started by themselves.
-    return self.delegate.GetVfsRefreshOperationState(args, context=context)
+    # operations started by him- or herself.
+    return self.delegate.GetVfsRefreshOperationState(args, token=token)
 
-  def GetVfsTimeline(self, args, context=None):
+  def GetVfsTimeline(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetVfsTimeline(args, context=context)
+    return self.delegate.GetVfsTimeline(args, token=token)
 
-  def GetVfsTimelineAsCsv(self, args, context=None):
+  def GetVfsTimelineAsCsv(self, args, token=None):
     self.CheckVfsAccessAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetVfsTimelineAsCsv(args, context=context)
+    return self.delegate.GetVfsTimelineAsCsv(args, token=token)
 
   # Clients flows methods.
   # =====================
   #
-  def ListFlows(self, args, context=None):
+  def ListFlows(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.ListFlows(args, context=context)
+    return self.delegate.ListFlows(args, token=token)
 
-  def GetFlow(self, args, context=None):
+  def GetFlow(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetFlow(args, context=context)
+    return self.delegate.GetFlow(args, token=token)
 
-  def CreateFlow(self, args, context=None):
+  def CreateFlow(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
     self.CheckIfCanStartClientFlow(
-        args.flow.name or args.flow.runner_args.flow_name, context=context)
+        args.flow.name or args.flow.runner_args.flow_name, token=token)
 
-    return self.delegate.CreateFlow(args, context=context)
+    return self.delegate.CreateFlow(args, token=token)
 
-  def CancelFlow(self, args, context=None):
+  def CancelFlow(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.CancelFlow(args, context=context)
+    return self.delegate.CancelFlow(args, token=token)
 
-  def ListFlowRequests(self, args, context=None):
+  def ListFlowRequests(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.ListFlowRequests(args, context=context)
+    return self.delegate.ListFlowRequests(args, token=token)
 
-  def ListFlowResults(self, args, context=None):
+  def ListFlowResults(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.ListFlowResults(args, context=context)
+    return self.delegate.ListFlowResults(args, token=token)
 
-  def GetFlowResultsExportCommand(self, args, context=None):
+  def GetFlowResultsExportCommand(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetFlowResultsExportCommand(args, context=context)
+    return self.delegate.GetFlowResultsExportCommand(args, token=token)
 
-  def GetFlowFilesArchive(self, args, context=None):
+  def GetFlowFilesArchive(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.GetFlowFilesArchive(args, context=context)
+    return self.delegate.GetFlowFilesArchive(args, token=token)
 
-  def ListFlowOutputPlugins(self, args, context=None):
+  def ListFlowOutputPlugins(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.ListFlowOutputPlugins(args, context=context)
+    return self.delegate.ListFlowOutputPlugins(args, token=token)
 
-  def ListFlowOutputPluginLogs(self, args, context=None):
+  def ListFlowOutputPluginLogs(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.ListFlowOutputPluginLogs(args, context=context)
+    return self.delegate.ListFlowOutputPluginLogs(args, token=token)
 
-  def ListFlowOutputPluginErrors(self, args, context=None):
+  def ListFlowOutputPluginErrors(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.ListFlowOutputPluginErrors(args, context=context)
+    return self.delegate.ListFlowOutputPluginErrors(args, token=token)
 
-  def ListFlowLogs(self, args, context=None):
+  def ListFlowLogs(self, args, token=None):
     self.CheckFlowsAllowed()
-    self.CheckClientApproval(args.client_id, context=context)
+    self.CheckClientApproval(args.client_id, token=token)
 
-    return self.delegate.ListFlowLogs(args, context=context)
+    return self.delegate.ListFlowLogs(args, token=token)
 
   # Approvals methods.
   # =================
   #
-  def CreateClientApproval(self, args, context=None):
-    self.CheckClientLabels(args.client_id)
+  def CreateClientApproval(self, args, token=None):
+    self.CheckClientLabels(args.client_id, token=token)
 
-    return self.delegate.CreateClientApproval(args, context=context)
+    return self.delegate.CreateClientApproval(args, token=token)
 
-  def GetClientApproval(self, args, context=None):
-    self.CheckClientLabels(args.client_id)
+  def GetClientApproval(self, args, token=None):
+    self.CheckClientLabels(args.client_id, token=token)
 
-    return self.delegate.GetClientApproval(args, context=context)
+    return self.delegate.GetClientApproval(args, token=token)
 
-  def ListClientApprovals(self, args, context=None):
+  def ListClientApprovals(self, args, token=None):
     # Everybody can list their own user client approvals.
 
-    return self.delegate.ListClientApprovals(args, context=context)
+    return self.delegate.ListClientApprovals(args, token=token)
 
   # User settings methods.
   # =====================
   #
-  def GetPendingUserNotificationsCount(self, args, context=None):
+  def GetPendingUserNotificationsCount(self, args, token=None):
     # Everybody can get their own pending notifications count.
 
-    return self.delegate.GetPendingUserNotificationsCount(args, context=context)
+    return self.delegate.GetPendingUserNotificationsCount(args, token=token)
 
-  def ListPendingUserNotifications(self, args, context=None):
+  def ListPendingUserNotifications(self, args, token=None):
     # Everybody can get their own pending notifications.
 
-    return self.delegate.ListPendingUserNotifications(args, context=context)
+    return self.delegate.ListPendingUserNotifications(args, token=token)
 
-  def DeletePendingUserNotification(self, args, context=None):
+  def DeletePendingUserNotification(self, args, token=None):
     # Everybody can delete their own pending notifications.
 
-    return self.delegate.DeletePendingUserNotification(args, context=context)
+    return self.delegate.DeletePendingUserNotification(args, token=token)
 
-  def ListAndResetUserNotifications(self, args, context=None):
+  def ListAndResetUserNotifications(self, args, token=None):
     # Everybody can get and reset their own user notifications.
 
-    return self.delegate.ListAndResetUserNotifications(args, context=context)
+    return self.delegate.ListAndResetUserNotifications(args, token=token)
 
-  def GetGrrUser(self, args, context=None):
+  def GetGrrUser(self, args, token=None):
     # Everybody can get their own user object.
 
     interface_traits = api_user.ApiGrrUserInterfaceTraits(
         search_clients_action_enabled=True)
     return api_user.ApiGetOwnGrrUserHandler(interface_traits=interface_traits)
 
-  def UpdateGrrUser(self, args, context=None):
+  def UpdateGrrUser(self, args, token=None):
     # Everybody can update their own user object.
 
-    return self.delegate.UpdateGrrUser(args, context=context)
+    return self.delegate.UpdateGrrUser(args, token=token)
 
   # Config methods.
   # ==============
   #
-  def GetConfig(self, args, context=None):
+  def GetConfig(self, args, token=None):
     # Everybody can read the whole config.
 
-    return self.delegate.GetConfig(args, context=context)
+    return self.delegate.GetConfig(args, token=token)
 
-  def GetConfigOption(self, args, context=None):
+  def GetConfigOption(self, args, token=None):
     # Everybody can read selected config options.
 
-    return self.delegate.GetConfigOption(args, context=context)
-
-  def GetUiConfig(self, args, context=None):
-    # Everybody can read the ui config.
-    return self.delegate.GetUiConfig(args, context=context)
+    return self.delegate.GetConfigOption(args, token=token)
 
   # Reflection methods.
   # ==================
   #
-  def ListKbFields(self, args, context=None):
+  def ListKbFields(self, args, token=None):
     # Everybody can list knowledge base fields.
 
-    return self.delegate.ListKbFields(args, context=context)
+    return self.delegate.ListKbFields(args, token=token)
 
-  def ListFlowDescriptors(self, args, context=None):
+  def ListFlowDescriptors(self, args, token=None):
     # Everybody can list flow descritors.
 
-    return self.delegate.ListFlowDescriptors(args, context=context)
+    return self.delegate.ListFlowDescriptors(args, token=token)
 
-  def GetRDFValueDescriptor(self, args, context=None):
+  def GetRDFValueDescriptor(self, args, token=None):
     # Everybody can get rdfvalue descriptors.
 
-    return self.delegate.GetRDFValueDescriptor(args, context=context)
+    return self.delegate.GetRDFValueDescriptor(args, token=token)
 
-  def ListRDFValuesDescriptors(self, args, context=None):
+  def ListRDFValuesDescriptors(self, args, token=None):
     # Everybody can list rdfvalue descriptors.
 
-    return self.delegate.ListRDFValuesDescriptors(args, context=context)
+    return self.delegate.ListRDFValuesDescriptors(args, token=token)
 
-  def ListOutputPluginDescriptors(self, args, context=None):
+  def ListOutputPluginDescriptors(self, args, token=None):
     # Everybody can list output plugin descriptors.
 
-    return self.delegate.ListOutputPluginDescriptors(args, context=context)
+    return self.delegate.ListOutputPluginDescriptors(args, token=token)
 
-  def ListKnownEncodings(self, args, context=None):
+  def ListKnownEncodings(self, args, token=None):
     # Everybody can list file encodings.
 
-    return self.delegate.ListKnownEncodings(args, context=context)
+    return self.delegate.ListKnownEncodings(args, token=token)
 
-  def ListApiMethods(self, args, context=None):
+  def ListApiMethods(self, args, token=None):
     # Everybody can list available API methods.
 
-    return self.delegate.ListApiMethods(args, context=context)
-
-  def GetOpenApiDescription(
-      self,
-      args: None,
-      context: Optional[api_call_context.ApiCallContext] = None,
-  ) -> api_metadata.ApiGetOpenApiDescriptionHandler:
-    """Returns a description of the API following the OpenAPI specification."""
-    # Everybody can get the OpenAPI description.
-    return self.delegate.GetOpenApiDescription(args, context=context)
+    return self.delegate.ListApiMethods(args, token=token)

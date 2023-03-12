@@ -1,6 +1,11 @@
 #!/usr/bin/env python
+# Lint as: python3
 # Copyright 2012 Google Inc. All Rights Reserved.
 """Tests for grr.lib.objectfilter."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 from absl.testing import absltest
 
@@ -267,7 +272,7 @@ class ObjectFilterTest(absltest.TestCase):
     self.assertListEqual([list(value) for value in values], expected)
 
     # Non-existing first path
-    values = self.value_expander().Expand(self.file, "nonexistent")
+    values = self.value_expander().Expand(self.file, "nonexistant")
     self.assertListEqual(list(values), [])
 
     # Non-existing in the middle

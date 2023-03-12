@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This file contains cache-related utility functions used by GRR."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import functools
-import logging
 import threading
 
 from grr_response_core.lib import rdfvalue
@@ -72,15 +76,7 @@ def WithLimitedCallFrequency(min_time_between_calls: rdfvalue.Duration):
 
       with lock:
         for k, prev_time in list(prev_times.items()):
-          if prev_time > now:
-            # We have a result from the future, hopefully this is a test...
-            logging.warning(
-                "Deleting cached function result from the future (%s > %s)",
-                prev_time, now)
-            prev_times.pop(k)
-            prev_results.pop(k, None)
-            result_locks.pop(k, None)
-          elif now - prev_time >= min_time:
+          if now - prev_time >= min_time:
             prev_times.pop(k)
             prev_results.pop(k, None)
             result_locks.pop(k, None)

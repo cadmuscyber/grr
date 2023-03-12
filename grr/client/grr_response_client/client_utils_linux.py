@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Linux specific utils."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import logging
@@ -17,10 +22,9 @@ from grr_response_core.lib.rdfvalues import paths as rdf_paths
 GetExtAttrs = client_utils_osx_linux.GetExtAttrs
 CanonicalPathToLocalPath = client_utils_osx_linux.CanonicalPathToLocalPath
 LocalPathToCanonicalPath = client_utils_osx_linux.LocalPathToCanonicalPath
+NannyController = client_utils_osx_linux.NannyController
 VerifyFileOwner = client_utils_osx_linux.VerifyFileOwner
 TransactionLog = client_utils_osx_linux.TransactionLog
-
-CreateProcessFromSerializedFileDescriptor = process.Process.CreateFromSerializedFileDescriptor
 
 # pylint: enable=invalid-name
 

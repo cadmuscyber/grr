@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Output plugins used by flows and hunts for results exports."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 import threading
@@ -46,18 +50,19 @@ class OutputPlugin(metaclass=OutputPluginRegistry):
   args_type = None
 
   @classmethod
-  def CreatePluginAndDefaultState(cls, source_urn=None, args=None):
+  def CreatePluginAndDefaultState(cls, source_urn=None, args=None, token=None):
     """Creates a plugin and returns its initial state."""
     state = rdf_protodict.AttributedDict()
     state["source_urn"] = source_urn
     if args is not None:
       args.Validate()
     state["args"] = args
-    plugin = cls(source_urn=source_urn, args=args)
+    state["token"] = token
+    plugin = cls(source_urn=source_urn, args=args, token=token)
     plugin.InitializeState(state)
     return plugin, state
 
-  def __init__(self, source_urn=None, args=None):
+  def __init__(self, source_urn=None, args=None, token=None):
     """OutputPlugin constructor.
 
     Constructor should be overridden to maintain instance-local state - i.e.
@@ -67,9 +72,11 @@ class OutputPlugin(metaclass=OutputPluginRegistry):
     Args:
       source_urn: URN of the data source to process the results from.
       args: This plugin's arguments.
+      token: Security token.
     """
     self.source_urn = source_urn
     self.args = args
+    self.token = token
     self.lock = threading.RLock()
 
   def InitializeState(self, state):
@@ -90,7 +97,7 @@ class OutputPlugin(metaclass=OutputPluginRegistry):
 
     When responses are processed, multiple ProcessResponses() calls can
     be done in a row. ProcessResponse() calls may be parallelized within the
-    same worker to improve output performance, therefore ProcessResponses()
+    same worker to improve output performace, therefore ProcessResponses()
     implementation should be thread-safe. ProcessResponse() calls are
     *always* followed by a single Flush() call on the same worker.
 

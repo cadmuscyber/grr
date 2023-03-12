@@ -7,14 +7,25 @@ run GRR tests.
 If you want to do any development, you probably want this.
 
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-import configparser
 import os
 import shutil
+import sys
 
 from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.sdist import sdist
+
+# TODO: Fix this import once support for Python 2 is dropped.
+# pylint: disable=g-import-not-at-top
+if sys.version_info.major == 2:
+  import ConfigParser as configparser
+else:
+  import configparser
+# pylint: enable=g-import-not-at-top
 
 THIS_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
@@ -32,7 +43,7 @@ def get_config():
     if not os.path.exists(ini_path):
       raise RuntimeError("Couldn't find version.ini")
 
-  config = configparser.ConfigParser()
+  config = configparser.SafeConfigParser()
   config.read(ini_path)
   return config
 
@@ -59,12 +70,12 @@ setup_args = dict(
     license="Apache License, Version 2.0",
     url="https://github.com/google/grr",
     install_requires=[
-        "absl-py==1.2.0",
+        "absl-py==0.8.0",
         "flaky==3.6.1",
-        "pytest==6.2.2",
-        "responses==0.12.1",
+        "mock==3.0.5",
+        "mox==0.5.3",
+        "pytest==4.6.2",
         "selenium==3.141.0",
-        "google-api-python-client==1.9.3",
         "grr-api-client==%s" % VERSION.get("Version", "packagedepends"),
         "grr-response-client==%s" % VERSION.get("Version", "packagedepends"),
         "grr-response-server==%s" % VERSION.get("Version", "packagedepends"),

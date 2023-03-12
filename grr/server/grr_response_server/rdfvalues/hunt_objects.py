@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Rdfvalues for flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from typing import Optional
 
@@ -13,9 +17,10 @@ from grr_response_server.rdfvalues import hunts as rdf_hunts
 from grr_response_server.rdfvalues import output_plugin as rdf_output_plugin
 
 
-def RandomHuntId() -> str:
+# TODO(user): look into using 48-bit or 64-bit ids to avoid clashes.
+def RandomHuntId():
   """Returns a random hunt id encoded as a hex string."""
-  return "{:016X}".format(random.Id64())
+  return "%08X" % random.PositiveUInt32()
 
 
 class HuntArgumentsStandard(rdf_structs.RDFProtoStruct):
@@ -89,26 +94,18 @@ class Hunt(rdf_structs.RDFProtoStruct):
     if not self.HasField("client_limit"):
       self.client_limit = 100
 
-    # TODO: We use default values only if the config has been
-    # initialized and leave them blank if it has not been. Protobuf defaults
-    # depending on the config initialization is a *very* questionable design
-    # choice and likely should be revised.
-
-    if not self.HasField("crash_limit") and config.CONFIG.initialized:
+    if not self.HasField("crash_limit"):
       self.crash_limit = config.CONFIG["Hunt.default_crash_limit"]
 
-    if (not self.HasField("avg_results_per_client_limit") and
-        config.CONFIG.initialized):
+    if not self.HasField("avg_results_per_client_limit"):
       self.avg_results_per_client_limit = config.CONFIG[
           "Hunt.default_avg_results_per_client_limit"]
 
-    if (not self.HasField("avg_cpu_seconds_per_client_limit") and
-        config.CONFIG.initialized):
+    if not self.HasField("avg_cpu_seconds_per_client_limit"):
       self.avg_cpu_seconds_per_client_limit = config.CONFIG[
           "Hunt.default_avg_cpu_seconds_per_client_limit"]
 
-    if (not self.HasField("avg_network_bytes_per_client_limit") and
-        config.CONFIG.initialized):
+    if not self.HasField("avg_network_bytes_per_client_limit"):
       self.avg_network_bytes_per_client_limit = config.CONFIG[
           "Hunt.default_avg_network_bytes_per_client_limit"]
 

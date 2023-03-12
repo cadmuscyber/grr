@@ -1,32 +1,32 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for config_lib classes."""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import ntpath
 import os
 import stat
-from unittest import mock
 
 from absl import app
-from absl.testing import absltest
 from absl.testing import flagsaver
 
 from grr_response_core import config
 from grr_response_core.lib import config_lib
-from grr_response_core.lib import config_parser
 from grr_response_core.lib import package
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import type_info
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr_response_core.lib.rdfvalues import structs as rdf_structs
 from grr_response_core.lib.util import temp
 from grr.test_lib import test_lib
 
 
-class YamlConfigTest(absltest.TestCase):
+class YamlConfigTest(test_lib.GRRBaseTest):
   """Test the Yaml config file support."""
 
   @flagsaver.flagsaver(disallow_missing_config_definitions=True)
@@ -39,7 +39,7 @@ class YamlConfigTest(absltest.TestCase):
     self.assertRaises(
         config_lib.MissingConfigDefinitionError,
         conf.Initialize,
-        parser=config_parser.YamlConfigFileParser,
+        parser=config_lib.YamlParser,
         data="""
                       Section2.test: 2
                       """)
@@ -48,7 +48,7 @@ class YamlConfigTest(absltest.TestCase):
     conf.DEFINE_context("Client Context")
     conf.DEFINE_context("Windows Context")
     conf.Initialize(
-        parser=config_parser.YamlConfigFileParser,
+        parser=config_lib.YamlParser,
         data="""
 
 # Configuration options can be written as long hand, dot separated parameters.
@@ -101,7 +101,7 @@ Windows Context:
     conf.DEFINE_context("Platform:Windows")
     conf.DEFINE_context("Extra Context")
     conf.Initialize(
-        parser=config_parser.YamlConfigFileParser,
+        parser=config_lib.YamlParser,
         data="""
 
 Section1.test: 2
@@ -145,7 +145,7 @@ Extra Context:
     conf.DEFINE_context("Platform:Windows")
     conf.DEFINE_context("Extra Context")
     conf.Initialize(
-        parser=config_parser.YamlConfigFileParser,
+        parser=config_lib.YamlParser,
         data="""
 
 Section1.test: 2
@@ -192,7 +192,7 @@ Extra Context:
     conf.DEFINE_context("Client Context")
     conf.DEFINE_context("Unused Context")
     conf.Initialize(
-        parser=config_parser.YamlConfigFileParser,
+        parser=config_lib.YamlParser,
         data="""
 Client Context:
   Section1.test: 6
@@ -214,7 +214,7 @@ Client Context:
     conf.DEFINE_string("Section1.parameter3", "", "A test.")
 
     conf.Initialize(
-        parser=config_parser.YamlConfigFileParser,
+        parser=config_lib.YamlParser,
         data=r"""
 
 Section1.parameter: |
@@ -236,8 +236,7 @@ Section1.parameter3: |
     conf.DEFINE_semantic_value(rdfvalue.DurationSeconds, "Section1.foobar",
                                None, "Sample help.")
     conf.Initialize(
-        parser=config_parser.YamlConfigFileParser,
-        data="""
+        parser=config_lib.YamlParser, data="""
 Section1.foobar: 6d
 """)
 
@@ -251,7 +250,7 @@ Section1.foobar: 6d
     conf.DEFINE_semantic_struct(rdf_file_finder.FileFinderArgs,
                                 "Section1.foobar", [], "Sample help.")
     conf.Initialize(
-        parser=config_parser.YamlConfigFileParser,
+        parser=config_lib.YamlParser,
         data="""
 Section1.foobar:
   paths:
@@ -264,47 +263,6 @@ Section1.foobar:
     self.assertIsInstance(values, rdf_file_finder.FileFinderArgs)
     self.assertEqual(values.paths, ["a/b", "b/c"])
     self.assertEqual(values.pathtype, "TSK")
-
-  def testSemanticEnum(self):
-    conf = config_lib.GrrConfigManager()
-
-    conf.DEFINE_semantic_enum(
-        enum_container=rdf_paths.PathSpec.PathType,
-        name="Foo.Bar",
-        default=rdf_paths.PathSpec.PathType.TSK)
-    conf.Initialize(
-        parser=config_parser.YamlConfigFileParser, data="Foo.Bar: NTFS")
-
-    value = conf.Get("Foo.Bar")
-    self.assertIsInstance(value, rdf_structs.EnumNamedValue)
-    self.assertEqual(value, "NTFS")
-    self.assertEqual(value.id, 5)
-
-  def testSemanticEnum_defaultValue(self):
-    conf = config_lib.GrrConfigManager()
-
-    conf.DEFINE_semantic_enum(
-        enum_container=rdf_paths.PathSpec.PathType,
-        name="Foo.Bar",
-        default=rdf_paths.PathSpec.PathType.TSK)
-    conf.Initialize(parser=config_parser.YamlConfigFileParser, data="")
-
-    value = conf.Get("Foo.Bar")
-    self.assertIsInstance(value, rdf_structs.EnumNamedValue)
-    self.assertEqual(value, "TSK")
-
-  def testSemanticEnum_invalidValue(self):
-    conf = config_lib.GrrConfigManager()
-
-    conf.DEFINE_semantic_enum(
-        enum_container=rdf_paths.PathSpec.PathType,
-        name="Foo.Bar",
-        default=rdf_paths.PathSpec.PathType.TSK)
-    conf.Initialize(
-        parser=config_parser.YamlConfigFileParser, data="Foo.Bar: Invalid")
-
-    with self.assertRaises(ValueError):
-      conf.Get("Foo.Bar")
 
 
 class ConfigLibTest(test_lib.GRRBaseTest):
@@ -326,7 +284,7 @@ Platform:Windows:
     MemoryDriver.device_path: \\\\.\\pmem
 """
 
-    conf.Initialize(parser=config_parser.YamlConfigFileParser, data=data)
+    conf.Initialize(parser=config_lib.YamlParser, data=data)
 
     # Check that the linux client have a different value from the windows
     # client.
@@ -442,7 +400,7 @@ Platform:Windows:
       raise NotImplementedError("Write was called!")
 
     # If the value in config and writeback are the same, nothing is written.
-    with mock.patch.object(conf, "Write", DontCall):
+    with utils.Stubber(conf, "Write", DontCall):
       conf.Persist("Section1.option1")
 
   def testPersistDoesntOverwriteCustomOptions(self):
@@ -663,7 +621,7 @@ Section1.test: 2
 """
     # This config option isn't defined, so it should raise
     with self.assertRaises(config_lib.MissingConfigDefinitionError):
-      conf.Initialize(parser=config_parser.YamlConfigFileParser, data=data)
+      conf.Initialize(parser=config_lib.YamlParser, data=data)
 
   def testBadFilterRaises(self):
     """Checks that bad filter directive raise."""
@@ -777,14 +735,12 @@ literal = %{aff4:/C\.(?P<path>.\{1,16\}?)($|/.*)}
   def testDataTypes(self):
     conf = config_lib.GrrConfigManager()
     conf.DEFINE_float("Section1.float", 0, "A float")
-    conf.Initialize(
-        parser=config_parser.YamlConfigFileParser, data="Section1.float: abc")
+    conf.Initialize(parser=config_lib.YamlParser, data="Section1.float: abc")
     errors = conf.Validate("Section1")
     self.assertIn("Invalid value abc for Float", str(errors["Section1.float"]))
 
     self.assertRaises(config_lib.ConfigFormatError, conf.Get, "Section1.float")
-    conf.Initialize(
-        parser=config_parser.YamlConfigFileParser, data="Section1.float: 2")
+    conf.Initialize(parser=config_lib.YamlParser, data="Section1.float: 2")
 
     # Should have no errors now. Validate should normalize the value to a float.
     self.assertEqual(conf.Validate("Section1"), {})
@@ -795,8 +751,7 @@ literal = %{aff4:/C\.(?P<path>.\{1,16\}?)($|/.*)}
     conf.DEFINE_integer("Section1.int", 0, "An integer")
     conf.DEFINE_list("Section1.list", default=[], help="A list")
     conf.DEFINE_list("Section1.list2", default=["a", "2"], help="A list")
-    conf.Initialize(
-        parser=config_parser.YamlConfigFileParser, data="Section1.int: 2.0")
+    conf.Initialize(parser=config_lib.YamlParser, data="Section1.int: 2.0")
 
     errors = conf.Validate("Section1")
 
@@ -804,8 +759,7 @@ literal = %{aff4:/C\.(?P<path>.\{1,16\}?)($|/.*)}
     self.assertIn("Invalid value 2.0 for Integer", str(errors["Section1.int"]))
 
     # A string can be coerced to an int if it makes sense:
-    conf.Initialize(
-        parser=config_parser.YamlConfigFileParser, data="Section1.int: '2'")
+    conf.Initialize(parser=config_lib.YamlParser, data="Section1.int: '2'")
 
     conf.Validate("Section1")
     self.assertEqual(type(conf.Get("Section1.int")), int)
@@ -864,18 +818,17 @@ Section1.int: 3
 
       # Using filename
       conf = self._GetNewConf()
-      conf.Initialize(
-          parser=config_parser.YamlConfigFileParser, filename=configone)
+      conf.Initialize(parser=config_lib.YamlParser, filename=configone)
       self._CheckConf(conf)
 
       # Using fd with no fd.name should raise because there is no way to resolve
       # the relative path.
       conf = self._GetNewConf()
-      fd = io.BytesIO(one.encode("utf-8"))
+      fd = io.StringIO(one)
       self.assertRaises(
           config_lib.ConfigFileNotFound,
           conf.Initialize,
-          parser=config_parser.YamlConfigFileParser,
+          parser=config_lib.YamlParser,
           fd=fd)
 
       # Using data
@@ -883,7 +836,7 @@ Section1.int: 3
       self.assertRaises(
           config_lib.ConfigFileNotFound,
           conf.Initialize,
-          parser=config_parser.YamlConfigFileParser,
+          parser=config_lib.YamlParser,
           data=one)
 
   def testConfigFileInclusionCanBeTurnedOff(self):
@@ -909,7 +862,7 @@ Section1.int: 2
       # Using filename
       conf = self._GetNewConf()
       conf.Initialize(
-          parser=config_parser.YamlConfigFileParser,
+          parser=config_lib.YamlParser,
           filename=configone,
           process_includes=False)
 
@@ -925,16 +878,15 @@ Section1.int: 1
       with io.open(configone, "w") as fd:
         fd.write(one)
 
-      absolute_include = (r"""
+      absolute_include = r"""
 Config.includes:
   - %s
 
 Section1.int: 2
-""" % configone)
+""" % configone
 
       conf = self._GetNewConf()
-      conf.Initialize(
-          parser=config_parser.YamlConfigFileParser, data=absolute_include)
+      conf.Initialize(parser=config_lib.YamlParser, data=absolute_include)
       self.assertEqual(conf["Section1.int"], 1)
 
       relative_include = r"""
@@ -948,7 +900,7 @@ Section1.int: 2
       self.assertRaises(
           config_lib.ConfigFileNotFound,
           conf.Initialize,
-          parser=config_parser.YamlConfigFileParser,
+          parser=config_lib.YamlParser,
           data=relative_include)
 
       # If we write it to a file it should work though.
@@ -956,8 +908,7 @@ Section1.int: 2
       with io.open(configtwo, "w") as fd:
         fd.write(relative_include)
 
-      conf.Initialize(
-          parser=config_parser.YamlConfigFileParser, filename=configtwo)
+      conf.Initialize(parser=config_lib.YamlParser, filename=configtwo)
       self.assertEqual(conf["Section1.int"], 1)
 
   def testConfigFileInclusionWindowsPaths(self):
@@ -982,17 +933,13 @@ SecondaryFileIncluded: true
         raise IOError("Tried to open wrong file %s" % filename)
 
       if basename == "1.yaml":
-        return io.BytesIO(one.encode("utf-8"))
+        return io.StringIO(one)
 
       if basename == "2.yaml":
-        return io.BytesIO(two.encode("utf-8"))
+        return io.StringIO(two)
 
       raise IOError("File not found %s" % filename)
 
-    # TODO(user): this kind of mocking is a questionable practice at best.
-    # We have Windows-specific tests and should use them for this kind of
-    # testing.
-    #
     # We need to also use the nt path manipulation modules.
     with utils.MultiStubber((io, "open", MockedWindowsOpen),
                             (os, "path", ntpath)):
@@ -1024,8 +971,7 @@ SecondaryFileIncluded: true
 
       # Without specifying the context the includes are not processed.
       conf = self._GetNewConf()
-      conf.Initialize(
-          parser=config_parser.YamlConfigFileParser, filename=configone)
+      conf.Initialize(parser=config_lib.YamlParser, filename=configone)
       self.assertEqual(conf["Section1.int"], 1)
 
       # Only one config is loaded.
@@ -1034,8 +980,7 @@ SecondaryFileIncluded: true
       # Now we specify the context.
       conf = self._GetNewConf()
       conf.AddContext("Client Context")
-      conf.Initialize(
-          parser=config_parser.YamlConfigFileParser, filename=configone)
+      conf.Initialize(parser=config_lib.YamlParser, filename=configone)
 
       # Both config files were loaded. Note that load order is important and
       # well defined.
@@ -1064,7 +1009,7 @@ Test3 Context:
     conf.DEFINE_context("Test1 Context")
     conf.DEFINE_context("Test2 Context")
     conf.DEFINE_context("Test3 Context")
-    conf.Initialize(parser=config_parser.YamlConfigFileParser, data=context)
+    conf.Initialize(parser=config_lib.YamlParser, data=context)
     conf.AddContext("Test1 Context")
     result_map = [(("linux", "amd64", "deb"), True),
                   (("linux", "i386", "deb"), True),
@@ -1086,7 +1031,7 @@ Test1 Context:
 """
     conf = config.CONFIG.MakeNewConfig()
     conf.DEFINE_context("Test1 Context")
-    conf.Initialize(parser=config_parser.YamlConfigFileParser, data=context)
+    conf.Initialize(parser=config_lib.YamlParser, data=context)
     conf.AddContext("Test1 Context")
     with self.assertRaises(type_info.TypeValueError):
       conf.MatchBuildContext("linux", "amd64", "deb")
@@ -1101,6 +1046,16 @@ Test1 Context:
 
     data = io.open(config_file).read()
     self.assertNotIn("!!python/unicode", data)
+
+  def testNoUnicodeReading(self):
+    """Check that we can parse yaml files with unicode tags."""
+    data = """
+Client.labels: [Test1]
+!!python/unicode ClientBuilder.target_platforms:
+  - linux_amd64_deb
+"""
+    conf = config.CONFIG.MakeNewConfig()
+    conf.Initialize(parser=config_lib.YamlParser, data=data)
 
   def testRenameOnWritebackFailure(self):
     conf = config.CONFIG.MakeNewConfig()

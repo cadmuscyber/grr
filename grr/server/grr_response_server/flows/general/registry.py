@@ -1,11 +1,15 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Gather information from the registry on windows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-from grr_response_core import config
 from grr_response_core.lib import artifact_utils
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_core.path_detection import windows as path_detection_windows
 from grr_response_proto import flows_pb2
 from grr_response_server import data_store
@@ -81,12 +85,12 @@ class RegistryFinder(flow_base.FlowBase):
 
   def Start(self):
     self.CallFlow(
-        file_finder.FileFinder.__name__,
+        compatibility.GetName(file_finder.FileFinder),
         paths=self.args.keys_paths,
         pathtype=rdf_paths.PathSpec.PathType.REGISTRY,
         conditions=_ConditionsToFileFinderConditions(self.args.conditions),
         action=rdf_file_finder.FileFinderAction.Stat(),
-        next_state=self.Done.__name__)
+        next_state=compatibility.GetName(self.Done))
 
   def Done(self, responses):
     if not responses.success:
@@ -102,7 +106,7 @@ class ClientRegistryFinder(flow_base.FlowBase):
   friendly_name = "Client Side Registry Finder"
   category = "/Registry/"
   args_type = RegistryFinderArgs
-  behaviours = flow_base.BEHAVIOUR_ADVANCED
+  behaviours = flow_base.BEHAVIOUR_DEBUG
 
   @classmethod
   def GetDefaultArgs(cls, username=None):
@@ -112,12 +116,12 @@ class ClientRegistryFinder(flow_base.FlowBase):
 
   def Start(self):
     self.CallFlow(
-        file_finder.ClientFileFinder.__name__,
+        compatibility.GetName(file_finder.ClientFileFinder),
         paths=self.args.keys_paths,
         pathtype=rdf_paths.PathSpec.PathType.REGISTRY,
         conditions=_ConditionsToFileFinderConditions(self.args.conditions),
         action=rdf_file_finder.FileFinderAction.Stat(),
-        next_state=self.Done.__name__)
+        next_state=compatibility.GetName(self.Done))
 
   def Done(self, responses):
     if not responses.success:
@@ -142,8 +146,8 @@ class CollectRunKeyBinaries(flow_base.FlowBase):
     self.CallFlow(
         collectors.ArtifactCollectorFlow.__name__,
         artifact_list=["WindowsRunKeys"],
-        use_raw_filesystem_access=True,
-        next_state=self.ParseRunKeys.__name__)
+        use_tsk=True,
+        next_state=compatibility.GetName(self.ParseRunKeys))
 
   def ParseRunKeys(self, responses):
     """Get filenames from the RunKeys and download the files."""
@@ -164,15 +168,13 @@ class CollectRunKeyBinaries(flow_base.FlowBase):
       for path in path_guesses:
         filenames.append(
             rdf_paths.PathSpec(
-                path=path,
-                pathtype=config.CONFIG["Server.raw_filesystem_access_pathtype"])
-        )
+                path=path, pathtype=rdf_paths.PathSpec.PathType.TSK))
 
     if filenames:
       self.CallFlow(
           transfer.MultiGetFile.__name__,
           pathspecs=filenames,
-          next_state=self.Done.__name__)
+          next_state=compatibility.GetName(self.Done))
 
   def Done(self, responses):
     for response in responses:

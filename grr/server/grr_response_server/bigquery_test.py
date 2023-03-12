@@ -1,18 +1,22 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for grr.lib.bigquery."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
-import json
 import os
 import time
-from unittest import mock
 
 from absl import app
 from googleapiclient import errors
+import mock
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.util import temp
+from grr_response_core.lib.util.compat import json
 from grr_response_server import bigquery
 from grr.test_lib import test_lib
 
@@ -32,8 +36,7 @@ class BigQueryClientTest(test_lib.GRRBaseTest):
 
     schema_path = os.path.join(config.CONFIG["Test.data_dir"], "bigquery",
                                "ExportedFile.schema")
-    with open(schema_path, mode="rt", encoding="utf-8") as schema_file:
-      schema_data = json.load(schema_file)
+    schema_data = json.ReadFromPath(schema_path)
 
     data_fd = open(
         os.path.join(config.CONFIG["Test.data_dir"], "bigquery",

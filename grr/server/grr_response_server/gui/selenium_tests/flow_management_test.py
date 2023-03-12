@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Test the flow_management interface."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
 
@@ -13,7 +17,6 @@ from grr_response_server import flow_base
 from grr_response_server.flows.general import processes as flows_processes
 from grr_response_server.flows.general import transfer as flows_transfer
 from grr_response_server.flows.general import webhistory as flows_webhistory
-from grr_response_server.gui import api_call_context
 from grr_response_server.gui import gui_test_lib
 from grr_response_server.gui.api_plugins import flow as api_flow
 from grr_response_server.rdfvalues import flow_objects as rdf_flow_objects
@@ -29,7 +32,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
   """Test the flow management GUI."""
 
   def setUp(self):
-    super().setUp()
+    super(TestFlowManagement, self).setUp()
 
     self.client_id = self.SetupClient(0, fqdn="Host000011112222")
     self.RequestAndGrantClientApproval(self.client_id)
@@ -55,7 +58,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
         flows_transfer.GetFile,
         self.client_id,
         flow_args=args,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s/flows/" % self.client_id)
 
@@ -92,8 +95,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     self.Click("css=#_Browser a")
 
     # Wait until the tree has expanded.
-    self.WaitUntil(self.IsTextPresent,
-                   flows_webhistory.CollectBrowserHistory.friendly_name)
+    self.WaitUntil(self.IsTextPresent, flows_webhistory.FirefoxHistory.__name__)
 
     # Check that we can get a file in chinese
     self.Click("css=#_Filesystem a")
@@ -116,7 +118,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Click("css=a[grrtarget='client.flows']")
 
@@ -153,7 +155,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     self.Click("css=a[grrtarget='client.flows']")
@@ -180,7 +182,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_1 = flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneLogStatement,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     # Go to the flows page without refreshing the page, so that
     # AUTO_REFRESH_INTERVAL_MS setting is not reset and wait
@@ -192,7 +194,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_2 = flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     # Check that the flow we started in the background appears in the list.
     self.WaitUntil(self.IsElementPresent, "css=tr:contains('%s')" % flow_2)
@@ -213,7 +215,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
 
     flow_data = api_flow.ApiGetFlowHandler().Handle(
         api_flow.ApiGetFlowArgs(client_id=self.client_id, flow_id=flow_2),
-        context=api_call_context.ApiCallContext("test"))
+        token=self.token)
 
     for index, nested_flow in enumerate(flow_data.nested_flows):
       self.WaitUntil(
@@ -225,9 +227,8 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     self.StartHunt(
         flow_runner_args=rdf_flow_runner.FlowRunnerArgs(
             flow_name=gui_test_lib.RecursiveTestFlow.__name__),
-        flow_args=gui_test_lib.RecursiveTestFlowArgs(),
         client_rate=0,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.RunHunt(failrate=2, client_ids=[self.client_id])
 
@@ -247,7 +248,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneLogStatement,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     self.Click("css=a[grrtarget='client.flows']")
@@ -261,7 +262,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
       flow_test_lib.StartFlow(
           gui_test_lib.FlowWithOneLogStatement,
           self.client_id,
-          creator=self.test_username)
+          creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     self.Click("css=a[grrtarget='client.flows']")
@@ -274,7 +275,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneStatEntryResult,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     self.Click("css=a[grrtarget='client.flows']")
@@ -288,7 +289,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneStatEntryResult,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     self.Click("css=a[grrtarget='client.flows']")
@@ -302,7 +303,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneHashEntryResult,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     self.Click("css=a[grrtarget='client.flows']")
@@ -321,7 +322,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_id = flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneStatEntryResult,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s/flows/%s/api" % (self.client_id, flow_id))
 
@@ -338,7 +339,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_id = flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneStatEntryResult,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     base_url = "/#/clients/%s/flows/%s" % (self.client_id, flow_id)
 
@@ -363,7 +364,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_id = flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneStatEntryResult,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     base_url = "/#/clients/%s/flows/%s" % (self.client_id, flow_id)
 
@@ -391,7 +392,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     # Open client and find the flow
     self.Open("/")
@@ -407,13 +408,13 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     self.Click("css=button[name=cancel_flow]")
 
     # The window should be updated now
-    self.WaitUntil(self.IsTextPresent, "Cancelled by user")
+    self.WaitUntil(self.IsTextPresent, "Cancelled in GUI")
 
   def testFlowListGetsUpdatedWithNewFlows(self):
     flow_1 = flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     # Ensure auto-refresh updates happen every second.
@@ -430,7 +431,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_2 = flow_test_lib.StartFlow(
         gui_test_lib.FlowWithOneLogStatement,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     # Check that the flow we started in the background appears in the list.
     self.WaitUntil(self.IsElementPresent, "css=tr:contains('%s')" % flow_2)
@@ -443,7 +444,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     f = flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     # Ensure auto-refresh updates happen every second.
@@ -467,7 +468,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     f = flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self.Open("/#/clients/%s" % self.client_id)
     # Ensure auto-refresh updates happen every second.
@@ -496,13 +497,13 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
   def _AddLogToFlow(self, flow_id, log_string):
     entry = rdf_flow_objects.FlowLogEntry(
         client_id=self.client_id, flow_id=flow_id, message=log_string)
-    data_store.REL_DB.WriteFlowLogEntry(entry)
+    data_store.REL_DB.WriteFlowLogEntries([entry])
 
   def testFlowLogsTabGetsUpdatedWhenNewLogsAreAdded(self):
     flow_id = flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self._AddLogToFlow(flow_id, "foo-log")
 
@@ -536,7 +537,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_id = flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self._AddResultToFlow(flow_id, rdfvalue.RDFString("foo-result"))
 
@@ -565,7 +566,7 @@ class TestFlowManagement(gui_test_lib.GRRSeleniumTest,
     flow_id = flow_test_lib.StartFlow(
         gui_test_lib.RecursiveTestFlow,
         self.client_id,
-        creator=self.test_username)
+        creator=self.token.username)
 
     self._AddResultToFlow(flow_id, rdfvalue.RDFString("foo-result"))
 

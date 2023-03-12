@@ -1,15 +1,20 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Test client utility functions."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import hashlib
 import io
 import os
 import platform
 import unittest
-from unittest import mock
 
 from absl import app
 from absl.testing import absltest
+import mock
 
 from grr_response_client import client_utils
 from grr_response_client import client_utils_common
@@ -17,50 +22,6 @@ from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.util import filesystem
 from grr_response_core.lib.util import temp
 from grr.test_lib import test_lib
-
-
-class IsExecutionAllowedTest(absltest.TestCase):
-
-  def setUp(self):
-    super().setUp()
-    self.is_execution_allowed = client_utils_common.IsExecutionAllowed
-
-  def testAllowsOnlyConfiguredCommands(self):
-    with test_lib.ConfigOverrider({
-        "Client.allowed_commands": ["/usr/bin/foo"],
-    }):
-      self.assertTrue(self.is_execution_allowed("/usr/bin/foo", []))
-      self.assertFalse(self.is_execution_allowed("/usr/bin/bar", []))
-
-  def testAllowsOnlyConfiguredCommandsWithArgs(self):
-    with test_lib.ConfigOverrider({
-        "Client.allowed_commands": [
-            "/bin/foo --bar --baz",
-            "/bin/foo --quux",
-        ],
-    }):
-      self.assertTrue(self.is_execution_allowed("/bin/foo", ["--bar", "--baz"]))
-      self.assertTrue(self.is_execution_allowed("/bin/foo", ["--quux"]))
-      self.assertFalse(self.is_execution_allowed("/bin/foo", ["--norf"]))
-
-  def testAllowsOnlyConfiguredCommandsWithSimpleQuotes(self):
-    with test_lib.ConfigOverrider({
-        "Client.allowed_commands": ["'foo bar' 'baz quux'"],
-    }):
-      self.assertTrue(self.is_execution_allowed("foo bar", ["baz quux"]))
-      self.assertFalse(self.is_execution_allowed("foo bar", ["baz", "quux"]))
-      self.assertFalse(self.is_execution_allowed("foo", ["bar", "baz quux"]))
-      self.assertFalse(self.is_execution_allowed("foo", ["bar", "baz", "quux"]))
-
-  def testAllowsOnlyConfiguredCommandsWithComplexQuotes(self):
-    with test_lib.ConfigOverrider({
-        "Client.allowed_commands": [
-            "'/foo bar/\"quux norf\"/thud' -x '1 3 3 7' -y \"42\"",
-        ],
-    }):
-      command = "/foo bar/\"quux norf\"/thud"
-      args = ["-x", "1 3 3 7", "-y", "42"]
-      self.assertTrue(self.is_execution_allowed(command, args))
 
 
 class ClientUtilsTest(test_lib.GRRBaseTest):
@@ -75,7 +36,7 @@ class ClientUtilsTest(test_lib.GRRBaseTest):
     self.assertStartsWith(raw_pathspec.path, "\\\\?\\Volume{")
     self.assertEqual("/", path)
 
-  def testExecutionAllowlist(self):
+  def testExecutionWhiteList(self):
     """Test if unknown commands are filtered correctly."""
 
     # ls is not allowed
@@ -86,7 +47,7 @@ class ClientUtilsTest(test_lib.GRRBaseTest):
     (stdout, stderr, status, _) = client_utils_common.Execute(*cmd)
     self.assertEqual(status, -1)
     self.assertEqual(stdout, b"")
-    self.assertEqual(stderr, b"Execution disallowed by allowlist.")
+    self.assertEqual(stderr, b"Execution disallowed by whitelist.")
 
     # "echo 1" is
     if platform.system() == "Windows":
@@ -106,7 +67,7 @@ class ClientUtilsTest(test_lib.GRRBaseTest):
     (stdout, stderr, status, _) = client_utils_common.Execute(*cmd)
     self.assertEqual(status, -1)
     self.assertEqual(stdout, b"")
-    self.assertEqual(stderr, b"Execution disallowed by allowlist.")
+    self.assertEqual(stderr, b"Execution disallowed by whitelist.")
 
   def AppendTo(self, list_obj, element):
     list_obj.append(element)
@@ -211,17 +172,6 @@ class MultiHasherTest(absltest.TestCase):
     stat_entry = client_utils.StatEntryFromStat(
         fs_stat, pathspec, ext_attrs=False)
     self.assertEqual(stat_obj, client_utils.StatResultFromStatEntry(stat_entry))
-
-
-class GetRawDeviceTest(absltest.TestCase):
-
-  def testGetRawDevice(self):
-    if platform.system() == "Windows":
-      path = "C:\\"
-    else:
-      path = "/"
-    result, _ = client_utils.GetRawDevice(path)
-    self.assertTrue(result.path)
 
 
 def main(argv):

@@ -1,9 +1,15 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Test the cron_view interface."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
 from grr_response_core.lib import rdfvalue
+from grr_response_core.lib.util import compatibility
 from grr_response_server import cronjobs
 from grr_response_server import data_store
 from grr_response_server import notification
@@ -26,7 +32,7 @@ class TestCronView(gui_test_lib.GRRSeleniumTest):
         last_run_status=status)
 
   def setUp(self):
-    super().setUp()
+    super(TestCronView, self).setUp()
 
     cron_job_names = [
         cron_system.GRRVersionBreakDownCronJob.__name__,
@@ -88,7 +94,7 @@ class TestCronView(gui_test_lib.GRRSeleniumTest):
     self.Click("css=#main_bottomPane #Runs")
 
     runs = cronjobs.CronManager().ReadJobRuns(
-        cron_system.OSBreakDownCronJob.__name__)
+        compatibility.GetName(cron_system.OSBreakDownCronJob))
     run_id = runs[0].run_id
 
     self.assertLen(runs, 1)
@@ -125,7 +131,7 @@ class TestCronView(gui_test_lib.GRRSeleniumTest):
 
   def testUserCanSendApprovalRequestWhenDeletingCronJob(self):
     self.assertEqual(
-        len(self.ListCronJobApprovals(requestor=self.test_username)), 0)
+        len(self.ListCronJobApprovals(requestor=self.token.username)), 0)
 
     self.Open("/")
     self.Click("css=a[grrtarget=crons]")
@@ -140,14 +146,15 @@ class TestCronView(gui_test_lib.GRRSeleniumTest):
     self.WaitUntil(self.IsTextPresent, "Create a new approval")
     # This asks the user "test" (which is us) to approve the request.
     self.Type("css=grr-request-approval-dialog input[name=acl_approver]",
-              self.test_username)
+              self.token.username)
     self.Type("css=grr-request-approval-dialog input[name=acl_reason]",
               "some reason")
     self.Click(
         "css=grr-request-approval-dialog button[name=Proceed]:not([disabled])")
 
     self.WaitUntilEqual(
-        1, lambda: len(self.ListCronJobApprovals(requestor=self.test_username)))
+        1,
+        lambda: len(self.ListCronJobApprovals(requestor=self.token.username)))
 
   def testEnableCronJob(self):
     cronjobs.CronManager().DisableJob(job_id=u"OSBreakDownCronJob")
@@ -402,7 +409,7 @@ class TestCronView(gui_test_lib.GRRSeleniumTest):
 
   def testCronJobNotificationIsShownAndClickable(self):
     notification.Notify(
-        self.test_username,
+        self.token.username,
         rdf_objects.UserNotification.Type.TYPE_CRON_JOB_APPROVAL_GRANTED,
         "Test CronJob notification",
         rdf_objects.ObjectReference(

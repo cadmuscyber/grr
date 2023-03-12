@@ -1,10 +1,14 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Test for the stats server implementation."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
-from unittest import mock
 
 from absl import app
+import mock
 import portpicker
 import prometheus_client
 import prometheus_client.parser as prometheus_parser
@@ -23,7 +27,7 @@ class StatsServerTest(base_stats_server_test.StatsServerTestMixin,
                       test_lib.GRRBaseTest):
 
   def setUpStatsServer(self, port):
-    return stats_server.StatsServer("::1", port)
+    return stats_server.StatsServer(port)
 
   def testPrometheusIntegration(self):
     registry = prometheus_client.CollectorRegistry(auto_describe=True)
@@ -38,10 +42,10 @@ class StatsServerTest(base_stats_server_test.StatsServerTestMixin,
 
     with mock.patch.object(stats_server.StatsServerHandler, "registry",
                            registry):
-      server = stats_server.StatsServer("::1", port)
+      server = stats_server.StatsServer(port)
       server.Start()
       self.addCleanup(server.Stop)
-      res = requests.get("http://[::1]:{}/metrics".format(port))
+      res = requests.get("http://localhost:{}/metrics".format(port))
 
     text_fd = io.StringIO(res.text)
     families = prometheus_parser.text_fd_to_metric_families(text_fd)

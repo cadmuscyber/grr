@@ -1,10 +1,15 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 import ipaddress
 import socket
-from unittest import mock
 
 from absl import app
 
+from grr_response_core.lib import utils
 from grr_response_server import ip_resolver
 from grr.test_lib import test_lib
 
@@ -20,7 +25,7 @@ class IPResolverTest(test_lib.GRRBaseTest):
       return "test.com", ip[1]
 
     resolver = ip_resolver.IPResolver()
-    with mock.patch.object(socket, "getnameinfo", MockGetNameInfo):
+    with utils.Stubber(socket, "getnameinfo", MockGetNameInfo):
       for ip, result in [
           ("192.168.0.1", ip_resolver.IPInfo.INTERNAL),
           ("10.0.0.7", ip_resolver.IPInfo.INTERNAL),

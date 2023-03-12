@@ -4,7 +4,13 @@
 <p align="center">
 GRR Rapid Response is an incident response framework focused on remote live forensics.
 
-[![Build](https://github.com/google/grr/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/google/grr/actions/workflows/build.yml)
+| Build Type              | Status |
+| :---------------------- | :----- |
+| Tests                   | [![Build status](https://ci.appveyor.com/api/projects/status/f17x9okek7su5myp?svg=true)](https://ci.appveyor.com/project/grr/grr-ia94e) |
+| End-to-end Tests        | [![Build status](https://ci.appveyor.com/api/projects/status/ir4bq9577xwxt6t3?svg=true)](https://ci.appveyor.com/project/grr/grr) |
+| Windows Templates       | [![Build status](https://ci.appveyor.com/api/projects/status/o6y6svl9cu0j3u4x?svg=true)](https://ci.appveyor.com/project/grr/grr-5wmt5) |
+| Linux & MacOS Templates | [![Build Status](https://travis-ci.org/google/grr.svg?branch=master)](https://travis-ci.org/google/grr) |
+| Docker | [![Build status](https://ci.appveyor.com/api/projects/status/siay1bi4opm97uwn?svg=true)](https://ci.appveyor.com/project/grr/grr-iqgqm) |
 
 GRR is a python client (agent) that is installed on target systems, and
 python server infrastructure that can manage and talk to clients.<br>
@@ -26,6 +32,9 @@ Contact Us
 
 Screenshots
 -----------
-[<img src="https://github.com/google/grr/blob/gh-pages/screenshots/endpoint-overview.png" width="330">](https://github.com/google/grr/blob/gh-pages/screenshots/endpoint-overview.png)
-[<img src="https://github.com/google/grr/blob/gh-pages/screenshots/filesystem-overview.png" width="330">](https://github.com/google/grr/blob/gh-pages/screenshots/filesystem-overview.png)
-[<img src="https://github.com/google/grr/blob/gh-pages/screenshots/workflow-results.png" width="330">](https://github.com/google/grr/blob/gh-pages/screenshots/workflow-results.png)
+[<img src="https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot from 2013-11-18 18-36-13.png" width="140" height="80" />](https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot%20from%202013-11-18%2018-36-13.png)
+[<img src="https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot from 2013-11-18 18-36-46.png" width="140" height="80" />](https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot%20from%202013-11-18%2018-36-46.png)
+[<img src="https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot from 2013-11-18 18-37-37.png" width="140" height="80" />](https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot%20from%202013-11-18%2018-37-37.png)
+[<img src="https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot from 2013-11-18 18-40-49.png" width="140" height="80" />](https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot%20from%202013-11-18%2018-40-49.png)
+[<img src="https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot from 2013-11-18 18-41-45.png" width="140" height="80" />](https://github.com/google/grr/blob/gh-pages/screenshots/Screenshot%20from%202013-11-18%2018-41-45.png)
+

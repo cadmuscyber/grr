@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """(De-)serialization to bytes, wire format, and human readable strings."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 from typing import Text

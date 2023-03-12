@@ -1,9 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for the client."""
-
-from unittest import mock
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
+
+import mock
 
 # Need to import client to add the flags.
 from grr_response_client import actions
@@ -35,7 +39,7 @@ class RaiseAction(actions.ActionPlugin):
     raise RuntimeError("I dont like.")
 
 
-class TestedContext(worker_mocks.ClientWorker):
+class TestedContext(worker_mocks.DisabledNannyClientWorker):
   """We test a simpler Context without crypto here."""
 
   def LoadCertificates(self):
@@ -47,7 +51,7 @@ class BasicContextTests(test_lib.GRRBaseTest):
   to_test_context = TestedContext
 
   def setUp(self):
-    super().setUp()
+    super(BasicContextTests, self).setUp()
     self.context = self.to_test_context()
     self.context.LoadCertificates()
     self.session_id = rdfvalue.RDFURN("W:1234")

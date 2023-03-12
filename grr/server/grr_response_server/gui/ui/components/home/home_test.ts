@@ -1,38 +1,29 @@
-import {Location} from '@angular/common';
-import {Component} from '@angular/core';
-import {fakeAsync, TestBed, tick, waitForAsync} from '@angular/core/testing';
+import {async, TestBed} from '@angular/core/testing';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
-import {RouterTestingModule} from '@angular/router/testing';
-
-import {STORE_PROVIDERS} from '../../store/store_test_providers';
-import {initTestEnvironment} from '../../testing';
+import {Router} from '@angular/router';
+import {initTestEnvironment} from '@app/testing';
 
 import {Home} from './home';
 import {HomeModule} from './module';
 
+
+
 initTestEnvironment();
 
-@Component({template: ''})
-class TestComponent {
-}
-
 describe('Home Component', () => {
-  beforeEach(waitForAsync(() => {
+  beforeEach(async(() => {
+    const router = {navigate: jasmine.createSpy('navigate')};
+
     TestBed
         .configureTestingModule({
           imports: [
-            RouterTestingModule.withRoutes(
-                [{path: 'clients', component: TestComponent}]),
             HomeModule,
-            NoopAnimationsModule,
-          ],
-          declarations: [
-            TestComponent,
+            NoopAnimationsModule,  // This makes test faster and more stable.
           ],
           providers: [
-            ...STORE_PROVIDERS,
+            {provide: Router, useValue: router},
           ],
-          teardown: {destroyAfterEach: false}
+
         })
         .compileComponents();
   }));
@@ -43,13 +34,12 @@ describe('Home Component', () => {
     expect(componentInstance).toBeTruthy();
   });
 
-  it('changes the route when query is submitted', fakeAsync(() => {
-       const fixture = TestBed.createComponent(Home);
-       const componentInstance = fixture.componentInstance;
-       componentInstance.onQuerySubmitted('foo');
-       tick();
+  it('changes the route when query is submitted', () => {
+    const fixture = TestBed.createComponent(Home);
+    const componentInstance = fixture.componentInstance;
+    componentInstance.onQuerySubmitted('foo');
 
-       const location = TestBed.inject(Location);
-       expect(location.path()).toEqual('/clients?q=foo');
-     }));
+    const router: Router = TestBed.inject(Router);
+    expect(router.navigate).toHaveBeenCalledWith(['v2/client-search', 'foo']);
+  });
 });

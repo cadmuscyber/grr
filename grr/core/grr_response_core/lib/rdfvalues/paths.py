@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Pathspecs are methods of specifying the path on the client.
 
 The GRR client has a number of drivers to virtualize access to different objects
@@ -15,19 +16,26 @@ handler. The type of the handler is carried by the pathtype parameter.
 On the server the PathSpec is represented as a PathSpec object, and stored
 as an attribute of the AFF4 object. This module defines this abstraction.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 import itertools
 import posixpath
 import re
 
-from typing import Sequence
 
 from grr_response_core.lib import artifact_utils
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import standard as rdf_standard
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
-from grr_response_proto import flows_pb2
 from grr_response_proto import jobs_pb2
+
+INTERPOLATED_REGEX = re.compile(r"%%([^%]+?)%%")
+
+# Grouping pattern: e.g. {test.exe,foo.doc,bar.txt}
+GROUPING_PATTERN = re.compile("{([^}]+,[^}]+)}")
 
 
 class PathSpec(rdf_structs.RDFProtoStruct):
@@ -50,10 +58,6 @@ class PathSpec(rdf_structs.RDFProtoStruct):
   @classmethod
   def TSK(cls, **kwargs):
     return cls(pathtype=PathSpec.PathType.TSK, **kwargs)
-
-  @classmethod
-  def NTFS(cls, **kwargs):
-    return cls(pathtype=PathSpec.PathType.NTFS, **kwargs)
 
   @classmethod
   def Registry(cls, **kwargs):
@@ -206,7 +210,6 @@ class PathSpec(rdf_structs.RDFProtoStruct):
       1: "/fs/tsk",  # PathSpec.PathType.TSK
       2: "/registry",  # PathSpec.PathType.REGISTRY
       4: "/temp",  # PathSpec.PathType.TMPFILE
-      5: "/fs/ntfs",  # PathSpec.PathType.NTFS
   }
 
   def AFF4Path(self, client_urn):
@@ -231,7 +234,6 @@ class PathSpec(rdf_structs.RDFProtoStruct):
     #    pathtype: TSK
     # }
     # We map this to aff4://client_id/fs/tsk/\\\\.\\Volume{1234}\\/windows/
-    # (The same applies for NTFS)
 
     if not self.HasField("pathtype"):
       raise ValueError(
@@ -245,8 +247,8 @@ class PathSpec(rdf_structs.RDFProtoStruct):
       dev += ":{}".format(first_component.offset // 512)
 
     if (len(self) > 1 and first_component.pathtype == PathSpec.PathType.OS and
-        self[1].pathtype in (PathSpec.PathType.TSK, PathSpec.PathType.NTFS)):
-      result = [self.AFF4_PREFIXES[self[1].pathtype], dev]
+        self[1].pathtype == PathSpec.PathType.TSK):
+      result = [self.AFF4_PREFIXES[PathSpec.PathType.TSK], dev]
 
       # Skip the top level pathspec.
       start = 1
@@ -273,29 +275,6 @@ class PathSpec(rdf_structs.RDFProtoStruct):
       result.append(component)
 
     return client_urn.Add("/".join(result))
-
-
-def _unique(iterable):
-  """Returns a list of unique values in preserved order."""
-  return list(dict.fromkeys(iterable))
-
-
-class GlobComponentExplanation(rdf_structs.RDFProtoStruct):
-  """A sub-part of a GlobExpression with examples."""
-  protobuf = flows_pb2.GlobComponentExplanation
-
-
-# Grouping pattern: e.g. {test.exe,foo.doc,bar.txt}
-GROUPING_PATTERN = re.compile("{([^}]+,[^}]+)}")
-
-_VAR_PATTERN = re.compile("(" + "|".join([r"%%\w+%%", r"%%\w+\.\w+%%"]) + ")")
-
-_REGEX_SPLIT_PATTERN = re.compile(
-    "(" + "|".join(["{[^}]+,[^}]+}", "\\?", "\\*\\*\\/?", "\\*"]) + ")")
-
-_COMPONENT_SPLIT_PATTERN = re.compile("(" + "|".join([
-    r"{[^}]+,[^}]+}", r"\?", r"\*\*\d*/?", r"\*", r"%%\w+%%", r"%%\w+\.\w+%%"
-]) + ")")
 
 
 class GlobExpression(rdfvalue.RDFString):
@@ -341,7 +320,7 @@ class GlobExpression(rdfvalue.RDFString):
 
       # Expand the attribute into the set of possibilities:
       alternatives = match.group(1).split(",")
-      components.append(_unique(alternatives))
+      components.append(set(alternatives))
       offset = match.end()
 
     components.append([pattern[offset:]])
@@ -366,40 +345,8 @@ class GlobExpression(rdfvalue.RDFString):
     else:
       return re.escape(part)
 
-  def ExplainComponents(self, example_count: int,
-                        knowledge_base) -> Sequence[GlobComponentExplanation]:
-    """Returns a list of GlobComponentExplanations with examples."""
-    parts = _COMPONENT_SPLIT_PATTERN.split(self._value)
-    components = []
-
-    for glob_part in parts:
-      if not glob_part:
-        continue
-
-      component = GlobComponentExplanation(glob_expression=glob_part)
-
-      if GROUPING_PATTERN.match(glob_part):
-        examples = self.InterpolateGrouping(glob_part)
-      elif _VAR_PATTERN.match(glob_part):
-        # Examples for variable substitutions might not be 100 % accurate,
-        # because the scope is not shared between two variables. Thus,
-        # if a GlobExpression uses %%users.a%% and %%users.b%%, the underlying
-        # user might be different for a and b. For the sake of explaining
-        # possible values, this should still be enough.
-        try:
-          examples = artifact_utils.InterpolateKbAttributes(
-              glob_part, knowledge_base)
-        except artifact_utils.Error:
-          # Interpolation can fail for many non-critical reasons, e.g. when the
-          # client is missing a KB attribute.
-          examples = []
-      else:
-        examples = []
-
-      component.examples = list(itertools.islice(examples, example_count))
-      components.append(component)
-
-    return components
+  REGEX_SPLIT_PATTERN = re.compile(
+      "(" + "|".join(["{[^}]+,[^}]+}", "\\?", "\\*\\*\\/?", "\\*"]) + ")")
 
   def AsRegEx(self):
     """Return the current glob as a simple regex.
@@ -409,7 +356,7 @@ class GlobExpression(rdfvalue.RDFString):
     Returns:
       A RegularExpression() object.
     """
-    parts = _REGEX_SPLIT_PATTERN.split(self._value)
+    parts = self.__class__.REGEX_SPLIT_PATTERN.split(self._value)
     result = u"".join(self._ReplaceRegExPart(p) for p in parts)
 
     return rdf_standard.RegularExpression(u"(?i)\\A%s\\Z" % result)

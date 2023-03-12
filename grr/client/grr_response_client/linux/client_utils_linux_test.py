@@ -1,16 +1,23 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for client_utils_linux.py."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-import contextlib
+import os
 import platform
 import tempfile
 import unittest
-from unittest import mock
 
 from absl import app
 from absl.testing import absltest
+import mock
 
 from grr_response_client import client_utils_linux
+from grr_response_client import client_utils_osx_linux
+from grr_response_core.lib import rdfvalue
+from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.util import temp
@@ -41,31 +48,56 @@ none /lib/init/rw tmpfs rw,nosuid,relatime,mode=755 0 0
 binfmt_misc /proc/sys/fs/binfmt_misc binfmt_misc rw,nosuid,relatime 0 0
 server.nfs:/vol/home /home/user nfs rw,nosuid,relatime 0 0
 """
-    with contextlib.ExitStack() as stack:
-      stack.enter_context(
-          mock.patch.object(
-              client_utils_linux, "MOUNTPOINT_CACHE", new=[0, None]))
+    mountpoints = client_utils_linux.GetMountpoints(proc_mounts)
 
-      mountpoints = client_utils_linux.GetMountpoints(proc_mounts)
+    def GetMountpointsMock():
+      return mountpoints
 
-      stack.enter_context(
-          mock.patch.object(
-              client_utils_linux, "GetMountpoints", return_value=mountpoints))
-      for filename, expected_device, expected_path, device_type in [
-          ("/etc/passwd", "/dev/mapper/root", "/etc/passwd",
-           rdf_paths.PathSpec.PathType.OS),
-          ("/usr/local/bin/ls", "/dev/mapper/usr", "/bin/ls",
-           rdf_paths.PathSpec.PathType.OS),
-          ("/proc/net/sys", "none", "/net/sys",
-           rdf_paths.PathSpec.PathType.UNSET),
-          ("/home/user/test.txt", "server.nfs:/vol/home", "/test.txt",
-           rdf_paths.PathSpec.PathType.UNSET)
-      ]:
-        raw_pathspec, path = client_utils_linux.GetRawDevice(filename)
+    old_getmountpoints = client_utils_linux.GetMountpoints
+    client_utils_linux.GetMountpoints = GetMountpointsMock
 
-        self.assertEqual(expected_device, raw_pathspec.path)
-        self.assertEqual(device_type, raw_pathspec.pathtype)
-        self.assertEqual(expected_path, path)
+    for filename, expected_device, expected_path, device_type in [
+        ("/etc/passwd", "/dev/mapper/root", "/etc/passwd",
+         rdf_paths.PathSpec.PathType.OS),
+        ("/usr/local/bin/ls", "/dev/mapper/usr", "/bin/ls",
+         rdf_paths.PathSpec.PathType.OS),
+        ("/proc/net/sys", "none", "/net/sys",
+         rdf_paths.PathSpec.PathType.UNSET),
+        ("/home/user/test.txt", "server.nfs:/vol/home", "/test.txt",
+         rdf_paths.PathSpec.PathType.UNSET)
+    ]:
+      raw_pathspec, path = client_utils_linux.GetRawDevice(filename)
+
+      self.assertEqual(expected_device, raw_pathspec.path)
+      self.assertEqual(device_type, raw_pathspec.pathtype)
+      self.assertEqual(expected_path, path)
+      client_utils_linux.GetMountpoints = old_getmountpoints
+
+  def testLinuxNanny(self):
+    """Tests the linux nanny."""
+
+    def MockExit(unused_value):
+      raise RuntimeError("Exit was called.")
+
+    now = rdfvalue.RDFDatetime.Now()
+
+    with utils.Stubber(os, "_exit", MockExit):
+      nanny = client_utils_osx_linux.NannyThread(unresponsive_kill_period=5)
+      with test_lib.FakeTime(now):
+        nanny.Heartbeat()
+
+      for i in range(10):
+        with test_lib.FakeTime(now +
+                               rdfvalue.Duration.From(i, rdfvalue.SECONDS)):
+          nanny._CheckHeartbeatDeadline(nanny.last_heart_beat_time +
+                                        nanny.unresponsive_kill_period)
+          nanny.Heartbeat()
+
+      with test_lib.FakeTime(now +
+                             rdfvalue.Duration.From(15, rdfvalue.SECONDS)):
+        with self.assertRaises(RuntimeError):
+          nanny._CheckHeartbeatDeadline(nanny.last_heart_beat_time +
+                                        nanny.unresponsive_kill_period)
 
   def testLinuxTransactionLog(self):
     """Tests the linux transaction log."""

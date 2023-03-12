@@ -1,10 +1,14 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Stubs of client actions.
 
 Client actions shouldn't be used on the server, stubs should be used instead.
 This way we prevent loading effectively the whole client code into ours
 server parts.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import apple_firmware as rdf_apple_firmware
@@ -18,17 +22,16 @@ from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
 from grr_response_core.lib.rdfvalues import cloud as rdf_cloud
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
-from grr_response_core.lib.rdfvalues import large_file as rdf_large_file
 from grr_response_core.lib.rdfvalues import memory as rdf_memory
 from grr_response_core.lib.rdfvalues import osquery as rdf_osquery
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import plist as rdf_plist
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
-from grr_response_core.lib.rdfvalues import read_low_level as rdf_read_low_level
 from grr_response_core.lib.rdfvalues import timeline as rdf_timeline
+from grr_response_core.lib.registry import MetaclassRegistry
 
 
-class ClientActionStub:
+class ClientActionStub(metaclass=MetaclassRegistry):
   """Stub for a client action. To be used in server code."""
 
   in_rdfvalue = None
@@ -82,13 +85,6 @@ class WmiQuery(ClientActionStub):
 
   in_rdfvalue = rdf_client_action.WMIRequest
   out_rdfvalues = [rdf_protodict.Dict]
-
-
-class ListNamedPipes(ClientActionStub):
-  """Lists named pipes available on the system."""
-
-  in_rdfvalue = None
-  out_rdfvalues = [rdf_client.NamedPipe]
 
 
 # OS X-specific
@@ -408,13 +404,6 @@ class YaraProcessDump(ClientActionStub):
   out_rdfvalues = [rdf_memory.YaraProcessDumpResponse]
 
 
-class CollectLargeFile(ClientActionStub):
-  """A stub class for the large file collection action."""
-
-  in_rdfvalue = rdf_large_file.CollectLargeFileArgs
-  out_rdfvalues = [rdf_large_file.CollectLargeFileResult]
-
-
 class Osquery(ClientActionStub):
   """A stub class for the osquery action plugin."""
 
@@ -441,10 +430,3 @@ class EficheckCollectHashes(ClientActionStub):
 
   in_rdfvalue = rdf_apple_firmware.EficheckConfig
   out_rdfvalues = [rdf_apple_firmware.CollectEfiHashesResponse]
-
-
-class ReadLowLevel(ClientActionStub):
-  """Reads `length` bytes from `path` starting at `offset` and returns it."""
-
-  in_rdfvalue = rdf_read_low_level.ReadLowLevelRequest
-  out_rdfvalues = [rdf_read_low_level.ReadLowLevelResult]

@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 """Generator for server and client configs for self-contained testing."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import io
 
@@ -59,6 +63,9 @@ def main(argv):
   config_lib.LoadConfig(config.CONFIG, source_server_config_path)
   config.CONFIG.SetWriteBack(flags.FLAGS.dest_server_config_path)
 
+  # TODO(user): remove when AFF4 is gone.
+  config.CONFIG.Set("Database.enabled", True)
+
   config.CONFIG.Set("Blobstore.implementation", "DbBlobStore")
   config.CONFIG.Set("Database.implementation", "MysqlDB")
   config.CONFIG.Set("Mysql.database", flags.FLAGS.config_mysql_database)
@@ -96,9 +103,6 @@ def main(argv):
 
   if flags.FLAGS.config_osquery_path:
     config.CONFIG.Set("Osquery.path", flags.FLAGS.config_osquery_path)
-
-  # All tests should work fine with a tight (15 secs) unresponsive kill period.
-  config.CONFIG.Set("Nanny.unresponsive_kill_period", 15)
 
   config_updater_keys_util.GenerateKeys(config.CONFIG)
   config.CONFIG.Write()

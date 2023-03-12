@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for grr_response_server.checks.filters."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import collections
 
@@ -401,7 +405,7 @@ class HandlerTests(test_lib.GRRBaseTest):
   """Test handler operations."""
 
   def setUp(self):
-    super().setUp()
+    super(HandlerTests, self).setUp()
     fx0 = checks.Filter({"type": "ObjectFilter", "expression": "x == 0"})
     fy0 = checks.Filter({"type": "ObjectFilter", "expression": "y == 0"})
     bad = checks.Filter({"type": "ObjectFilter", "expression": "y =="})

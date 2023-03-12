@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This is the GRR frontend HTTP Server."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 from http import server as http_server
 import io
@@ -14,16 +19,22 @@ from urllib import parse as urlparse
 from absl import app
 from absl import flags
 
+# pylint: disable=unused-import,g-bad-import-order
+from grr_response_server import server_plugins
+# pylint: enable=unused-import, g-bad-import-order
+
 from grr_response_core import config
 from grr_response_core.config import server as config_server
+from grr_response_core.lib import communicator
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import flows as rdf_flows
-from grr_response_server import communicator
+from grr_response_core.lib.util import compatibility
 from grr_response_server import frontend_lib
 from grr_response_server import server_logging
 from grr_response_server import server_startup
 
-_VERSION = flags.DEFINE_bool(
+
+flags.DEFINE_bool(
     "version",
     default=False,
     allow_override=True,
@@ -192,7 +203,10 @@ class GRRHTTPServerHandler(http_server.BaseHTTPRequestHandler):
       api_version = 3
 
     try:
-      content_length = self.headers.get("content-length")
+      if compatibility.PY2:
+        content_length = self.headers.getheader("content-length")
+      else:
+        content_length = self.headers.get("content-length")
       if not content_length:
         raise IOError("No content-length header provided.")
 
@@ -210,7 +224,15 @@ class GRRHTTPServerHandler(http_server.BaseHTTPRequestHandler):
       responses_comms = rdf_flows.ClientCommunication(
           api_version=request_comms.api_version)
 
+      # TODO: Python's documentation is just plain terrible and
+      # does not explain what `client_address` exactly is or what type does it
+      # have (because its Python, why would they bother) so just to be on the
+      # safe side, we anticipate byte-string addresses in Python 2 and convert
+      # that if needed. On Python 3 these should be always unicode strings, so
+      # once support for Python 2 is dropped this branch can be removed.
       address = self.client_address[0]
+      if compatibility.PY2 and isinstance(self.client_address[0], bytes):
+        address = address.decode("ascii")
       source_ip = ipaddress.ip_address(address)
 
       if source_ip.version == 6:
@@ -300,7 +322,7 @@ def main(argv):
   """Main."""
   del argv  # Unused.
 
-  if _VERSION.value:
+  if flags.FLAGS.version:
     print("GRR frontend {}".format(config_server.VERSION["packageversion"]))
     return
 

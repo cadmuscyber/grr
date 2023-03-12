@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for eficheck flows."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -49,7 +53,7 @@ class CollectEfiNoHashesMock(CollectEfiHashesMock):
 class CollectEfiHashesTest(flow_test_lib.FlowTestsBaseclass):
 
   def setUp(self):
-    super().setUp()
+    super(CollectEfiHashesTest, self).setUp()
     self.client_id = self.SetupClient(0, system="Darwin")
 
   def testCollectHashes(self):
@@ -60,7 +64,7 @@ class CollectEfiHashesTest(flow_test_lib.FlowTestsBaseclass):
         apple_firmware.CollectEfiHashes.__name__,
         client_mock,
         client_id=self.client_id,
-        creator=self.test_username)
+        token=self.token)
 
     results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
 
@@ -82,7 +86,7 @@ class CollectEfiHashesTest(flow_test_lib.FlowTestsBaseclass):
             apple_firmware.CollectEfiHashes.__name__,
             client_mock,
             client_id=self.client_id,
-            creator=self.test_username)
+            token=self.token)
 
     self.assertIn("Unable to collect the hashes.", str(err.exception))
 
@@ -96,7 +100,7 @@ class CollectEfiHashesTest(flow_test_lib.FlowTestsBaseclass):
             apple_firmware.CollectEfiHashes.__name__,
             client_mock,
             client_id=self.client_id,
-            creator=self.test_username)
+            token=self.token)
 
     self.assertIn("No hash collected.", str(err.exception))
 
@@ -133,7 +137,7 @@ class DumpEfiImageFailMock(action_mocks.ActionMock):
 class DumpEfiImageTest(flow_test_lib.FlowTestsBaseclass):
 
   def setUp(self):
-    super().setUp()
+    super(DumpEfiImageTest, self).setUp()
     self.client_id = self.SetupClient(0, system="Darwin")
 
   def testDumpImage(self):
@@ -144,7 +148,7 @@ class DumpEfiImageTest(flow_test_lib.FlowTestsBaseclass):
         apple_firmware.DumpEfiImage.__name__,
         client_mock,
         client_id=self.client_id,
-        creator=self.test_username)
+        token=self.token)
 
     # Check the output of the flow.
     results = flow_test_lib.GetFlowResults(self.client_id, flow_id)
@@ -164,7 +168,7 @@ class DumpEfiImageTest(flow_test_lib.FlowTestsBaseclass):
             apple_firmware.DumpEfiImage.__name__,
             client_mock,
             client_id=self.client_id,
-            creator=self.test_username)
+            token=self.token)
 
     self.assertIn("Unable to dump the flash image", str(err.exception))
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """End to end tests for GRR FileFinder flow."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import functools
 import operator
@@ -104,7 +107,7 @@ class AbstractWindowsFileTransferTest(test_base.AbstractFileTransferTest):
 
   def _testLargeFileCollection(self, flow_name):
     args = self.grr_api.types.CreateFlowArgs(flow_name)
-    args.paths.append("%%environ_systemroot%%\\System32\\MRT.exe")
+    args.paths.append("%%environ_systemdrive%%\\$MFT")
     args.pathtype = self.pathtype
     args.action.action_type = args.action.STAT
 
@@ -116,7 +119,7 @@ class AbstractWindowsFileTransferTest(test_base.AbstractFileTransferTest):
     path = self._pathspecToVFSPath(ff_result.stat_entry.pathspec)
 
     args = self.grr_api.types.CreateFlowArgs(flow_name)
-    args.paths.append("%%environ_systemroot%%\\System32\\MRT.exe")
+    args.paths.append("%%environ_systemdrive%%\\$MFT")
     args.pathtype = self.pathtype
     args.action.action_type = args.action.DOWNLOAD
     args.action.download.oversized_file_policy = (
@@ -128,16 +131,22 @@ class AbstractWindowsFileTransferTest(test_base.AbstractFileTransferTest):
     fd = self.client.File(path)
     last_collected_size = fd.Get().data.last_collected_size
 
+    # Check that the last_collected_size is non-zero and that the
+    # difference between reported and collected size is less than 10%
+    # (this is due to the fact that $MFT may be changing while being read).
+    # Note that we have to take into account the fact that $MFT may be
+    # larger than the FileFinderDownloadActionOptions.max_size setting.
     self.assertGreater(last_collected_size, 0)
-    self.assertEqual(
-        last_collected_size,
-        min(ff_result.stat_entry.st_size, args.action.download.max_size))
+    self.assertLess(
+        abs(last_collected_size -
+            min(ff_result.stat_entry.st_size, args.action.download.max_size)),
+        int(last_collected_size * 0.1))
 
     # Make sure first chunk of the file is not empty.
     first_chunk = self.ReadFromFile(path, 1024)
     self.assertNotEqual(first_chunk, b"0" * 1024)
 
-    # Check that fetched file can be read in its entirety.
+    # Check that fetched MFT can be read in its entirety.
     total_size = functools.reduce(operator.add,
                                   [len(blob) for blob in fd.GetBlob()], 0)
     self.assertEqual(total_size, last_collected_size)
@@ -186,35 +195,6 @@ class TestFileFinderOSDarwin(test_base.AbstractFileTransferTest):
 
   def testCFF(self):
     self._testCollection("ClientFileFinder")
-
-  def _testRandomDevice(self, flow):
-    # Reading from /dev/urandom is an interesting test,
-    # since the hash can't be precalculated and GRR will
-    # be forced to use server-side generated hash. It triggers
-    # branches in the code that are not triggered when collecting
-    # ordinary files.
-    # Reading 400 megabytes to put additional load on the client send-queues
-    # and activate the heartbeating logic.
-    len_to_read = 1024 * 1024 * 400
-    args = self.grr_api.types.CreateFlowArgs(flow)
-
-    args.paths.append("/dev/urandom")
-    args.action.action_type = args.action.DOWNLOAD
-    args.action.download.max_size = len_to_read
-    args.process_non_regular_files = True
-
-    with self.WaitForFileCollection("fs/os/dev/urandom"):
-      self.RunFlowAndWait(flow, args=args)
-
-    f = self.client.File("fs/os/dev/urandom").Get()
-    self.assertEqual(f.data.last_collected_size, len_to_read)
-    self.assertEqual(f.data.hash.num_bytes, len_to_read)
-
-  def testRandomDevice(self):
-    self._testRandomDevice("FileFinder")
-
-  def testCFFRandomDevice(self):
-    self._testRandomDevice("ClientFileFinder")
 
 
 class TestFileFinderOSLinux(test_base.AbstractFileTransferTest):
@@ -268,9 +248,7 @@ class TestFileFinderOSLinux(test_base.AbstractFileTransferTest):
     # be forced to use server-side generated hash. It triggers
     # branches in the code that are not triggered when collecting
     # ordinary files.
-    # Reading 400 megabytes to put additional load on the client send-queues
-    # and activate the heartbeating logic.
-    len_to_read = 1024 * 1024 * 400
+    len_to_read = 1024
     args = self.grr_api.types.CreateFlowArgs(flow)
 
     args.paths.append("/dev/urandom")

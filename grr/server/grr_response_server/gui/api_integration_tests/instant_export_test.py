@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for instant export-realted API calls."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import zipfile
@@ -7,6 +11,7 @@ import zipfile
 from absl import app
 
 from grr_response_core.lib.rdfvalues import client as rdf_client
+from grr_response_core.lib.util import compatibility
 from grr_response_server.flows.general import processes
 from grr_response_server.gui import api_integration_test_lib
 from grr_response_server.output_plugins import csv_plugin
@@ -29,10 +34,10 @@ class ApiInstantExportTest(api_integration_test_lib.ApiIntegrationTest):
 
     client_id = self.SetupClient(0)
     flow_id = flow_test_lib.TestFlowHelper(
-        processes.ListProcesses.__name__,
+        compatibility.GetName(processes.ListProcesses),
         client_id=client_id,
         client_mock=action_mocks.ListProcessesMock([process]),
-        creator=self.test_username)
+        token=self.token)
 
     result_flow = self.api.Client(client_id=client_id).Flow(flow_id)
     exported_archive = result_flow.GetExportedResultsArchive(

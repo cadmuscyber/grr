@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The GRR Foreman."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 
@@ -29,16 +33,12 @@ class Foreman(object):
     """Will return True if hunt's task was assigned to this client before."""
     flow_id = hunt_id
     try:
-      cur_flow = data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+      data_store.REL_DB.ReadFlowObject(client_id, flow_id)
+      return True
     except db.UnknownFlowError:
-      return False
+      pass
 
-    if cur_flow.parent_hunt_id != hunt_id:
-      raise RuntimeError(
-          "Cannot start Hunt {} on {} because unrelated {} already exists."
-          .format(hunt_id, client_id, cur_flow.long_flow_id))
-
-    return True
+    return False
 
   def _RunAction(self, rule, client_id):
     """Run all the actions specified in the rule.
@@ -79,21 +79,10 @@ class Foreman(object):
 
   def _GetLastForemanRunTime(self, client_id):
     md = data_store.REL_DB.ReadClientMetadata(client_id)
-    # TODO: we shouldn't care about
-    # last_fleetspeak_validation_info here. The WriteClientMetadata method
-    # should have a more predictable behavior and not nullify
-    # last_fleetspeak_validation_info if it's passed as None.
-    lfvi = None
-    if md.HasField("last_fleetspeak_validation_info"):
-      lfvi = md.last_fleetspeak_validation_info.ToStringDict()
-    return md.last_foreman_time or rdfvalue.RDFDatetime(0), lfvi
+    return md.last_foreman_time or rdfvalue.RDFDatetime(0)
 
-  def _SetLastForemanRunTime(self, client_id, latest_rule,
-                             fleetspeak_validation_info):
-    data_store.REL_DB.WriteClientMetadata(
-        client_id,
-        last_foreman=latest_rule,
-        fleetspeak_validation_info=fleetspeak_validation_info)
+  def _SetLastForemanRunTime(self, client_id, latest_rule):
+    data_store.REL_DB.WriteClientMetadata(client_id, last_foreman=latest_rule)
 
   def AssignTasksToClient(self, client_id):
     """Examines our rules and starts up flows based on the client.
@@ -108,8 +97,7 @@ class Foreman(object):
     if not rules:
       return 0
 
-    last_foreman_run, fleetspeak_validation_info = self._GetLastForemanRunTime(
-        client_id)
+    last_foreman_run = self._GetLastForemanRunTime(client_id)
 
     latest_rule_creation_time = max(rule.creation_time for rule in rules)
 
@@ -117,8 +105,7 @@ class Foreman(object):
       return 0
 
     # Update the latest checked rule on the client.
-    self._SetLastForemanRunTime(client_id, latest_rule_creation_time,
-                                fleetspeak_validation_info)
+    self._SetLastForemanRunTime(client_id, latest_rule_creation_time)
 
     relevant_rules = []
     expired_rules = False

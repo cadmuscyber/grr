@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """OSX specific utils."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import ctypes
 import ctypes.util
@@ -19,10 +23,9 @@ from grr_response_core.lib.rdfvalues import paths as rdf_paths
 GetExtAttrs = client_utils_osx_linux.GetExtAttrs
 CanonicalPathToLocalPath = client_utils_osx_linux.CanonicalPathToLocalPath
 LocalPathToCanonicalPath = client_utils_osx_linux.LocalPathToCanonicalPath
+NannyController = client_utils_osx_linux.NannyController
 VerifyFileOwner = client_utils_osx_linux.VerifyFileOwner
 TransactionLog = client_utils_osx_linux.TransactionLog
-
-CreateProcessFromSerializedFileDescriptor = process.Process.CreateFromSerializedFileDescriptor
 
 # pylint: enable=invalid-name
 
@@ -73,9 +76,7 @@ def GetMountpoints():
   devices = {}
 
   for filesys in GetFileSystems():
-    devices[filesys.f_mntonname.decode("utf-8")] = (
-        filesys.f_mntfromname.decode("utf-8"),
-        filesys.f_fstypename.decode("utf-8"))
+    devices[filesys.f_mntonname] = (filesys.f_mntfromname, filesys.f_fstypename)
 
   return devices
 
@@ -142,7 +143,7 @@ def GetFileSystems():
   version = OSXVersion()
   major, minor = version.VersionAsMajorMinor()
 
-  libc = objc.LoadLibrary("c")
+  libc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("c"))
 
   if major <= 10 and minor <= 5:
     use_64 = False
@@ -198,15 +199,7 @@ def GetRawDevice(path):
     try:
       result.path, fs_type = device_map[mount_point]
       if fs_type in [
-          "ext2",
-          "ext3",
-          "ext4",
-          "vfat",
-          "ntfs",
-          "Apple_HFS",
-          "hfs",
-          "msdos",
-          "apfs",
+          "ext2", "ext3", "ext4", "vfat", "ntfs", "Apple_HFS", "hfs", "msdos"
       ]:
         # These are read filesystems
         result.pathtype = rdf_paths.PathSpec.PathType.OS

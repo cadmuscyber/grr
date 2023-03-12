@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A module with functions for working with GRR packages."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import importlib
 import inspect
@@ -9,6 +13,8 @@ import sys
 from typing import Text
 
 import pkg_resources
+
+from grr_response_core.lib.util import compatibility
 
 
 def _GetPkgResources(package_name, filepath):
@@ -56,6 +62,8 @@ def ResourcePath(package_name, filepath):
   return None
 
 
+
+
 def ModulePath(module_name) -> Text:
   """Computes a path to the specified module.
 
@@ -70,6 +78,10 @@ def ModulePath(module_name) -> Text:
   """
   module = importlib.import_module(module_name)
   path = inspect.getfile(module)
+  # TODO: In Python 2 `inspect.getfile` returns a byte string, so
+  # we have to decode that in order to be consistent with Python 3.
+  if compatibility.PY2:
+    path = path.decode("utf-8")
 
   # In case of modules with want a path to the directory rather than to the
   # `__init__.py` file itself.

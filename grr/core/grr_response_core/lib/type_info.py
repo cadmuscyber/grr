@@ -1,14 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Typing information for flow arguments.
 
 This contains objects that are used to provide type annotations for flow
 parameters. These annotations are used to assist in rendering the UI for
 starting flows and for validating arguments.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
-from typing import Iterable
-from typing import Optional
 from typing import Text
 
 from grr_response_core.lib import rdfvalue
@@ -65,7 +67,7 @@ class TypeInfoObject(metaclass=MetaclassRegistry):
     # It is generally impossible to check the default value here
     # because this happens before any configuration is loaded (i.e. at
     # import time). Hence default values which depend on the config
-    # system can't be tested. We just assume that the default value is
+    # system cant be tested. We just assume that the default value is
     # sensible since its hard coded in the code.
 
   def GetType(self):
@@ -151,28 +153,6 @@ class RDFValueType(TypeInfoObject):
     return serialization.FromHumanReadable(self.rdfclass, string)
 
 
-# This file can't depend on rdf_structs (cyclic dependency), so
-# args/return values of type EnumContainer are not type annotated.
-class RDFEnumType(TypeInfoObject):
-  """An arg which must be an stringified enum value."""
-
-  def __init__(self, enum_container, **kwargs):
-    super().__init__(**kwargs)
-    self._enum_container = enum_container
-
-  def Value(self, value: Optional[str]):
-    if value is None:
-      return
-
-    if isinstance(value, str):
-      return self.FromString(value)
-
-    raise ValueError("Invalid value {value} for RDFEnumType.")
-
-  def FromString(self, string: str):
-    return self._enum_container.FromString(string)
-
-
 class RDFStructDictType(TypeInfoObject):
   """An arg which must be a dict that maps into an RDFStruct."""
 
@@ -224,7 +204,7 @@ class RDFStructDictType(TypeInfoObject):
     return self.rdfclass.FromSerializedBytes(string)
 
 
-class TypeDescriptorSet(Iterable[TypeInfoObject]):
+class TypeDescriptorSet(object):
   """This is a collection of type descriptors.
 
   This collections is effectively immutable. Add/Remove operations create new
@@ -261,6 +241,9 @@ class TypeDescriptorSet(Iterable[TypeInfoObject]):
   def __radd__(self, other):
     return self.Add(other)
 
+  def __iadd__(self, other):
+    return self.Add(other)
+
   def Add(self, other):
     """Returns a copy of this set with a new element added."""
     new_descriptors = []
@@ -278,7 +261,7 @@ class TypeDescriptorSet(Iterable[TypeInfoObject]):
       self.descriptor_names.append(desc.name)
 
   def HasDescriptor(self, descriptor_name):
-    """Checks whether this set has an element with the given name."""
+    """Checks wheter this set has an element with the given name."""
     return descriptor_name in self.descriptor_map
 
   def Remove(self, *descriptor_names):

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 
 # Copyright 2011 Google Inc. All Rights Reserved.
 #
@@ -16,13 +17,16 @@
 #
 # This file was imported with permission from
 # http://verify-sigs.googlecode.com/files/verify-sigs-1.1.tar.bz2
-"""Fingerprinter class and some utility functions to exercise it.
+"""Fingerprinter class and some utilty functions to exercise it.
 
 While this file contains a main and some top-level functions, those
 are meant for exploration and debugging. Intended use is through the
 Fingerprinter, as exemplified in main.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import collections
 import hashlib
@@ -63,7 +67,7 @@ class Finger(object):
   def ConsumeRange(self, start, end):
     """Consumes an entire range, or part thereof.
 
-    If the finger has no ranges left, or the current range start is higher
+    If the finger has no ranges left, or the curent range start is higher
     than the end of the consumed block, nothing happens. Otherwise,
     the current range is adjusted for the consumed block, or removed,
     if the entire block is consumed. For things to work, the consumed
@@ -77,7 +81,7 @@ class Finger(object):
     Raises:
       RuntimeError: if the start position of the consumed range is
           higher than the start of the current range in the finger, or if
-          the consumed range cuts across block boundaries.
+          the consumed range cuts accross block boundaries.
     """
     old = self.CurrentRange()
     if old is None:

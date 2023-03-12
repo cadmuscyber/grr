@@ -5,17 +5,14 @@ goog.module.declareLegacyNamespace();
 
 /**
  * Controller for ServerErrorDialogDirective.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @constructor
+ * @ngInject
  */
-const ServerErrorDialogController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
-  }
+const ServerErrorDialogController = function($scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 };
 
 
@@ -29,7 +26,11 @@ const ServerErrorDialogController = class {
  */
 exports.ServerErrorDialogDirective = function() {
   return {
-    scope: {close: '&', message: '=', traceBack: '='},
+    scope: {
+      close: '&',
+      message: '=',
+      traceBack: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/core/server-error-dialog.html',
     controller: ServerErrorDialogController,

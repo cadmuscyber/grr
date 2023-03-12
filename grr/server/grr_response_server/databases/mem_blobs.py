@@ -1,5 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """DB mixin for blobs-related methods."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
+import threading
+
+
 from grr_response_core.lib import utils
 from grr_response_server import blob_store
 
@@ -59,3 +67,13 @@ class InMemoryDBBlobsMixin(blob_store.BlobStore):
         result[hash_id] = None
 
     return result
+
+
+class InMemoryBlobStore(InMemoryDBBlobsMixin):
+
+  def __init__(self):
+    super().__init__()
+
+    self.blobs = {}
+    self.blob_refs_by_hashes = {}
+    self.lock = threading.RLock()

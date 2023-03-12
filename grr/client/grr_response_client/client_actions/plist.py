@@ -1,10 +1,14 @@
 #!/usr/bin/env python
+# Lint as: python3
 # Copyright 2012 Google Inc. All Rights Reserved.
 """Client actions related to plist files."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 
-import plistlib
+import biplist
 
 from grr_response_client import actions
 from grr_response_client import vfs
@@ -36,19 +40,23 @@ class PlistQuery(actions.ActionPlugin):
   MAX_PLIST_SIZE = 1024 * 1024 * 100  # 100 MB
 
   def Run(self, args):
+    # TODO(hanuszczak): Why are these an instance variables?
+    self.context = args.context
+    self.filter_query = args.query
+
     with vfs.VFSOpen(args.pathspec, progress_callback=self.Progress) as fd:
       data = fd.Read(self.MAX_PLIST_SIZE)
-      plist = plistlib.load(io.BytesIO(data))
+      plist = biplist.readPlist(io.BytesIO(data))
 
       # Create the query parser
-      parser = plist_lib.PlistFilterParser(str(args.query)).Parse()
+      parser = plist_lib.PlistFilterParser(str(self.filter_query)).Parse()
       filter_imp = plist_lib.PlistFilterImplementation
       matcher = parser.Compile(filter_imp)
 
-      if args.context:
+      if self.context:
         # Obtain the values for the context using the value expander
         value_expander = filter_imp.FILTERS["ValueExpander"]
-        iterator = value_expander().Expand(plist, args.context)
+        iterator = value_expander().Expand(plist, self.context)
       else:
         # If we didn't get a context, the context is the whole plist
         iterator = [plist]

@@ -1,8 +1,7 @@
 import {ChangeDetectionStrategy, Component} from '@angular/core';
-import {Title} from '@angular/platform-browser';
 import {Router} from '@angular/router';
 
-import {isClientId} from '../../lib/models/client';
+
 
 /**
  * Provides the top-most component for the GRR UI home page.
@@ -13,22 +12,13 @@ import {isClientId} from '../../lib/models/client';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Home {
-  constructor(
-      private readonly router: Router,
-      title: Title,
-  ) {
-    title.setTitle('GRR');
-  }
+  constructor(private readonly router: Router) {}
 
   /**
    * Event handler for the search box. Gets triggered when a user initiates
    * the client search.
    */
   onQuerySubmitted(query: string) {
-    if (isClientId(query)) {
-      this.router.navigate(['/clients', query]);
-    } else {
-      this.router.navigate(['/clients'], {queryParams: {'q': query}});
-    }
+    this.router.navigate(['v2/client-search', query]);
   }
 }

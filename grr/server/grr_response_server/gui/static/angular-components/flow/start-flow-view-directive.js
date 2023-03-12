@@ -1,48 +1,44 @@
 goog.module('grrUi.flow.startFlowViewDirective');
 goog.module.declareLegacyNamespace();
 
-const routingService = goog.requireType('grrUi.routing.routingService');
-
 
 
 /**
  * Controller for StartFlowViewDirective.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @param {!grrUi.routing.routingService.RoutingService} grrRoutingService
+ * @constructor
+ * @ngInject
  */
-const StartFlowViewController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @param {!routingService.RoutingService} grrRoutingService
-   * @ngInject
-   */
-  constructor($scope, grrRoutingService) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const StartFlowViewController = function(
+    $scope, grrRoutingService) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @private {!routingService.RoutingService} */
-    this.grrRoutingService_ = grrRoutingService;
+  /** @private {!grrUi.routing.routingService.RoutingService} */
+  this.grrRoutingService_ = grrRoutingService;
 
-    /** @type {string} */
-    this.cliendId;
+  /** @type {string} */
+  this.cliendId;
 
-    /** @type {Object} */
-    this.selection = {};
+  /** @type {Object} */
+  this.selection = {};
 
-    this.grrRoutingService_.uiOnParamsChanged(
-        this.scope_, 'clientId', this.onClientIdChange_.bind(this));
-  }
-
-  /**
-   * Handles changes to the client id state param.
-   *
-   * @param {string} clientId The new value for the client id.
-   * @private
-   */
-  onClientIdChange_(clientId) {
-    this.clientId = clientId;
-  }
+  this.grrRoutingService_.uiOnParamsChanged(this.scope_, 'clientId',
+      this.onClientIdChange_.bind(this));
 };
 
+
+/**
+ * Handles changes to the client id state param.
+ *
+ * @param {string} clientId The new value for the client id.
+ * @private
+ */
+StartFlowViewController.prototype.onClientIdChange_ = function(clientId) {
+  this.clientId = clientId;
+};
 
 
 /**

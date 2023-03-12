@@ -1,8 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Test hunt creation by flow."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
+from grr_response_core.lib.util import compatibility
 from grr_response_server import data_store
 from grr_response_server.flows.general import processes as flows_processes
 from grr_response_server.gui import gui_test_lib
@@ -18,15 +23,15 @@ class TestFlowCreateHunt(gui_test_lib.GRRSeleniumTest,
                          hunt_test_lib.StandardHuntTestMixin):
 
   def setUp(self):
-    super().setUp()
+    super(TestFlowCreateHunt, self).setUp()
     self.client_id = self.SetupClient(0)
     self.RequestAndGrantClientApproval(self.client_id)
     self.action_mock = action_mocks.FileFinderClientMock()
 
   def testCreateHuntFromFlow(self):
     email_descriptor = rdf_output_plugin.OutputPluginDescriptor(
-        plugin_name=email_plugin.EmailOutputPlugin.__name__,
-        args=email_plugin.EmailOutputPluginArgs(
+        plugin_name=compatibility.GetName(email_plugin.EmailOutputPlugin),
+        plugin_args=email_plugin.EmailOutputPluginArgs(
             email_address="test@localhost", emails_limit=42))
 
     args = flows_processes.ListProcessesArgs(
@@ -82,12 +87,13 @@ class TestFlowCreateHunt(gui_test_lib.GRRSeleniumTest,
     self.WaitUntilEqual(1, self.GetCssCount,
                         "css=grr-hunts-list table tbody tr.row-selected")
     self.WaitUntil(self.IsTextPresent, "GenericHunt")
-    self.WaitUntil(self.IsTextPresent, flows_processes.ListProcesses.__name__)
+    self.WaitUntil(self.IsTextPresent,
+                   compatibility.GetName(flows_processes.ListProcesses))
 
   def testApprovalIndicatesThatHuntWasCopiedFromFlow(self):
     email_descriptor = rdf_output_plugin.OutputPluginDescriptor(
-        plugin_name=email_plugin.EmailOutputPlugin.__name__,
-        args=email_plugin.EmailOutputPluginArgs(
+        plugin_name=compatibility.GetName(email_plugin.EmailOutputPlugin),
+        plugin_args=email_plugin.EmailOutputPluginArgs(
             email_address="test@localhost", emails_limit=42))
 
     args = flows_processes.ListProcessesArgs(
@@ -124,13 +130,13 @@ class TestFlowCreateHunt(gui_test_lib.GRRSeleniumTest,
     h = hunts[0]
     approval_id = self.RequestHuntApproval(
         h.hunt_id,
-        requestor=self.test_username,
+        requestor=self.token.username,
         reason="reason",
-        approver=self.test_username)
+        approver=self.token.username)
 
     # Open the approval page.
     self.Open("/#/users/%s/approvals/hunt/%s/%s" %
-              (self.test_username, h.hunt_id, approval_id))
+              (self.token.username, h.hunt_id, approval_id))
     self.WaitUntil(self.IsElementPresent,
                    "css=div.panel-body:contains('This hunt was created from')")
 

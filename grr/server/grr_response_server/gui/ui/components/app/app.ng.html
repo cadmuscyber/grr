@@ -1,55 +1,13 @@
-<mat-toolbar color="blank" class="toolbar mat-typography">
+<mat-toolbar color="primary" class="toolbar">
   <mat-toolbar-row>
-    <a mat-button class="brand" routerLink="/">
-      <div class="brand-wrapper">
-        <div class="logo">
-          <img src="/static/images/grr_logo_notification.png" alt="GRR logo" />
-        </div>
-        <div class="title">GRR <span *ngIf="heading$ | async as heading">– {{ heading }}</span></div>
-        <div class="badge">{{ (canaryMode$ | async) ? 'canary' : 'beta' }}</div>
-      </div>
-    </a>
+    <button aria-label="Open sidenav" mat-icon-button class="menu-icon">
 
-    <nav mat-tab-nav-bar [disablePagination]="true">
-      <a mat-tab-link routerLink="/" [active]="true">Collect from client</a>
-    </nav>
-
+      <mat-icon>menu</mat-icon>
+    </button>
+    <span>GRR</span>
     <span class="spacer"></span>
-
-    <a
-      id="fallback-link"
-      mat-button
-      color="primary"
-      href="{{fallbackLink$ | async}}"
-    >
-      <mat-icon>launch</mat-icon>
-      Use the old UI
-    </a>
-
-    <a
-      *ngIf="(uiConfig$ | async)?.reportUrl as reportUrl"
-      mat-button
-      color="primary"
-      href="{{reportUrl}}"
-      matTooltip="Report a problem"
-      target="_blank"
-      rel="noreferrer"
-    >
-      <mat-icon>feedback</mat-icon>
-    </a>
-
     <user-menu></user-menu>
-
   </mat-toolbar-row>
 </mat-toolbar>
 
-<mat-drawer-container
-  class="container mat-typography"
-  [class.noscroll]="drawer.opened"
->
-  <mat-drawer #drawer position="end">
-    <router-outlet name="drawer"></router-outlet>
-  </mat-drawer>
-
-  <router-outlet></router-outlet>
-</mat-drawer-container>
+<router-outlet></router-outlet>

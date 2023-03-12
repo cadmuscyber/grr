@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Implementation of configuration_file types."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
@@ -7,12 +11,12 @@ from grr_response_proto import config_file_pb2
 
 
 class LogTarget(rdf_structs.RDFProtoStruct):
-  """An RDFValue representation of a logging target."""
+  """An RDFValue represenation of a logging target."""
   protobuf = config_file_pb2.LogTarget
 
 
 class LogConfig(rdf_structs.RDFProtoStruct):
-  """An RDFValue representation of a logging configuration."""
+  """An RDFValue represenation of a logging configuration."""
   protobuf = config_file_pb2.LogConfig
   rdf_deps = [
       LogTarget,

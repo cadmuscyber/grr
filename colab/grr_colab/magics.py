@@ -1,20 +1,25 @@
 #!/usr/bin/env python
+# -*- encoding: utf-8 -*-
 """GRR Colab magics module.
 
 The module contains implementation of **magic** commands that use GRR API.
 """
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import shlex
-from typing import Text
 
 from IPython.core import magic_arguments
 import pandas as pd
+from typing import Text
 
 from grr_colab import magics_impl
 
 
-_PATH_TYPE_CHOICES = [
-    magics_impl.OS, magics_impl.TSK, magics_impl.NTFS, magics_impl.REGISTRY
-]
+_PATH_TYPE_CHOICES = [magics_impl.OS, magics_impl.TSK, magics_impl.REGISTRY]
 
 
 def grr_set_no_flow_timeout(line: Text) -> None:

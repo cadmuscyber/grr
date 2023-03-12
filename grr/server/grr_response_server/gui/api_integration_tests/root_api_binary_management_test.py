@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for root API user management calls."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 
@@ -68,34 +72,10 @@ class RootApiBinaryManagementTest(
     self._testBinaryUpload(config_pb2.ApiGrrBinary.EXECUTABLE, "windows/a.ps1",
                            data)
 
-  def testBinariesCanBeOverwritten(self):
-    self._testBinaryUpload(config_pb2.ApiGrrBinary.PYTHON_HACK,
-                           "windows/clean.py", b"print 'foo'")
-    self._testBinaryUpload(config_pb2.ApiGrrBinary.PYTHON_HACK,
-                           "windows/clean.py", b"print 'bar'")
-
-  def testBinariesCanNotBeOverwrittenIfReadOnlyConfigOptionIsSet(self):
-    with test_lib.ConfigOverrider({"Server.grr_binaries_readonly": True}):
-      self._testBinaryUpload(config_pb2.ApiGrrBinary.PYTHON_HACK,
-                             "windows/clean.py", b"print 'foo'")
-
-      with self.assertRaises(grr_api_errors.AccessForbiddenError):
-        self._Upload(config_pb2.ApiGrrBinary.PYTHON_HACK, "windows/clean.py",
-                     b"print 'bar'")
-
   def testDeletionFailsWhenBinaryNotFound(self):
     with self.assertRaises(grr_api_errors.ResourceNotFoundError):
       self.api.root.GrrBinary(config_pb2.ApiGrrBinary.EXECUTABLE,
                               "windows/a.ps1").Delete()
-
-  def testDeletionFailsIfReadOnlyConfigOptionIsSet(self):
-    with test_lib.ConfigOverrider({"Server.grr_binaries_readonly": True}):
-      self._testBinaryUpload(config_pb2.ApiGrrBinary.EXECUTABLE,
-                             "windows/a.ps1", b"blah")
-
-      with self.assertRaises(grr_api_errors.AccessForbiddenError):
-        self.api.root.GrrBinary(config_pb2.ApiGrrBinary.EXECUTABLE,
-                                "windows/a.ps1").Delete()
 
   def testUploadedBinaryIsCorrectlyDeleted(self):
     self._testBinaryUpload(config_pb2.ApiGrrBinary.EXECUTABLE, "windows/a.ps1",

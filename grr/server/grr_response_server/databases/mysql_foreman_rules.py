@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The MySQL database methods for foreman rule handling."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 from grr_response_server import foreman_rules

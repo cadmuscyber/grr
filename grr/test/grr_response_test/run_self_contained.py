@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Helper script for running end-to-end tests."""
 
 import sys
@@ -11,37 +12,34 @@ from grr_response_test.lib import api_helpers
 from grr_response_test.lib import self_contained_components
 
 
-_TESTS = flags.DEFINE_list(
+flags.DEFINE_list(
     "tests", [],
     "(Optional) comma-separated list of tests to run (skipping all others). "
     "If this flag is not specified, all tests available for the platform "
     "will run.")
 
-_MANUAL_TESTS = flags.DEFINE_list(
+flags.DEFINE_list(
     "manual_tests", [],
     "A comma-separated list of extra tests to run (such tests are not run by "
     "default and have to be manually enabled with this flag).")
 
-_WITH_FLEETSPEAK = flags.DEFINE_boolean(
+flags.DEFINE_boolean(
     "with_fleetspeak",
     default=False,
     help="Assume Fleetspeak is present on the system and use it.")
 
-_MYSQL_DATABASE = flags.DEFINE_string("mysql_database", "grr_test_db",
-                                      "MySQL database name to use for GRR.")
+flags.DEFINE_string("mysql_database", "grr_test_db",
+                    "MySQL database name to use for GRR.")
 
-_FLEETSPEAK_MYSQL_DATABASE = flags.DEFINE_string(
-    "fleetspeak_mysql_database", "fleetspeak_test_db",
-    "MySQL database name to use for Fleetspeak.")
+flags.DEFINE_string("fleetspeak_mysql_database", "fleetspeak_test_db",
+                    "MySQL database name to use for Fleetspeak.")
 
-_MYSQL_USERNAME = flags.DEFINE_string("mysql_username", None,
-                                      "MySQL username to use.")
+flags.DEFINE_string("mysql_username", None, "MySQL username to use.")
 
-_MYSQL_PASSWORD = flags.DEFINE_string("mysql_password", None,
-                                      "MySQL password to use.")
+flags.DEFINE_string("mysql_password", None, "MySQL password to use.")
 
-_LOGGING_PATH = flags.DEFINE_string(
-    "logging_path", None, "Base logging path for server components to use.")
+flags.DEFINE_string("logging_path", None,
+                    "Base logging path for server components to use.")
 
 flags.DEFINE_string(
     name="osquery_path",
@@ -53,25 +51,25 @@ flags.DEFINE_string(
 def main(argv):
   del argv  # Unused.
 
-  if _MYSQL_USERNAME.value is None:
+  if flags.FLAGS.mysql_username is None:
     raise ValueError("--mysql_username has to be specified.")
 
   # Generate server and client configs.
   grr_configs = self_contained_components.InitGRRConfigs(
-      _MYSQL_DATABASE.value,
-      mysql_username=_MYSQL_USERNAME.value,
-      mysql_password=_MYSQL_PASSWORD.value,
-      logging_path=_LOGGING_PATH.value,
+      flags.FLAGS.mysql_database,
+      mysql_username=flags.FLAGS.mysql_username,
+      mysql_password=flags.FLAGS.mysql_password,
+      logging_path=flags.FLAGS.logging_path,
       osquery_path=flags.FLAGS.osquery_path,
-      with_fleetspeak=_WITH_FLEETSPEAK.value)
+      with_fleetspeak=flags.FLAGS.with_fleetspeak)
 
   fleetspeak_configs = None
-  if _WITH_FLEETSPEAK.value:
+  if flags.FLAGS.with_fleetspeak:
     fleetspeak_configs = self_contained_components.InitFleetspeakConfigs(
         grr_configs,
-        _FLEETSPEAK_MYSQL_DATABASE.value,
-        mysql_username=_MYSQL_USERNAME.value,
-        mysql_password=_MYSQL_PASSWORD.value)
+        flags.FLAGS.fleetspeak_mysql_database,
+        mysql_username=flags.FLAGS.mysql_username,
+        mysql_password=flags.FLAGS.mysql_password)
 
   # Start all remaining server components.
   # Start a background thread that kills the main process if one of the
@@ -115,8 +113,8 @@ def main(argv):
   self_contained_components.RunEndToEndTests(
       client_id,
       grr_configs.server_config,
-      tests=_TESTS.value,
-      manual_tests=_MANUAL_TESTS.value)
+      tests=flags.FLAGS.tests,
+      manual_tests=flags.FLAGS.manual_tests)
 
   print("RunEndToEndTests execution succeeded.")
   sys.exit(0)

@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Functions for server logging."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 from logging import handlers
@@ -56,12 +60,7 @@ class GrrApplicationLogger(object):
     event_id = self.GetNewEventId()
 
     api_method = response.headers.get("X-API-Method", "unknown")
-    api_reason = "none"
-    if response.context:
-      approval = response.context.approval
-      if approval:
-        api_reason = approval.reason
-
+    api_reason = response.headers.get("X-GRR-Reason", "none")
     log_msg = "%s API call [%s] by %s (reason: %s): %s [%d]" % (
         event_id, api_method, request.user, api_reason, request.full_path,
         response.status_code)

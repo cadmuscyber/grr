@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Sample showing how to validate the Identity-Aware Proxy (IAP) JWT.
 
 This code should be used by applications in Google Compute Engine-based
@@ -9,6 +10,9 @@ of assurance that a request was authorized by IAP.
 For applications running in the App Engine standard environment, use
 App Engine's Users API instead.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import jwt
 import requests

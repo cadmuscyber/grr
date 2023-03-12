@@ -7,7 +7,6 @@ syntax = "proto2";
 import "grr_response_proto/jobs.proto";
 import "grr_response_proto/semantic.proto";
 
-package grr;
 
 message PackageRepository {
   optional string id = 1 [(sem_type) = {
@@ -122,68 +121,6 @@ message Process {
   optional float memory_percent = 24;
   repeated string open_files = 25;
   repeated NetworkConnection connections = 26;
-}
-
-// A message containing metadata about named pipes running on the system.
-//
-// Named pipes [1] is one of the Windows-specific mechanisms for communication
-// between processes. A pipe server and pipe clients communicate through a file-
-// like interface, handling all the details with synchronization, buffering and
-// networking for the user.
-//
-// [1]: https://docs.microsoft.com/en-us/windows/win32/ipc/named-pipes
-message NamedPipe {
-  // A name of the pipe.
-  optional string name = 1;
-
-  // An identifier of the process that owns the pipe (pipe server only).
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeserverprocessid
-  optional uint32 server_pid = 2;
-
-  // An identifier of the process that owns the pipe (pipe client only).
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid
-  optional uint32 client_pid = 3;
-
-  // A name of the computer of the pipe.
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientcomputernamea
-  optional string client_computer_name = 4;
-
-  // A name of the user that is associated with the client application (pipe
-  // server only).
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-getnamedpipehandlestatew
-  optional string client_user_name = 5;
-
-  // A bitmask with flags describing the type of the pipe.
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-getnamedpipeinfo
-  optional uint32 flags = 6;
-
-  // Current number of instances of the pipe.
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-getnamedpipehandlestatew
-  optional uint32 cur_instance_count = 7;
-
-  // Maximum number of instances of the pipe that can be created.
-  //
-  // The value of 255 denotes unlimited number of instances (subject to limits
-  // of the system resources).
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-getnamedpipeinfo
-  optional uint32 max_instance_count = 8;
-
-  // Size of the buffer for incoming pipe data (in bytes).
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-getnamedpipeinfo
-  optional uint32 in_buffer_size = 9;
-
-  // Size of the buffer for outgoing pipe data (in bytes).
-  //
-  // https://docs.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-getnamedpipeinfo
-  optional uint32 out_buffer_size = 10;
 }
 
 message NetworkEndpoint {
@@ -321,15 +258,8 @@ message WindowsServiceInformation {
     SERVICE_KERNEL_DRIVER = 0x1;
     SERVICE_FILE_SYSTEM_DRIVER = 0x2;
     SERVICE_ADAPTER_ARGS = 0x4;
-    SERVICE_RECOGNIZER_DRIVER = 0x8;
     SERVICE_WIN32_OWN_PROCESS = 0x10;
     SERVICE_WIN32_SHARE_PROCESS = 0x20;
-    SERVICE_USER_OWN_PROCESS = 0x50;
-    SERVICE_USER_SHARE_PROCESS = 0x60;
-    SERVICE_INTERACTIVE_PROCESS = 0x100;
-    SERVICE_INSTANCE_USER_SHARE_PROCESS = 0xe0;
-    SERVICE_INTERACTIVE_WIN32_OWN_PROCESS = 0x110;
-    SERVICE_INTERACTIVE_WIN32_SHARE_PROCESS = 0x120;
   }
 
   optional ServiceType service_type = 12 [(sem_type) = {
@@ -756,9 +686,10 @@ message LaunchdKeepAlive {
 
 // OSX Launchd plist
 message LaunchdPlist {
-  reserved 1;
-  optional string path = 44;
-
+  optional string aff4path = 1 [(sem_type) = {
+    type: "RDFURN",
+    description: "The location of this file in the AFF4 space."
+  }];
   optional string Label = 2;
   optional bool Disabled = 3;
   optional string UserName = 4;
@@ -797,7 +728,7 @@ message LaunchdPlist {
   optional bool AbandonProcessGroup = 37;
   optional bool LowPriorityIO = 38;
   optional bool LaunchOnlyOnce = 39;
-  optional bool inetdCompatibilityWait = 40;
+  optional bool inetdCompatabilityWait = 40;
   optional bool SoftResourceLimits = 41;
   optional bool HardResourceLimits = 42;
   optional bool Sockets = 43;
@@ -816,8 +747,10 @@ message CronTabEntry {
 
 // CronTab File
 message CronTabFile {
-  reserved 1;
-  optional string path = 3;
+  optional string aff4path = 1 [(sem_type) = {
+    type: "RDFURN",
+    description: "The location of this file in the AFF4 space."
+  }];
   repeated CronTabEntry jobs = 2;
 }
 

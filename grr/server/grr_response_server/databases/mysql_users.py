@@ -1,6 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The MySQL database methods for GRR users and approval handling."""
-from typing import Sequence
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import MySQLdb
 
@@ -254,13 +257,12 @@ class MySQLDBUsersMixin(object):
     return approval_request
 
   @mysql_utils.WithTransaction(readonly=True)
-  def ReadApprovalRequests(
-      self,
-      requestor_username,
-      approval_type,
-      subject_id=None,
-      include_expired=False,
-      cursor=None) -> Sequence[rdf_objects.ApprovalRequest]:
+  def ReadApprovalRequests(self,
+                           requestor_username,
+                           approval_type,
+                           subject_id=None,
+                           include_expired=False,
+                           cursor=None):
     """Reads approval requests of a given type for a given user."""
 
     query = """

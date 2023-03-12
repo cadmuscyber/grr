@@ -1,10 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Functions to run individual GRR components during self-contained testing."""
 
 import atexit
 import collections
 import os
-import platform
 import shutil
 import signal
 import subprocess
@@ -65,18 +65,13 @@ def _GetServerComponentArgs(config_path: str) -> List[str]:
       "grr-response-core", "install_data/etc/grr-server.yaml")
   secondary_config_path = package.ResourcePath(
       "grr-response-test", "grr_response_test/test_data/grr_test.yaml")
-
-  monitoring_port = portpicker.pick_unused_port()
-
   return [
       "--config",
       primary_config_path,
       "--secondary_configs",
       ",".join([secondary_config_path, config_path]),
       "-p",
-      f"Monitoring.http_port={monitoring_port}",
-      "-p",
-      f"Monitoring.http_port_max={monitoring_port+10}",
+      "Monitoring.http_port=%d" % portpicker.pick_unused_port(),
       "-p",
       "AdminUI.webauth_manager=NullWebAuthManager",
   ]
@@ -114,7 +109,7 @@ def _GetRunEndToEndTestsArgs(
       "True",
   ]
   if tests is not None:
-    args += ["--run_only_tests", ",".join(tests)]
+    args += ["--whitelisted_tests", ",".join(tests)]
   if manual_tests is not None:
     args += ["--manual_tests", ",".join(manual_tests)]
 
@@ -137,8 +132,7 @@ def _StartBinary(binary_path: str, args: List[str]) -> subprocess.Popen:
 
   popen_args = [binary_path] + args
   print("Starting binary: " + " ".join(popen_args))
-  process = subprocess.Popen(
-      popen_args, bufsize=0, stdout=None, stderr=subprocess.STDOUT)
+  process = subprocess.Popen(popen_args)
 
   def KillOnExit():
     if process.poll() is None:
@@ -153,9 +147,9 @@ def _StartBinary(binary_path: str, args: List[str]) -> subprocess.Popen:
 def _StartComponent(main_package: str, args: List[str]) -> subprocess.Popen:
   """Starts a new process with a given component.
 
-  This starts a Python interpreter with a "-u" argument (to turn off output
-  buffering) and with a "-m" argument followed by the main package name, thus
-  effectively executing the main() function of a given package.
+  This starts a Python interpreter with a "-m" argument followed by
+  the main package name, thus effectively executing the main()
+  function of a given package.
 
   Args:
     main_package: Main package path.
@@ -165,10 +159,9 @@ def _StartComponent(main_package: str, args: List[str]) -> subprocess.Popen:
   Returns:
     Popen object corresponding to a started process.
   """
-  popen_args = [sys.executable, "-u", "-m", main_package] + args
+  popen_args = [sys.executable, "-m", main_package] + args
   print("Starting %s component: %s" % (main_package, " ".join(popen_args)))
-  process = subprocess.Popen(
-      popen_args, bufsize=0, stdout=None, stderr=subprocess.STDOUT)
+  process = subprocess.Popen(popen_args)
   print("Component %s pid: %d" % (main_package, process.pid))
 
   def KillOnExit():
@@ -320,17 +313,10 @@ def InitFleetspeakConfigs(
   service_conf = system_pb2.ClientServiceConfig(name="GRR", factory="Daemon")
   payload = daemonservice_config_pb2.Config()
   payload.argv.extend([
-      sys.executable, "-u", "-m",
+      sys.executable, "-m",
       "grr_response_client.grr_fs_client",
       "--config", grr_configs.client_config
   ])
-
-  # TODO(user): remove this condition when Fleetspeak is used as a nanny
-  # on all platforms.
-  if platform.system() == "Windows":
-    payload.monitor_heartbeats = True
-    payload.heartbeat_unresponsive_grace_period_seconds = 45
-    payload.heartbeat_unresponsive_kill_period_seconds = 15
   service_conf.config.Pack(payload)
 
   os.mkdir(TempPath("textservices"))
@@ -494,20 +480,20 @@ def RunRepackTemplate(
 
 def RunUploadExe(server_config_path: str,
                  exe_path: str,
-                 platform_str: str,
+                 platform: str,
                  component_options: Optional[ComponentOptions] = None) -> str:
   """Runs 'grr_config_upater upload_exe' to upload a binary to GRR."""
   p = _StartComponent(
       "grr_response_server.bin.config_updater",
       _GetServerComponentArgs(server_config_path) +
       _ComponentOptionsToArgs(component_options) + [
-          "upload_exe", "--file", exe_path, "--platform", platform_str,
+          "upload_exe", "--file", exe_path, "--platform", platform,
           "--upload_subdirectory", "test"
       ])
   if p.wait() != 0:
     raise RuntimeError("RunUploadExe execution failed.")
 
-  return "%s/test/%s" % (platform_str, os.path.basename(exe_path))
+  return "%s/test/%s" % (platform, os.path.basename(exe_path))
 
 
 _PROCESS_CHECK_INTERVAL = 0.1

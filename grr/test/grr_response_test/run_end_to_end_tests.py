@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 """Helper script for running end-to-end tests."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
+import getpass
 import logging
 import sys
 
@@ -14,25 +18,28 @@ from grr_response_server import server_plugins
 
 from grr_response_core import config
 from grr_response_core.config import contexts
+from grr_response_server import access_control
+from grr_response_server import data_store
 from grr_response_server import server_startup
 from grr_response_test.end_to_end_tests import runner
 
-_API_ENDPOINT = flags.DEFINE_string("api_endpoint", "http://localhost:8000",
-                                    "GRR API endpoint.")
+flags.DEFINE_string("api_endpoint", "http://localhost:8000",
+                    "GRR API endpoint.")
 
-_API_USER = flags.DEFINE_string("api_user", "admin", "Username for GRR API.")
+flags.DEFINE_string("api_user", "admin", "Username for GRR API.")
 
-_API_PASSWORD = flags.DEFINE_string("api_password", "", "Password for GRR API.")
+flags.DEFINE_string("api_password", "", "Password for GRR API.")
 
-_CLIENT_ID = flags.DEFINE_string("client_id", "",
-                                 "Id for client to run tests against.")
+flags.DEFINE_string("client_id", "", "Id for client to run tests against.")
 
-_RUN_ONLY_TESTS = flags.DEFINE_list(
-    "run_only_tests", [],
+flags.DEFINE_list(
+    "whitelisted_tests", [],
     "(Optional) comma-separated list of tests to run (skipping all others).")
 
-_SKIP_TESTS = flags.DEFINE_list(
-    "skip_tests", [], "(Optional) comma-separated list of tests to skip.")
+flags.DEFINE_list(
+    "blacklisted_tests", [],
+    "(Optional) comma-separated list of tests to skip. Trumps "
+    "--whitelisted_tests if there are any conflicts.")
 
 flags.DEFINE_list(
     name="manual_tests",
@@ -41,15 +48,13 @@ flags.DEFINE_list(
 )
 
 # We use a logging Filter to exclude noisy unwanted log output.
-_FILENAMES_EXCLUDED_FROM_LOG = flags.DEFINE_list(
-    "filenames_excluded_from_log", ["connectionpool.py"],
-    "Files whose log messages won't get printed.")
+flags.DEFINE_list("filenames_excluded_from_log", ["connectionpool.py"],
+                  "Files whose log messages won't get printed.")
 
-_UPLOAD_TEST_BINARIES = flags.DEFINE_bool(
-    "upload_test_binaries", True,
-    "Whether to upload executables needed by some e2e tests.")
+flags.DEFINE_bool("upload_test_binaries", True,
+                  "Whether to upload executables needed by some e2e tests.")
 
-_IGNORE_TEST_CONTEXT = flags.DEFINE_list(
+flags.DEFINE_list(
     "ignore_test_context", False,
     "When set, run_end_to_end_tests doesn't load the config with a "
     "default 'Test Context' added.")
@@ -59,32 +64,32 @@ class E2ELogFilter(logging.Filter):
   """Logging filter that excludes log messages for particular files."""
 
   def filter(self, record):
-    return record.filename not in _FILENAMES_EXCLUDED_FROM_LOG.value
+    return record.filename not in flags.FLAGS.filenames_excluded_from_log
 
 
 def main(argv):
   del argv  # Unused.
 
-  if not _IGNORE_TEST_CONTEXT.value:
+  if not flags.FLAGS.ignore_test_context:
     config.CONFIG.AddContext(contexts.TEST_CONTEXT,
                              "Context for running tests.")
 
   server_startup.Init()
   for handler in logging.getLogger().handlers:
     handler.addFilter(E2ELogFilter())
-    handler.setLevel(logging.INFO)
-
+  data_store.default_token = access_control.ACLToken(
+      username=getpass.getuser(), reason="End-to-end tests")
   test_runner = runner.E2ETestRunner(
-      api_endpoint=_API_ENDPOINT.value,
-      api_user=_API_USER.value,
-      api_password=_API_PASSWORD.value,
-      run_only_tests=_RUN_ONLY_TESTS.value,
-      skip_tests=_SKIP_TESTS.value,
+      api_endpoint=flags.FLAGS.api_endpoint,
+      api_user=flags.FLAGS.api_user,
+      api_password=flags.FLAGS.api_password,
+      whitelisted_tests=flags.FLAGS.whitelisted_tests,
+      blacklisted_tests=flags.FLAGS.blacklisted_tests,
       manual_tests=flags.FLAGS.manual_tests,
-      upload_test_binaries=_UPLOAD_TEST_BINARIES.value)
+      upload_test_binaries=flags.FLAGS.upload_test_binaries)
   test_runner.Initialize()
 
-  results, _ = test_runner.RunTestsAgainstClient(_CLIENT_ID.value)
+  results, _ = test_runner.RunTestsAgainstClient(flags.FLAGS.client_id)
   # Exit with a non-0 error code if one of the tests failed.
   for r in results.values():
     if r.errors or r.failures:

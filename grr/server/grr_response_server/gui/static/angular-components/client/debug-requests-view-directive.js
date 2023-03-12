@@ -1,67 +1,62 @@
 goog.module('grrUi.client.debugRequestsViewDirective');
 goog.module.declareLegacyNamespace();
 
-const apiService = goog.requireType('grrUi.core.apiService');
-const routingService = goog.requireType('grrUi.routing.routingService');
-
 
 
 /**
  * Controller for DebugRequestsViewDirective.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @param {!grrUi.core.apiService.ApiService} grrApiService
+ * @param {!grrUi.routing.routingService.RoutingService} grrRoutingService
+ * @constructor
+ * @ngInject
  */
-const DebugRequestsViewController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @param {!apiService.ApiService} grrApiService
-   * @param {!routingService.RoutingService} grrRoutingService
-   * @ngInject
-   */
-  constructor($scope, grrApiService, grrRoutingService) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const DebugRequestsViewController = function(
+    $scope, grrApiService, grrRoutingService) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @private {!apiService.ApiService} */
-    this.grrApiService_ = grrApiService;
+  /** @private {!grrUi.core.apiService.ApiService} */
+  this.grrApiService_ = grrApiService;
 
-    /** @private {!routingService.RoutingService} */
-    this.grrRoutingService_ = grrRoutingService;
+  /** @private {!grrUi.routing.routingService.RoutingService} */
+  this.grrRoutingService_ = grrRoutingService;
 
-    /** @type {string} */
-    this.cliendId;
+  /** @type {string} */
+  this.cliendId;
 
-    /** @type {Array<Object>|undefined} */
-    this.actionRequests;
+  /** @type {Array<Object>|undefined} */
+  this.actionRequests;
 
-    this.grrRoutingService_.uiOnParamsChanged(
-        this.scope_, 'clientId', this.onClientIdChange_.bind(this));
-  }
-
-  /**
-   * Handles changes to the client id state param.
-   *
-   * @param {string} clientId The new client id.
-   * @private
-   */
-  onClientIdChange_(clientId) {
-    this.clientId = clientId;
-    this.actionRequests = undefined;
-
-    if (angular.isDefined(this.clientId)) {
-      var url = 'clients/' + this.clientId + '/action-requests';
-      var fetchResponses = 1;
-      if (angular.isDefined(this.scope_['fetchResponses'])) {
-        fetchResponses = this.scope_['fetchResponses'];
-      }
-      this.grrApiService_.get(url, {'fetch_responses': fetchResponses})
-          .then(function(response) {
-            this.actionRequests = response['data']['items'] || [];
-          }.bind(this));
-    }
-  }
+  this.grrRoutingService_.uiOnParamsChanged(this.scope_, 'clientId',
+      this.onClientIdChange_.bind(this));
 };
 
 
+/**
+ * Handles changes to the client id state param.
+ *
+ * @param {string} clientId The new client id.
+ * @private
+ */
+DebugRequestsViewController.prototype.onClientIdChange_ = function(clientId) {
+  this.clientId = clientId;
+  this.actionRequests = undefined;
+
+  if (angular.isDefined(this.clientId)) {
+    var url = 'clients/' + this.clientId + '/action-requests';
+    var fetchResponses = 1;
+    if (angular.isDefined(this.scope_['fetchResponses'])) {
+      fetchResponses = this.scope_['fetchResponses'];
+    }
+    this.grrApiService_.get(
+        url, {'fetch_responses': fetchResponses}).then(
+            function(response) {
+              this.actionRequests = response['data']['items'] || [];
+            }.bind(this));
+  }
+};
 
 /**
  * DebugRequestsViewDirective definition.
@@ -70,7 +65,9 @@ const DebugRequestsViewController = class {
  */
 exports.DebugRequestsViewDirective = function() {
   return {
-    scope: {fetchResponses: '='},
+    scope: {
+      fetchResponses: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/client/debug-requests-view.html',
     controller: DebugRequestsViewController,

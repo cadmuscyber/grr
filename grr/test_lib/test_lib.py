@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """A library for tests."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import datetime
 
@@ -13,9 +16,9 @@ import shutil
 import threading
 import time
 import unittest
-from unittest import mock
 
 from absl.testing import absltest
+import mock
 import pkg_resources
 
 from grr_response_core import config
@@ -25,6 +28,7 @@ from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_network as rdf_client_network
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.util import cache
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 from grr_response_core.lib.util import temp
 from grr_response_core.stats import stats_collector_instance
@@ -54,30 +58,22 @@ class GRRBaseTest(absltest.TestCase):
     Args:
       methodName: The test method to run.
     """
-    super().__init__(methodName=methodName or "__init__")
+    super(GRRBaseTest, self).__init__(methodName=methodName or "__init__")
     self.base_path = config.CONFIG["Test.data_dir"]
 
-  @classmethod
-  def setUpClass(cls):
-    super().setUpClass()
-    logging.disable(logging.CRITICAL)
-
-  @classmethod
-  def tearDownClass(cls):
-    logging.disable(logging.NOTSET)
-    super().tearDownClass()
-
   def setUp(self):
-    super().setUp()
+    super(GRRBaseTest, self).setUp()
 
-    self.test_username = "test"
+    test_user = u"test"
 
     system_users_patcher = mock.patch.object(
         access_control, "SYSTEM_USERS",
-        frozenset(
-            itertools.chain(access_control.SYSTEM_USERS, [self.test_username])))
+        frozenset(itertools.chain(access_control.SYSTEM_USERS, [test_user])))
     system_users_patcher.start()
     self.addCleanup(system_users_patcher.stop)
+
+    self.token = access_control.ACLToken(
+        username=test_user, reason="Running tests")
 
     self.temp_dir = temp.TempDirPath()
     config.CONFIG.SetWriteBack(os.path.join(self.temp_dir, "writeback.yaml"))
@@ -93,9 +89,8 @@ class GRRBaseTest(absltest.TestCase):
     # Stub out the email function
     self.emails_sent = []
 
-    def SendEmailStub(to_addresses, from_address, subject, message,
-                      **unused_kwargs):
-      self.emails_sent.append((to_addresses, from_address, subject, message))
+    def SendEmailStub(to_user, from_user, subject, message, **unused_kwargs):
+      self.emails_sent.append((to_user, from_user, subject, message))
 
     self.mail_stubber = utils.MultiStubber(
         (email_alerts.EMAIL_ALERTER, "SendEmail", SendEmailStub),
@@ -112,19 +107,18 @@ class GRRBaseTest(absltest.TestCase):
       raise NotImplementedError(
           "Usage of Set() is disabled, please use a configoverrider in tests.")
 
-    self.config_set_disable = mock.patch.object(config.CONFIG, "Set",
-                                                DisabledSet)
-    self.config_set_disable.start()
-    self.addCleanup(self.config_set_disable.stop)
+    self.config_set_disable = utils.Stubber(config.CONFIG, "Set", DisabledSet)
+    self.config_set_disable.Start()
+    self.addCleanup(self.config_set_disable.Stop)
 
     self._SetupFakeStatsContext()
 
     # Turn off WithLimitedCallFrequency-based caching in tests. Tests that need
     # to test caching behavior explicitly, should turn it on explicitly.
-    with_limited_call_frequency_stubber = mock.patch.object(
+    with_limited_call_frequency_stubber = utils.Stubber(
         cache, "WITH_LIMITED_CALL_FREQUENCY_PASS_THROUGH", True)
-    with_limited_call_frequency_stubber.start()
-    self.addCleanup(with_limited_call_frequency_stubber.stop)
+    with_limited_call_frequency_stubber.Start()
+    self.addCleanup(with_limited_call_frequency_stubber.Stop)
 
   def _SetupFakeStatsContext(self):
     """Creates a stats context for running tests based on defined metrics."""
@@ -217,16 +211,14 @@ class GRRBaseTest(absltest.TestCase):
     ip2.human_readable_address = "2001:abcd::%x" % client_nr
 
     mac1 = rdf_client_network.MacAddress.FromHumanReadableAddress(
-        "abcbccddee%02x" % client_nr)
-    mac1 = rdf_client_network.MacAddress.FromHumanReadableAddress(
         "aabbccddee%02x" % client_nr)
     mac2 = rdf_client_network.MacAddress.FromHumanReadableAddress(
         "bbccddeeff%02x" % client_nr)
 
     return [
-        rdf_client_network.Interface(ifname="if0", addresses=[ip1, ip2]),
-        rdf_client_network.Interface(ifname="if1", mac_address=mac1),
-        rdf_client_network.Interface(ifname="if2", mac_address=mac2),
+        rdf_client_network.Interface(addresses=[ip1, ip2]),
+        rdf_client_network.Interface(mac_address=mac1),
+        rdf_client_network.Interface(mac_address=mac2),
     ]
 
   def _SetupTestClientObject(self,
@@ -288,7 +280,6 @@ class GRRBaseTest(absltest.TestCase):
 
     client_index.ClientIndex().AddClient(client)
     if labels is not None:
-      data_store.REL_DB.WriteGRRUser("GRR")
       data_store.REL_DB.AddClientLabels(client_id, u"GRR", labels)
       client_index.ClientIndex().AddClientLabels(client_id, labels)
 
@@ -303,6 +294,9 @@ class GRRBaseTest(absltest.TestCase):
     csr = rdf_crypto.CertificateSigningRequest(
         common_name=common_name, private_key=private_key)
     return rdf_crypto.RDFX509Cert.ClientCertFromCSR(csr)
+
+  def GenerateToken(self, username, reason):
+    return access_control.ACLToken(username=username, reason=reason)
 
 
 class ConfigOverrider(object):
@@ -341,7 +335,7 @@ class PreserveConfig(object):
     self.old_config = config.CONFIG
     config.CONFIG = self.old_config.MakeNewConfig()
     config.CONFIG.initialized = self.old_config.initialized
-    config.CONFIG.SetWriteBack(self.old_config.writeback.config_path)
+    config.CONFIG.SetWriteBack(self.old_config.writeback.filename)
     config.CONFIG.raw_data = self.old_config.raw_data.copy()
     config.CONFIG.writeback_data = self.old_config.writeback_data.copy()
 
@@ -476,8 +470,8 @@ class FakeTimeline(object):
     self._original_time = time.time
     self._original_sleep = time.sleep
 
-    with mock.patch.object(time, "time", self._Time),\
-         mock.patch.object(time, "sleep", self._Sleep):
+    with utils.Stubber(time, "time", self._Time),\
+         utils.Stubber(time, "sleep", self._Sleep):
       self._owner_thread_turn.clear()
       self._worker_thread_turn.set()
       self._owner_thread_turn.wait()
@@ -597,7 +591,7 @@ class Instrument(object):
       self.call_count += 1
       return self.old_target(*args, **kwargs)
 
-    self.stubber = mock.patch.object(module, target_name, Wrapper)
+    self.stubber = utils.Stubber(module, target_name, Wrapper)
     self.args = []
     self.kwargs = []
     self.call_count = 0
@@ -661,6 +655,10 @@ class SuppressLogs(object):
     logging.debug = self.old_debug
 
 
+# TODO(user): It would be nice if all doctested functions (or even examples)
+# had their own method in the TestCase. This allows faster developer cycles,
+# because the developer sees all failures instead of only the first one. Also,
+# it makes it easier to see if a doctest has been added for a new docstring.
 class DocTest(absltest.TestCase):
   """A TestCase that tests examples in docstrings using doctest.
 
@@ -671,6 +669,12 @@ class DocTest(absltest.TestCase):
 
   def testDocStrings(self):
     """Test all examples in docstrings using doctest."""
+
+    if not compatibility.PY2:
+      # TODO(user): Migrate all doctests to Python 3 only once we use Python 3
+      # in production.
+      self.skipTest("DocTest is disabled for Python 3 because of unicode string"
+                    " formatting.")
 
     self.assertIsNotNone(self.module, "Set DocTest.module to test docstrings.")
     try:

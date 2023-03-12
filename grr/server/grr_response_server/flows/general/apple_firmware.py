@@ -1,8 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A flow to collect eficheck output."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib.parsers import eficheck_parser
 from grr_response_core.lib.rdfvalues import apple_firmware as rdf_apple_firmware
+from grr_response_core.lib.util import compatibility
 from grr_response_server import flow_base
 from grr_response_server import server_stubs
 from grr_response_server.flows.general import transfer
@@ -28,7 +33,7 @@ class CollectEfiHashes(flow_base.FlowBase):
     self.CallClient(
         server_stubs.EficheckCollectHashes,
         cmd_path=self.args.cmd_path,
-        next_state=self.CollectedHashes.__name__)
+        next_state=compatibility.GetName(self.CollectedHashes))
 
   def CollectedHashes(self, responses):
     """Process the output of eficheck."""
@@ -73,7 +78,7 @@ class DumpEfiImage(flow_base.FlowBase):
     self.CallClient(
         server_stubs.EficheckDumpImage,
         cmd_path=self.args.cmd_path,
-        next_state=self.CollectedImage.__name__)
+        next_state=compatibility.GetName(self.CollectedImage))
 
   def CollectedImage(self, responses):
     """Process the output of eficheck."""
@@ -96,7 +101,7 @@ class DumpEfiImage(flow_base.FlowBase):
         self.CallFlow(
             transfer.MultiGetFile.__name__,
             pathspecs=[image_path],
-            next_state=self.DeleteTemporaryDir.__name__)
+            next_state=compatibility.GetName(self.DeleteTemporaryDir))
 
   def DeleteTemporaryDir(self, responses):
     """Remove the temporary image from the client."""
@@ -111,7 +116,7 @@ class DumpEfiImage(flow_base.FlowBase):
     self.CallClient(
         server_stubs.DeleteGRRTempFiles,
         response.pathspec,
-        next_state=self.TemporaryImageRemoved.__name__)
+        next_state=compatibility.GetName(self.TemporaryImageRemoved))
 
   def TemporaryImageRemoved(self, responses):
     """Verify that the temporary image has been removed successfully."""

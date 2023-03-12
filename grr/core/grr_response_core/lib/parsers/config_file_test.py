@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Unit test for config files."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 
@@ -377,7 +382,7 @@ class APTPackageSourceParserTests(test_lib.GRRBaseTest):
     self.assertEmpty(result.uris)
 
   def testRFC822StyleSourceDataParser(self):
-    """Test source list formatted as per rfc822 style."""
+    """Test source list formated as per rfc822 style."""
 
     test_data = br"""
     # comment comment comment

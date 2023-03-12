@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This modules contains tests for artifact API handler."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import os
@@ -9,7 +13,6 @@ from absl import app
 from grr_response_core import config
 from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
 from grr_response_server import artifact
-from grr_response_server.gui import api_call_context
 from grr_response_server.gui import api_test_lib
 from grr_response_server.gui.api_plugins import artifact as artifact_plugin
 from grr.test_lib import artifact_test_lib
@@ -23,13 +26,12 @@ class ApiListArtifactsHandlerTest(flow_test_lib.FlowTestsBaseclass):
   """Test for ApiListArtifactsHandler."""
 
   def setUp(self):
-    super().setUp()
+    super(ApiListArtifactsHandlerTest, self).setUp()
     self.handler = artifact_plugin.ApiListArtifactsHandler()
-    self.context = api_call_context.ApiCallContext("test")
 
   @artifact_test_lib.PatchCleanArtifactRegistry
   def testNoArtifacts(self, _):
-    result = self.handler.Handle(self.handler.args_type(), context=self.context)
+    result = self.handler.Handle(self.handler.args_type(), token=self.token)
 
     self.assertEqual(result.total_count, 0)
     self.assertEqual(result.items, [])
@@ -40,7 +42,7 @@ class ApiListArtifactsHandlerTest(flow_test_lib.FlowTestsBaseclass):
                                        "artifacts", "test_artifacts.json")
     registry.AddFileSource(test_artifacts_file)
 
-    result = self.handler.Handle(self.handler.args_type(), context=self.context)
+    result = self.handler.Handle(self.handler.args_type(), token=self.token)
 
     # Some artifacts are guaranteed to be returned, as they're defined in
     # the test_data/artifacts/test_artifacts.json.
@@ -57,6 +59,7 @@ class ApiListArtifactsHandlerTest(flow_test_lib.FlowTestsBaseclass):
     self.assertFalse(fake_artifact.is_custom)
 
     self.assertTrue(fake_artifact.artifact.doc)
+    self.assertTrue(fake_artifact.artifact.labels)
     self.assertTrue(fake_artifact.artifact.supported_os)
 
 
@@ -64,7 +67,7 @@ class ApiListArtifactsHandlerTest(flow_test_lib.FlowTestsBaseclass):
 class ApiUploadArtifactHandlerTest(api_test_lib.ApiCallHandlerTest):
 
   def setUp(self):
-    super().setUp()
+    super(ApiUploadArtifactHandlerTest, self).setUp()
     self.handler = artifact_plugin.ApiUploadArtifactHandler()
 
   @artifact_test_lib.PatchCleanArtifactRegistry
@@ -77,7 +80,7 @@ class ApiUploadArtifactHandlerTest(api_test_lib.ApiCallHandlerTest):
     with self.assertRaises(rdf_artifacts.ArtifactNotRegisteredError):
       registry.GetArtifact("TestDrivers")
 
-    self.handler.Handle(args, context=self.context)
+    self.handler.Handle(args, token=self.token)
 
     registry.GetArtifact("TestDrivers")
 
@@ -87,7 +90,7 @@ class ApiUploadArtifactHandlerTest(api_test_lib.ApiCallHandlerTest):
 class ApiDeleteArtifactsHandlerTest(api_test_lib.ApiCallHandlerTest):
 
   def setUp(self):
-    super().setUp()
+    super(ApiDeleteArtifactsHandlerTest, self).setUp()
     self.handler = artifact_plugin.ApiDeleteArtifactsHandler()
 
   def UploadTestArtifacts(self):
@@ -102,7 +105,7 @@ class ApiDeleteArtifactsHandlerTest(api_test_lib.ApiCallHandlerTest):
 
     args = self.handler.args_type(
         names=["TestFilesArtifact", "WMIActiveScriptEventConsumer"])
-    self.handler.Handle(args, context=self.context)
+    self.handler.Handle(args, token=self.token)
 
     new_count = len(registry.GetArtifacts())
 
@@ -113,14 +116,14 @@ class ApiDeleteArtifactsHandlerTest(api_test_lib.ApiCallHandlerTest):
     self.UploadTestArtifacts()
     args = self.handler.args_type(names=["TestAggregationArtifact"])
     with self.assertRaises(ValueError):
-      self.handler.Handle(args, context=self.context)
+      self.handler.Handle(args, token=self.token)
 
   def testDeleteNonExistentArtifact(self, registry):
     self.UploadTestArtifacts()
     args = self.handler.args_type(names=["NonExistentArtifact"])
     e = self.assertRaises(ValueError)
     with e:
-      self.handler.Handle(args, context=self.context)
+      self.handler.Handle(args, token=self.token)
     self.assertEqual(
         str(e.exception),
         "Artifact(s) to delete (NonExistentArtifact) not found.")

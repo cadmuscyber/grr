@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Abstract base test for serving statistics."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 
@@ -16,7 +20,7 @@ class StatsServerTestMixin(metaclass=abc.ABCMeta):
     self.server = None
 
   def setUp(self):
-    super().setUp()
+    super(StatsServerTestMixin, self).setUp()
     self.server = self.setUpStatsServer(portpicker.pick_unused_port())
     self.server.Start()
     self.addCleanup(self.server.Stop)
@@ -26,7 +30,7 @@ class StatsServerTestMixin(metaclass=abc.ABCMeta):
     raise NotImplementedError()
 
   def url(self, path="/"):
-    return "http://[::1]:{}{}".format(self.server.port, path)
+    return "http://localhost:{}{}".format(self.server.port, path)
 
   def testHealth(self):
     response = requests.get(self.url("/healthz"))

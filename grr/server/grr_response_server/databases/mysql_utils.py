@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Utilities used by the MySQL database."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import contextlib
 import functools
@@ -13,7 +17,6 @@ from typing import Text
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.util import precondition
-from grr_response_server.databases import db as db_module
 from grr_response_server.databases import db_utils
 
 
@@ -44,10 +47,10 @@ def Placeholders(num: int, values: int = 1) -> Text:
 
   Examples:
     >>> Placeholders(3)
-    '(%s, %s, %s)'
+    u'(%s, %s, %s)'
 
     >>> Placeholders(num=3, values=2)
-    '(%s, %s, %s), (%s, %s, %s)'
+    u'(%s, %s, %s), (%s, %s, %s)'
 
   Args:
     num: The number of %s placeholders for each value.
@@ -56,6 +59,7 @@ def Placeholders(num: int, values: int = 1) -> Text:
   Returns:
     a string with `values` comma-separated tuples containing `num`
     comma-separated placeholders each.
+
   """
   value = "(" + ", ".join(["%s"] * num) + ")"
   return ", ".join([value] * values)
@@ -71,7 +75,7 @@ def NamedPlaceholders(iterable: Iterable[Text]) -> Text:
 
   Examples:
     >>> NamedPlaceholders({"password": "foo", "name": "bar"})
-    '(%(name)s, %(password)s)'
+    u'(%(name)s, %(password)s)'
 
   Args:
     iterable: The iterable of strings to be used as placeholder keys.
@@ -91,7 +95,7 @@ def Columns(iterable: Iterable[Text]) -> Text:
 
   Examples:
     >>> Columns({"password": "foo", "name": "bar"})
-    '(`name`, `password`)'
+    u'(`name`, `password`)'
 
   Args:
     iterable: The iterable of strings to be used as column names.
@@ -113,8 +117,8 @@ def TimestampToRDFDatetime(timestamp) -> Optional[rdfvalue.RDFDatetime]:
     return rdfvalue.RDFDatetime.FromMicrosecondsSinceEpoch(micros)
 
 
-def RDFDatetimeToTimestamp(
-    datetime: Optional[rdfvalue.RDFDatetime]) -> Optional[float]:
+def RDFDatetimeToTimestamp(datetime: Optional[rdfvalue.RDFDatetime]
+                          ) -> Optional[float]:
   """Converts a datetime object to MySQL `TIMESTAMP(6)` column."""
   if datetime is None:
     return None
@@ -236,7 +240,3 @@ class WithTransaction(object):
       return self._RunInTransaction(Closure, readonly)
 
     return db_utils.CallLoggedAndAccounted(Decorated)
-
-
-class RetryableError(db_module.Error):
-  """Indicates that a transaction can be retried."""

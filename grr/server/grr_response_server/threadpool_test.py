@@ -1,11 +1,14 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for the ThreadPool class."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 import queue
 import threading
 import time
-from unittest import mock
 
 from absl import app
 
@@ -23,7 +26,7 @@ class ThreadPoolTest(stats_test_lib.StatsTestMixin, test_lib.GRRBaseTest):
   sleep_time = 0.1
 
   def setUp(self):
-    super().setUp()
+    super(ThreadPoolTest, self).setUp()
     self.base_thread_count = threading.active_count()
 
     prefix = "pool-%s" % self._testMethodName
@@ -146,7 +149,7 @@ class ThreadPoolTest(stats_test_lib.StatsTestMixin, test_lib.GRRBaseTest):
 
     with self.assertStatsCounterDelta(
         2, threadpool.THREADPOOL_TASK_EXCEPTIONS, fields=[self.test_pool.name]):
-      with mock.patch.object(logging, "exception", MockException):
+      with utils.Stubber(logging, "exception", MockException):
         self.test_pool.AddTask(IRaise, (None,), "Raising")
         self.test_pool.AddTask(IRaise, (None,), "Raising")
         self.test_pool.Join()
@@ -169,7 +172,7 @@ class ThreadPoolTest(stats_test_lib.StatsTestMixin, test_lib.GRRBaseTest):
       raise threading.ThreadError()
 
     # Now simulate failure of creating threads.
-    with mock.patch.object(threadpool._WorkerThread, "start", RaisingStart):
+    with utils.Stubber(threadpool._WorkerThread, "start", RaisingStart):
       # Fill all the existing threads and wait for them to become busy.
       self.test_pool.AddTask(Block, (done_event,))
       self.WaitUntil(lambda: self.test_pool.busy_threads == self.

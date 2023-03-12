@@ -4,7 +4,7 @@ goog.module.declareLegacyNamespace();
 
 
 /**
- * Registers series in the graph.
+ * Registers serie in the graph.
  *
  * @return {!angular.Directive} Directive definition object.
  * @export

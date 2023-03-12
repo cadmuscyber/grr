@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 """Decorators and helper functions for artifacts-related tests."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import os
-from unittest import mock
+
+
+import mock
 
 from grr_response_core import config
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs

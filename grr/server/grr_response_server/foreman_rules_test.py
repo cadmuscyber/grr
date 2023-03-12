@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Test for the foreman client rule classes."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -20,7 +25,7 @@ class ForemanClientRuleSetTest(rdf_test_base.RDFValueTestMixin,
     # prevent failure due to [] != None. Side effects... (ノಠ益ಠ)ノ彡┻━┻
     value.rules  # pylint: disable=pointless-statement
     sample.rules  # pylint: disable=pointless-statement
-    super().CheckRDFValue(value, sample)
+    super(ForemanClientRuleSetTest, self).CheckRDFValue(value, sample)
 
   def GenerateSample(self, number=0):
     ret = foreman_rules.ForemanClientRuleSet()
@@ -370,7 +375,6 @@ class ForemanLabelClientRuleTest(rdf_test_base.RDFValueTestMixin,
   def _Evaluate(self, rule):
     client_id = self.SetupClient(0)
 
-    data_store.REL_DB.WriteGRRUser("GRR")
     data_store.REL_DB.AddClientLabels(client_id, u"GRR", [u"hello", u"world"])
 
     client_info = data_store.REL_DB.ReadClientFullInfo(client_id)
@@ -511,7 +515,6 @@ class ForemanRegexClientRuleTest(test_lib.GRRBaseTest):
   def testLabels(self):
     client_id = self.SetupClient(0, system="Linux")
 
-    data_store.REL_DB.WriteGRRUser("GRR")
     data_store.REL_DB.AddClientLabels(client_id, u"GRR", [u"hello", u"world"])
 
     info = data_store.REL_DB.ReadClientFullInfo(client_id)

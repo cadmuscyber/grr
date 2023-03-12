@@ -1,12 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 """These are osx specific installers."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import logging
 import os
 import zipfile
 
 from grr_response_core import config
-from grr_response_core.lib import config_parser
+from grr_response_core.lib import config_lib
 from grr_response_core.lib import type_info
 
 
@@ -20,7 +24,7 @@ def Run():
 
   zf = zipfile.ZipFile(pkg_path, mode="r")
   fd = zf.open("config.yaml")
-  install_dir = os.path.dirname(config.CONFIG.parser.config_path)
+  install_dir = os.path.dirname(config.CONFIG.parser.filename)
 
   # We write this config to disk so that Initialize can find the build.yaml
   # referenced inside the config as a relative path. This config isn't used
@@ -31,7 +35,7 @@ def Run():
 
   packaged_config = config.CONFIG.MakeNewConfig()
   packaged_config.Initialize(
-      filename=installer_config, parser=config_parser.YamlConfigFileParser)
+      filename=installer_config, parser=config_lib.YamlParser)
 
   new_config = config.CONFIG.MakeNewConfig()
   new_config.SetWriteBack(config.CONFIG["Config.writeback"])

@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """API handlers for stats."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
@@ -36,7 +40,7 @@ class ApiListReportsHandler(api_call_handler_base.ApiCallHandler):
 
   result_type = ApiListReportsResult
 
-  def Handle(self, args, context):
+  def Handle(self, args, token):
     return ApiListReportsResult(reports=sorted(
         (rdf_report_plugins.ApiReport(
             desc=report_cls.GetReportDescriptor(), data=None)
@@ -58,11 +62,12 @@ class ApiGetReportHandler(api_call_handler_base.ApiCallHandler):
   args_type = ApiGetReportArgs
   result_type = rdf_report_plugins.ApiReport
 
-  def Handle(self, args, context):
+  def Handle(self, args, token):
     report = report_plugins.GetReportByName(args.name)
 
     if not args.client_label:
       args.client_label = "All"
 
     return rdf_report_plugins.ApiReport(
-        desc=report.GetReportDescriptor(), data=report.GetReportData(args))
+        desc=report.GetReportDescriptor(),
+        data=report.GetReportData(args, token))

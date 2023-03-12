@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The MySQL database methods for handling artifacts."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from typing import Text
 

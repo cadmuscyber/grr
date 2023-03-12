@@ -1,18 +1,15 @@
 #!/usr/bin/env python
-
-from typing import IO
-from typing import Iterable
-from typing import Iterator
-from unittest import mock
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl.testing import absltest
 
+import mock
+
 from grr_response_core.lib import factory
 from grr_response_core.lib import parsers
-from grr_response_core.lib import rdfvalue
-from grr_response_core.lib.rdfvalues import client as rdf_client
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
-from grr.test_lib import parser_test_lib
 
 
 class ArtifactParserFactoryTest(absltest.TestCase):
@@ -21,37 +18,25 @@ class ArtifactParserFactoryTest(absltest.TestCase):
                      factory.Factory(parsers.SingleResponseParser))
   def testSingleResponseParsers(self):
 
-    class FooParser(parsers.SingleResponseParser[None]):
+    class FooParser(parsers.SingleResponseParser):
 
       supported_artifacts = ["Quux", "Norf"]
 
-      def ParseResponse(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          response: rdfvalue.RDFValue,
-      ) -> Iterator[None]:
+      def ParseResponse(self, knowledge_base, response):
         raise NotImplementedError()
 
-    class BarParser(parsers.SingleResponseParser[None]):
+    class BarParser(parsers.SingleResponseParser):
 
       supported_artifacts = ["Norf", "Thud"]
 
-      def ParseResponse(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          response: rdfvalue.RDFValue,
-      ) -> Iterator[None]:
+      def ParseResponse(self, knowledge_base, response):
         raise NotImplementedError()
 
-    class BazParser(parsers.SingleResponseParser[None]):
+    class BazParser(parsers.SingleResponseParser):
 
       supported_artifacts = ["Thud", "Quux"]
 
-      def ParseResponse(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          response: rdfvalue.RDFValue,
-      ) -> Iterator[None]:
+      def ParseResponse(self, knowledge_base, response):
         raise NotImplementedError()
 
     parsers.SINGLE_RESPONSE_PARSER_FACTORY.Register("Foo", FooParser)
@@ -74,26 +59,18 @@ class ArtifactParserFactoryTest(absltest.TestCase):
                      factory.Factory(parsers.MultiResponseParser))
   def testMultiResponseParsers(self):
 
-    class FooParser(parsers.MultiResponseParser[None]):
+    class FooParser(parsers.MultiResponseParser):
 
       supported_artifacts = ["Foo"]
 
-      def ParseResponses(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          responses: Iterable[rdfvalue.RDFValue],
-      ) -> Iterator[None]:
+      def ParseResponses(self, knowledge_base, responses):
         raise NotImplementedError()
 
-    class BarParser(parsers.MultiResponseParser[None]):
+    class BarParser(parsers.MultiResponseParser):
 
       supported_artifacts = ["Bar"]
 
-      def ParseResponses(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          responses: Iterable[rdfvalue.RDFValue],
-      ) -> Iterator[None]:
+      def ParseResponses(self, knowledge_base, responses):
         raise NotImplementedError()
 
     parsers.MULTI_RESPONSE_PARSER_FACTORY.Register("Foo", FooParser)
@@ -132,28 +109,18 @@ class ArtifactParserFactoryTest(absltest.TestCase):
                      factory.Factory(parsers.MultiFileParser))
   def testMultiFileParsers(self):
 
-    class FooParser(parsers.MultiFileParser[None]):
+    class FooParser(parsers.MultiFileParser):
 
       supported_artifacts = ["Quux", "Norf"]
 
-      def ParseFiles(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          pathspecs: Iterable[rdf_paths.PathSpec],
-          filedescs: Iterable[IO[bytes]],
-      ) -> Iterator[None]:
+      def ParseFiles(self, knowledge_base, pathspecs, filedescs):
         raise NotImplementedError()
 
-    class BarParser(parsers.MultiFileParser[None]):
+    class BarParser(parsers.MultiFileParser):
 
       supported_artifacts = ["Quux", "Thud"]
 
-      def ParseFiles(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          pathspecs: Iterable[rdf_paths.PathSpec],
-          filedescs: Iterable[IO[bytes]],
-      ) -> Iterator[None]:
+      def ParseFiles(self, knowledge_base, pathspecs, filedescs):
         raise NotImplementedError()
 
     parsers.MULTI_FILE_PARSER_FACTORY.Register("Foo", FooParser)
@@ -177,105 +144,26 @@ class ArtifactParserFactoryTest(absltest.TestCase):
                      factory.Factory(parsers.MultiResponseParser))
   def testAllParsers(self):
 
-    class FooParser(parsers.SingleFileParser[None]):
+    class FooParser(parsers.SingleFileParser):
 
       supported_artifacts = ["Quux"]
 
-      def ParseFile(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          pathspec: rdf_paths.PathSpec,
-          filedesc: IO[bytes],
-      ):
+      def ParseFile(self, knowledge_base, pathspec, filedesc):
         raise NotImplementedError()
 
-    class BarParser(parsers.MultiResponseParser[None]):
+    class BarParser(parsers.MultiResponseParser):
 
       supported_artifacts = ["Quux"]
 
-      def ParseResponses(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          responses: Iterable[rdfvalue.RDFValue],
-      ) -> Iterator[None]:
+      def ParseResponses(self, knowledge_base, responses):
         raise NotImplementedError()
 
     parsers.SINGLE_FILE_PARSER_FACTORY.Register("Foo", FooParser)
     parsers.MULTI_RESPONSE_PARSER_FACTORY.Register("Bar", BarParser)
 
     quux_factory = parsers.ArtifactParserFactory("Quux")
-    quux_parsers = quux_factory.AllParserTypes()
-    self.assertCountEqual(quux_parsers, [FooParser, BarParser])
-
-  def testSingleResponseParserNames(self):
-
-    class FooParser(parsers.SingleResponseParser[None]):
-
-      supported_artifacts = ["Quux"]
-
-      def ParseResponse(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          response: rdfvalue.RDFValue,
-      ) -> Iterator[None]:
-        raise NotImplementedError()
-
-    with parser_test_lib._ParserContext("Foo", FooParser):
-      quux_factory = parsers.ArtifactParserFactory("Quux")
-      self.assertEqual(list(quux_factory.SingleResponseParserNames()), ["Foo"])
-
-  def testMultiResponseParserNames(self):
-
-    class FooParser(parsers.MultiResponseParser[None]):
-
-      supported_artifacts = ["Quux"]
-
-      def ParseResponses(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          responses: Iterable[rdfvalue.RDFValue],
-      ) -> Iterator[None]:
-        raise NotImplementedError()
-
-    with parser_test_lib._ParserContext("Foo", FooParser):
-      quux_factory = parsers.ArtifactParserFactory("Quux")
-      self.assertEqual(list(quux_factory.MultiResponseParserNames()), ["Foo"])
-
-  def testSingleFileParserNames(self):
-
-    class FooParser(parsers.SingleFileParser[None]):
-
-      supported_artifacts = ["Quux"]
-
-      def ParseFile(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          pathspec: rdf_paths.PathSpec,
-          filedesc: IO[bytes],
-      ) -> Iterator[None]:
-        raise NotImplementedError()
-
-    with parser_test_lib._ParserContext("Foo", FooParser):
-      quux_factory = parsers.ArtifactParserFactory("Quux")
-      self.assertEqual(list(quux_factory.SingleFileParserNames()), ["Foo"])
-
-  def testMultiFileParserNames(self):
-
-    class FooParser(parsers.MultiFileParser[None]):
-
-      supported_artifacts = ["Quux"]
-
-      def ParseFiles(
-          self,
-          knowledge_base: rdf_client.KnowledgeBase,
-          pathspecs: Iterable[rdf_paths.PathSpec],
-          filedescs: Iterable[IO[bytes]],
-      ) -> Iterator[None]:
-        raise NotImplementedError()
-
-    with parser_test_lib._ParserContext("Foo", FooParser):
-      quux_factory = parsers.ArtifactParserFactory("Quux")
-      self.assertEqual(list(quux_factory.MultiFileParserNames()), ["Foo"])
+    quux_parsers = quux_factory.AllParsers()
+    self.assertCountEqual(map(type, quux_parsers), [FooParser, BarParser])
 
 
 if __name__ == "__main__":

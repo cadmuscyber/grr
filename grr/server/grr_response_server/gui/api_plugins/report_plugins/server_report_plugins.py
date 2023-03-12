@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """UI server report handling classes."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import collections
 import math
@@ -83,7 +87,7 @@ class ClientApprovalsReportPlugin(report_plugin_base.ReportPluginBase):
           rdf_events.AuditEvent.Action.CLIENT_APPROVAL_REQUEST,
   }
 
-  def GetReportData(self, get_report_args=None):
+  def GetReportData(self, get_report_args, token=None):
     """Filter the cron job approvals in the given timerange."""
     ret = rdf_report_plugins.ApiReportData(
         representation_type=RepresentationType.AUDIT_CHART,
@@ -111,7 +115,7 @@ class CronApprovalsReportPlugin(report_plugin_base.ReportPluginBase):
           rdf_events.AuditEvent.Action.CRON_APPROVAL_REQUEST,
   }
 
-  def GetReportData(self, get_report_args):
+  def GetReportData(self, get_report_args, token):
     """Filter the cron job approvals in the given timerange."""
     ret = rdf_report_plugins.ApiReportData(
         representation_type=RepresentationType.AUDIT_CHART,
@@ -147,7 +151,7 @@ class HuntActionsReportPlugin(report_plugin_base.ReportPluginBase):
       "ModifyHunt": rdf_events.AuditEvent.Action.HUNT_MODIFIED,
   }
 
-  def GetReportData(self, get_report_args):
+  def GetReportData(self, get_report_args, token):
     """Filter the hunt actions in the given timerange."""
     ret = rdf_report_plugins.ApiReportData(
         representation_type=RepresentationType.AUDIT_CHART,
@@ -172,7 +176,7 @@ class HuntApprovalsReportPlugin(report_plugin_base.ReportPluginBase):
       "CreateHuntApproval": rdf_events.AuditEvent.Action.HUNT_APPROVAL_REQUEST,
   }
 
-  def GetReportData(self, get_report_args):
+  def GetReportData(self, get_report_args, token):
     """Filter the hunt approvals in the given timerange."""
     ret = rdf_report_plugins.ApiReportData(
         representation_type=RepresentationType.AUDIT_CHART,
@@ -192,7 +196,7 @@ class MostActiveUsersReportPlugin(report_plugin_base.ReportPluginBase):
   SUMMARY = "Active user actions."
   REQUIRES_TIME_RANGE = True
 
-  def _GetUserCounts(self, get_report_args=None):
+  def _GetUserCounts(self, get_report_args, token=None):
     counter = collections.Counter()
     entries = data_store.REL_DB.CountAPIAuditEntriesByUserAndDay(
         min_timestamp=get_report_args.start_time,
@@ -201,12 +205,12 @@ class MostActiveUsersReportPlugin(report_plugin_base.ReportPluginBase):
       counter[username] += count
     return counter
 
-  def GetReportData(self, get_report_args):
+  def GetReportData(self, get_report_args, token):
     """Filter the last week of user actions."""
     ret = rdf_report_plugins.ApiReportData(
         representation_type=RepresentationType.PIE_CHART)
 
-    counts = self._GetUserCounts(get_report_args)
+    counts = self._GetUserCounts(get_report_args, token)
     for username in access_control.SYSTEM_USERS:
       del counts[username]
 
@@ -224,7 +228,7 @@ class BaseUserFlowReportPlugin(report_plugin_base.ReportPluginBase):
   def IncludeUser(self, username):
     return True
 
-  def _GetFlows(self, get_report_args):
+  def _GetFlows(self, get_report_args, token):
     counts = collections.defaultdict(collections.Counter)
 
     flows = data_store.REL_DB.ReadAllFlowObjects(
@@ -238,12 +242,12 @@ class BaseUserFlowReportPlugin(report_plugin_base.ReportPluginBase):
 
     return counts
 
-  def GetReportData(self, get_report_args):
+  def GetReportData(self, get_report_args, token):
     ret = rdf_report_plugins.ApiReportData(
         representation_type=RepresentationType.STACK_CHART,
         stack_chart=rdf_report_plugins.ApiStackChartReportData(x_ticks=[]))
 
-    counts = self._GetFlows(get_report_args)
+    counts = self._GetFlows(get_report_args, token)
     total_counts = collections.Counter(
         {flow: sum(cts.values()) for flow, cts in counts.items()})
 
@@ -297,13 +301,13 @@ class UserActivityReportPlugin(report_plugin_base.ReportPluginBase):
   SUMMARY = "Number of flows ran by each user."
   REQUIRES_TIME_RANGE = True
 
-  def _LoadUserActivity(self, start_time, end_time):
+  def _LoadUserActivity(self, start_time, end_time, token):
     counts = data_store.REL_DB.CountAPIAuditEntriesByUserAndDay(
         min_timestamp=start_time, max_timestamp=end_time)
     for (username, day), count in counts.items():
       yield username, day, count
 
-  def GetReportData(self, get_report_args):
+  def GetReportData(self, get_report_args, token):
     """Filter the last week of user actions."""
     ret = rdf_report_plugins.ApiReportData(
         representation_type=RepresentationType.STACK_CHART)
@@ -320,7 +324,7 @@ class UserActivityReportPlugin(report_plugin_base.ReportPluginBase):
     user_activity = collections.defaultdict(lambda: {week: 0 for week in weeks})
 
     entries = self._LoadUserActivity(
-        start_time=get_report_args.start_time, end_time=end_time)
+        start_time=get_report_args.start_time, end_time=end_time, token=token)
 
     for username, timestamp, count in entries:
       week = (timestamp - start_time).ToInt(

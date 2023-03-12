@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """An implementation of linux client builder."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import fnmatch
 import logging
@@ -42,7 +45,7 @@ def _CopyFleetspeakDpkgFiles(package_dir, context=None):
   shutil.copytree(
       config_lib.Resource().Filter(
           "install_data/debian/dpkg_client/fleetspeak-debian"),
-      os.path.join(package_dir, "debian/fleetspeak-debian.in"))
+      os.path.join(package_dir, "debian/debian.in"))
 
   # Include the Fleetspeak service config in the template.
   fleetspeak_dir = os.path.join(package_dir, "fleetspeak")
@@ -53,18 +56,40 @@ def _CopyFleetspeakDpkgFiles(package_dir, context=None):
       fleetspeak_dir)
 
 
-def _CopyBundledFleetspeakFiles(src_dir, package_dir):
-  """Copies the bundled fleetspeak installation into the package dir."""
-  files = [
-      "etc/fleetspeak-client/communicator.txt",
-      "lib/systemd/system/fleetspeak-client.service",
-      "usr/bin/fleetspeak-client",
-  ]
-  for filename in files:
-    src = os.path.join(src_dir, filename)
-    dst = os.path.join(package_dir, "bundled-fleetspeak", filename)
-    utils.EnsureDirExists(os.path.dirname(dst))
-    shutil.copy(src, dst)
+def _CopyNonFleetspeakDpkgFiles(dist_dir, package_dir):
+  """Copies non-Fleetspeak-enabled DPKG files to template directory."""
+
+  # Copy the nanny binary.
+  shutil.copy(
+      package.ResourcePath("grr-response-core",
+                           "install_data/debian/dpkg_client/nanny.sh.in"),
+      dist_dir)
+
+  # Copy files needed for dpkg-buildpackage.
+  shutil.copytree(
+      config_lib.Resource().Filter("install_data/debian/dpkg_client/debian"),
+      os.path.join(package_dir, "debian/debian.in"))
+
+  # Copy upstart files
+  outdir = os.path.join(package_dir, "debian/upstart.in")
+  utils.EnsureDirExists(outdir)
+  shutil.copy(
+      config_lib.Resource().Filter(
+          "install_data/debian/dpkg_client/upstart/grr-client.conf"), outdir)
+
+  # Copy init files
+  outdir = os.path.join(package_dir, "debian/initd.in")
+  utils.EnsureDirExists(outdir)
+  shutil.copy(
+      config_lib.Resource().Filter(
+          "install_data/debian/dpkg_client/initd/grr-client"), outdir)
+
+  # Copy systemd unit file
+  outdir = os.path.join(package_dir, "debian/systemd.in")
+  utils.EnsureDirExists(outdir)
+  shutil.copy(
+      config_lib.Resource().Filter(
+          "install_data/systemd/client/grr-client.service"), outdir)
 
 
 def _MakeZip(input_dir, output_file):
@@ -79,27 +104,12 @@ def _MakeZip(input_dir, output_file):
   zf = zipfile.ZipFile(output_file, "w")
   oldwd = os.getcwd()
   os.chdir(input_dir)
-  for path in [
-      "debian", "rpmbuild", "fleetspeak", "bundled-fleetspeak", "legacy"
-  ]:
+  for path in ["debian", "rpmbuild", "fleetspeak"]:
     for root, _, files in os.walk(path):
       for f in files:
         zf.write(os.path.join(root, f))
   zf.close()
   os.chdir(oldwd)
-
-# Layout:
-#
-# - Common:
-#   * debian/grr-client: PyInstaller generated files
-# - Legacy:
-#   * debian/legacy-debian.in: Debian directory
-#   * debian/{upstart,systemd,initd}.in: Startup scripts
-# - Fleetspeak enabled and bundled:
-#   * debian/fleetspeak-debian.in: Debian directory
-#   * fleetspeak: Fleetspeak config
-# - Fleetspeak bundled only:
-#   * bundled-fleetspak: Bundled fleetspeak client binaries
 
 
 class DebianClientBuilder(build.ClientBuilder):
@@ -108,13 +118,12 @@ class DebianClientBuilder(build.ClientBuilder):
   BUILDER_CONTEXT = "Target:Linux"
 
   @property
-  def package_dir(self):
-    return config.CONFIG.Get("PyInstaller.dpkg_root", context=self.context)
+  def fleetspeak_enabled(self):
+    return config.CONFIG.Get("Client.fleetspeak_enabled", context=self.context)
 
   @property
-  def fleetspeak_install_dir(self):
-    return config.CONFIG.Get(
-        "ClientBuilder.fleetspeak_install_dir", context=self.context)
+  def package_dir(self):
+    return config.CONFIG.Get("PyInstaller.dpkg_root", context=self.context)
 
   def MakeExecutableTemplate(self, output_file):
     build_helpers.MakeBuildDirectory(context=self.context)
@@ -122,23 +131,61 @@ class DebianClientBuilder(build.ClientBuilder):
     output_dir = build_helpers.BuildWithPyInstaller(context=self.context)
 
     _StripLibraries(output_dir)
-
-    _CopyFleetspeakDpkgFiles(self.package_dir, context=self.context)
-    _CopyBundledFleetspeakFiles(self.fleetspeak_install_dir, self.package_dir)
+    if self.fleetspeak_enabled:
+      _CopyFleetspeakDpkgFiles(self.package_dir, context=self.context)
+    else:
+      _CopyNonFleetspeakDpkgFiles(output_dir, self.package_dir)
 
     _MakeZip(self.package_dir, output_file)
 
 
-def _CopyCommonRpmFiles(package_dir, dist_dir):
-  """Copies common (fleetspeak and legacy) files into the template folder."""
-  # Copy the wrapper script.
-  shutil.copy(
-      package.ResourcePath("grr-response-core", "install_data/wrapper.sh.in"),
-      dist_dir)
+def _CopyFleetspeakRpmFiles(package_dir, context=None):
+  """Copies Fleetspeak-enabled RPM files into the template folder."""
+  if context is None:
+    raise ValueError("context can't be None")
 
   shutil.move(
       os.path.join(package_dir, "debian"), os.path.join(package_dir,
                                                         "rpmbuild"))
+  shutil.copy(
+      config_lib.Resource().Filter(
+          "install_data/centos/fleetspeak.grr.spec.in"),
+      os.path.join(package_dir, "rpmbuild/grr.spec.in"))
+
+  # Copy prelink blacklist file. Without this file, prelink will mangle
+  # the GRR binary.
+  shutil.copy(
+      config_lib.Resource().Filter(
+          "install_data/centos/prelink_blacklist.conf.in"),
+      os.path.join(package_dir, "rpmbuild/prelink_blacklist.conf.in"))
+
+  # Include the Fleetspeak service config in the template.
+  fleetspeak_dir = os.path.join(package_dir, "fleetspeak")
+  utils.EnsureDirExists(fleetspeak_dir)
+  shutil.copy(
+      config.CONFIG.Get(
+          "ClientBuilder.fleetspeak_config_path", context=context),
+      fleetspeak_dir)
+
+
+def _CopyNonFleetspeakRpmFiles(package_dir):
+  """Copies non-Fleetspeak-enabled RPM files into the template folder."""
+
+  shutil.move(
+      os.path.join(package_dir, "debian"), os.path.join(package_dir,
+                                                        "rpmbuild"))
+
+  shutil.copy(
+      config_lib.Resource().Filter("install_data/centos/grr-client.initd.in"),
+      os.path.join(package_dir, "rpmbuild/grr-client.initd.in"))
+  shutil.copy(
+      config_lib.Resource().Filter(
+          "install_data/systemd/client/grr-client.service"),
+      os.path.join(package_dir, "rpmbuild/grr-client.service.in"))
+
+  shutil.copy(config_lib.Resource().Filter("install_data/centos/grr.spec.in"),
+              os.path.join(package_dir, "rpmbuild/grr.spec.in"))
+
   # Copy prelink blacklist file. Without this file, prelink will mangle
   # the GRR binary.
   shutil.copy(
@@ -147,40 +194,18 @@ def _CopyCommonRpmFiles(package_dir, dist_dir):
       os.path.join(package_dir, "rpmbuild/prelink_blacklist.conf.in"))
 
 
-def _CopyFleetspeakRpmFiles(package_dir, context=None):
-  """Copies Fleetspeak-enabled RPM files into the template folder."""
-  if context is None:
-    raise ValueError("context can't be None")
-
-  utils.EnsureDirExists(os.path.join(package_dir, "fleetspeak/rpmbuild"))
-
-  shutil.copy(
-      config_lib.Resource().Filter(
-          "install_data/centos/fleetspeak.grr.spec.in"),
-      os.path.join(package_dir, "fleetspeak/rpmbuild/grr.spec.in"))
-
-  # Include the Fleetspeak service config in the template.
-  fleetspeak_dir = os.path.join(package_dir, "fleetspeak/fleetspeak")
-  utils.EnsureDirExists(fleetspeak_dir)
-  shutil.copy(
-      config.CONFIG.Get(
-          "ClientBuilder.fleetspeak_config_path", context=context),
-      fleetspeak_dir)
-
-
 class CentosClientBuilder(build.ClientBuilder):
   """A builder class that produces a client for RPM based distros."""
 
   BUILDER_CONTEXT = "Target:Linux"
 
   @property
-  def package_dir(self):
-    return config.CONFIG.Get("PyInstaller.dpkg_root", context=self.context)
+  def fleetspeak_enabled(self):
+    return config.CONFIG.Get("Client.fleetspeak_enabled", context=self.context)
 
   @property
-  def fleetspeak_install_dir(self):
-    return config.CONFIG.Get(
-        "ClientBuilder.fleetspeak_install_dir", context=self.context)
+  def package_dir(self):
+    return config.CONFIG.Get("PyInstaller.dpkg_root", context=self.context)
 
   def MakeExecutableTemplate(self, output_file):
     build_helpers.MakeBuildDirectory(context=self.context)
@@ -188,8 +213,9 @@ class CentosClientBuilder(build.ClientBuilder):
     output_dir = build_helpers.BuildWithPyInstaller(context=self.context)
 
     _StripLibraries(output_dir)
-    _CopyCommonRpmFiles(self.package_dir, output_dir)
-    _CopyFleetspeakRpmFiles(self.package_dir, context=self.context)
-    _CopyBundledFleetspeakFiles(self.fleetspeak_install_dir, self.package_dir)
+    if self.fleetspeak_enabled:
+      _CopyFleetspeakRpmFiles(self.package_dir, context=self.context)
+    else:
+      _CopyNonFleetspeakRpmFiles(self.package_dir)
 
     _MakeZip(self.package_dir, output_file)

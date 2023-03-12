@@ -1,62 +1,58 @@
 goog.module('grrUi.cron.cronViewDirective');
 goog.module.declareLegacyNamespace();
 
-const routingService = goog.requireType('grrUi.routing.routingService');
-
 
 
 /**
  * Controller for CronViewDirective.
- * @unrestricted
+ *
+ * @constructor
+ * @param {!angular.Scope} $scope
+ * @param {!grrUi.routing.routingService.RoutingService} grrRoutingService
+ * @ngInject
  */
-const CronViewController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @param {!routingService.RoutingService} grrRoutingService
-   * @ngInject
-   */
-  constructor($scope, grrRoutingService) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const CronViewController = function(
+    $scope, grrRoutingService) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @private {!routingService.RoutingService} */
-    this.grrRoutingService_ = grrRoutingService;
+  /** @private {!grrUi.routing.routingService.RoutingService} */
+  this.grrRoutingService_ = grrRoutingService;
 
-    /** @type {string} */
-    this.selectedCronJobId;
+  /** @type {string} */
+  this.selectedCronJobId;
 
-    this.scope_.$watch(
-        'controller.selectedCronJobId',
-        this.onSelectedCronJobIdChange_.bind(this));
-    this.grrRoutingService_.uiOnParamsChanged(
-        this.scope_, 'cronJobId', this.onParamsChange_.bind(this));
-  }
+  this.scope_.$watch('controller.selectedCronJobId',
+                     this.onSelectedCronJobIdChange_.bind(this));
+  this.grrRoutingService_.uiOnParamsChanged(this.scope_, 'cronJobId',
+      this.onParamsChange_.bind(this));
+};
 
-  /**
-   * Handles changes to the state params.
-   *
-   * @param {string} cronJobId The new value for the selected cron job.
-   * @private
-   */
-  onParamsChange_(cronJobId) {
-    if (cronJobId) {
-      this.selectedCronJobId = cronJobId;
-    }
-  }
 
-  /**
-   * Handles selectedCronJobId binding changes.
-   *
-   * @param {?string} newValue New binding value.
-   * @private
-   */
-  onSelectedCronJobIdChange_(newValue) {
-    if (angular.isDefined(newValue)) {
-      this.grrRoutingService_.go('crons', {cronJobId: newValue});
-    }
+/**
+ * Handles changes to the state params.
+ *
+ * @param {string} cronJobId The new value for the selected cron job.
+ * @private
+ */
+CronViewController.prototype.onParamsChange_ = function(cronJobId) {
+  if (cronJobId) {
+    this.selectedCronJobId = cronJobId;
   }
 };
 
+/**
+ * Handles selectedCronJobId binding changes.
+ *
+ * @param {?string} newValue New binding value.
+ * @private
+ */
+CronViewController.prototype.onSelectedCronJobIdChange_ = function(
+    newValue) {
+  if (angular.isDefined(newValue)) {
+    this.grrRoutingService_.go('crons', {cronJobId: newValue});
+  }
+};
 
 
 /**

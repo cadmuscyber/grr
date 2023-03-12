@@ -74,43 +74,39 @@ const stringifySeconds = function(seconds) {
 
 /**
  * An Angular controller for formatting exact duration values.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @constructor
+ * @ngInject
  */
-const ExactDurationController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const ExactDurationController = function($scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @type {?string} */
-    this.stringifiedDuration = null;
+  /** @type {?string} */
+  this.stringifiedDuration = null;
 
-    this.scope_.$watch('::value', (newValue) => this.onValueChange(newValue));
-  }
-
-  /**
-   * Handles changes of the duration value.
-   *
-   * @param {{type: string, value: number}|undefined} newValue
-   *   An `rdf.Datetime`-compatible object.
-   */
-  onValueChange(newValue) {
-    if (!angular.isDefined(newValue)) {
-      return;
-    }
-
-    const duration = newValue.value;
-    if (angular.isNumber(duration)) {
-      this.stringifiedDuration = stringifySeconds(duration);
-    } else {
-      this.stringifiedDuration = '-';
-    }
-  }
+  this.scope_.$watch('::value', (newValue) => this.onValueChange(newValue));
 };
 
+/**
+ * Handles changes of the duration value.
+ *
+ * @param {{type: string, value: number}|undefined} newValue
+ *   An `rdf.Datetime`-compatible object.
+ */
+ExactDurationController.prototype.onValueChange = function(newValue) {
+  if (!angular.isDefined(newValue)) {
+    return;
+  }
+
+  const duration = newValue.value;
+  if (angular.isNumber(duration)) {
+    this.stringifiedDuration = stringifySeconds(duration);
+  } else {
+    this.stringifiedDuration = '-';
+  }
+};
 
 
 /**

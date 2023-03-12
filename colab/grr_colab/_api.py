@@ -1,12 +1,18 @@
 #!/usr/bin/env python
 """A module for lazy instantiation of the GRR's Python API."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 from grr_api_client import api
+
 
 from grr_colab import flags
 
 FLAGS = flags.FLAGS
 
-_API: api.GrrApi = None
+_API = None  # type: api.GrrApi
 
 
 def get() -> api.GrrApi:

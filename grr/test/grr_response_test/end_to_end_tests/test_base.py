@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Base classes and routines used by all end to end tests."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 import binascii
@@ -50,7 +54,7 @@ def GetClientTestTargets(grr_api=None,
   clients = []
   if hostnames:
     hostnames = set(hostnames)
-    logging.info("Searching for clients corresponding to %d hostnames: %s.",
+    logging.info("Seaching for clients corresponding to %d hostnames: %s.",
                  len(hostnames), ",".join(hostnames))
 
     for hostname in hostnames:
@@ -141,7 +145,7 @@ class RunFlowAndWaitError(Error):
   """Error thrown by RunFlowAndWait."""
 
   def __init__(self, message, flow):
-    super().__init__(message)
+    super(RunFlowAndWaitError, self).__init__(message)
     self.flow = flow
 
 
@@ -172,7 +176,7 @@ class EndToEndTest(absltest.TestCase, metaclass=EndToEndTestMetaclass):
   MANUAL = False
 
   def __init__(self, *args, **kwargs):
-    super().__init__(*args, **kwargs)
+    super(EndToEndTest, self).__init__(*args, **kwargs)
     self.grr_api, self.client = init_fn()
     if not self.grr_api:
       raise Exception("GRR API not set.")
@@ -182,10 +186,6 @@ class EndToEndTest(absltest.TestCase, metaclass=EndToEndTestMetaclass):
   @property
   def platform(self):
     return self.client.data.os_info.system
-
-  @property
-  def os_release(self):
-    return self.client.data.os_info.release
 
   def RunFlowAndWait(self, flow_name, args=None, runner_args=None):
     """Runs a flow and busy-waits until its completion."""
@@ -223,14 +223,6 @@ class AbstractFileTransferTest(EndToEndTest):
 
   def TSKPathspecToVFSPath(self, pathspec):
     path = "fs/tsk/"
-    while pathspec.path:
-      path += pathspec.path
-      pathspec = pathspec.nested_path
-
-    return path
-
-  def NTFSPathspecToVFSPath(self, pathspec):
-    path = "fs/ntfs/"
     while pathspec.path:
       path += pathspec.path
       pathspec = pathspec.nested_path

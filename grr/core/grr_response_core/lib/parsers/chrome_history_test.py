@@ -1,7 +1,11 @@
 #!/usr/bin/env python
+# Lint as: python3
 # Copyright 2011 Google Inc. All Rights Reserved.
 """Tests for grr.parsers.chrome_history."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import datetime
 import io

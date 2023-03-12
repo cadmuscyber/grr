@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import gzip
 import io
@@ -7,7 +11,6 @@ import struct
 
 from absl.testing import absltest
 
-from grr_response_core.lib.util import chunked
 from grr_response_core.lib.util import gzchunked
 
 
@@ -44,7 +47,7 @@ class DeserializeTest(absltest.TestCase):
     with gzip.GzipFile(fileobj=buf, mode="wb") as filedesc:
       filedesc.write(struct.pack("!I", 42))
 
-    with self.assertRaises(chunked.IncorrectSizeTagError):
+    with self.assertRaises(ValueError):
       list(gzchunked.Deserialize(iter([buf.getvalue()])))
 
   def testIncorrectData(self):
@@ -53,7 +56,7 @@ class DeserializeTest(absltest.TestCase):
       filedesc.write(struct.pack("!Q", 8))
       filedesc.write(b"quux")
 
-    with self.assertRaises(chunked.ChunkTruncatedError):
+    with self.assertRaises(ValueError):
       list(gzchunked.Deserialize(iter([buf.getvalue()])))
 
   def testEmpty(self):

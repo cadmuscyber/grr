@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 """Tests for grr.lib.repacking."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import glob
 import os
@@ -8,7 +11,6 @@ import shutil
 import zipfile
 
 from absl import app
-import yaml
 
 from grr_response_client_builder import build
 from grr_response_client_builder import build_helpers
@@ -17,6 +19,7 @@ from grr_response_core import config
 from grr_response_core.lib import config_lib
 from grr_response_core.lib import package
 from grr_response_core.lib import utils
+from grr_response_core.lib.util.compat import yaml
 from grr.test_lib import test_lib
 
 
@@ -63,11 +66,11 @@ class RepackingTests(test_lib.GRRBaseTest):
 
       # We can't load the included build.yaml because the package hasn't been
       # installed.
-      loaded = yaml.safe_load(fd)
+      loaded = yaml.Parse(fd.read().decode("utf-8"))
       loaded.pop("Config.includes")
 
       packaged_config = config.CONFIG.MakeNewConfig()
-      data = yaml.safe_dump(loaded)
+      data = yaml.Dump(loaded)
       packaged_config.Initialize(parser=config_lib.YamlParser, data=data)
       packaged_config.Validate(sections=build.ClientRepacker.CONFIG_SECTIONS)
       build_helpers.ValidateEndConfig(packaged_config)

@@ -1,13 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 """The in memory database methods for client handling."""
-import sys
-from typing import Collection, Iterator, Optional, List, Text
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
+from typing import Generator, List, Text
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import client_stats as rdf_client_stats
-from grr_response_core.lib.rdfvalues import search as rdf_search
 from grr_response_core.lib.util import collection
 from grr_response_server import fleet_utils
 from grr_response_server.databases import db
@@ -26,7 +29,6 @@ class InMemoryDBClientMixin(object):
                           last_ping=None,
                           last_clock=None,
                           last_ip=None,
-                          fleetspeak_validation_info=None,
                           last_foreman=None):
     """Write metadata about the client."""
     md = {}
@@ -51,13 +53,8 @@ class InMemoryDBClientMixin(object):
     if last_foreman is not None:
       md["last_foreman_time"] = last_foreman
 
-    if fleetspeak_validation_info:
-      pb = rdf_client.FleetspeakValidationInfo.FromStringDict(
-          fleetspeak_validation_info)
-      md["last_fleetspeak_validation_info"] = pb.SerializeToBytes()
-    else:
-      # Write null for empty or non-existent validation info.
-      md["last_fleetspeak_validation_info"] = None
+    if not md:
+      raise ValueError("NOOP write.")
 
     self.metadatas.setdefault(client_id, {}).update(md)
 
@@ -70,7 +67,7 @@ class InMemoryDBClientMixin(object):
       if md is None:
         continue
 
-      metadata = rdf_objects.ClientMetadata(
+      res[client_id] = rdf_objects.ClientMetadata(
           certificate=md.get("certificate"),
           fleetspeak_enabled=md.get("fleetspeak_enabled"),
           first_seen=md.get("first_seen"),
@@ -80,13 +77,6 @@ class InMemoryDBClientMixin(object):
           last_foreman_time=md.get("last_foreman_time"),
           last_crash_timestamp=md.get("last_crash_timestamp"),
           startup_info_timestamp=md.get("startup_info_timestamp"))
-
-      fsvi = md.get("last_fleetspeak_validation_info")
-      if fsvi is not None:
-        pb = rdf_client.FleetspeakValidationInfo.FromSerializedBytes(fsvi)
-        metadata.last_fleetspeak_validation_info = pb
-
-      res[client_id] = metadata
 
     return res
 
@@ -221,20 +211,14 @@ class InMemoryDBClientMixin(object):
     return res
 
   @utils.Synchronized
-  def MultiAddClientKeywords(
-      self,
-      client_ids: Collection[str],
-      keywords: Collection[str],
-  ) -> None:
-    """Associates the provided keywords with the specified clients."""
-    for client_id in client_ids:
-      if client_id not in self.metadatas:
-        raise db.AtLeastOneUnknownClientError(client_ids)
+  def AddClientKeywords(self, client_id, keywords):
+    """Associates the provided keywords with the client."""
+    if client_id not in self.metadatas:
+      raise db.UnknownClientError(client_id)
 
-    for client_id in client_ids:
-      for kw in keywords:
-        self.keywords.setdefault(kw, {})
-        self.keywords[kw][client_id] = rdfvalue.RDFDatetime.Now()
+    for kw in keywords:
+      self.keywords.setdefault(kw, {})
+      self.keywords[kw][client_id] = rdfvalue.RDFDatetime.Now()
 
   @utils.Synchronized
   def ListClientsForKeywords(self, keywords, start_time=None):
@@ -254,23 +238,14 @@ class InMemoryDBClientMixin(object):
       del self.keywords[keyword][client_id]
 
   @utils.Synchronized
-  def MultiAddClientLabels(
-      self,
-      client_ids: Collection[str],
-      owner: str,
-      labels: Collection[str],
-  ) -> None:
-    """Attaches user labels to the specified clients."""
-    if owner not in self.users:
-      raise db.UnknownGRRUserError(owner)
+  def AddClientLabels(self, client_id, owner, labels):
+    """Attaches a user label to a client."""
+    if client_id not in self.metadatas:
+      raise db.UnknownClientError(client_id)
 
-    for client_id in client_ids:
-      if client_id not in self.metadatas:
-        raise db.AtLeastOneUnknownClientError(client_ids)
-
-    for client_id in client_ids:
-      client_labels = self.labels.setdefault(client_id, dict())
-      client_labels.setdefault(owner, set()).update(set(labels))
+    labelset = self.labels.setdefault(client_id, {}).setdefault(owner, set())
+    for l in labels:
+      labelset.add(utils.SmartUnicode(l))
 
   @utils.Synchronized
   def MultiReadClientLabels(self, client_ids):
@@ -295,11 +270,13 @@ class InMemoryDBClientMixin(object):
   @utils.Synchronized
   def ReadAllClientLabels(self):
     """Lists all client labels known to the system."""
-    results = set()
+    results = {}
     for labels_dict in self.labels.values():
-      for labels in labels_dict.values():
-        results.update(labels)
-    return results
+      for owner, names in labels_dict.items():
+        for name in names:
+          results[(owner, name)] = rdf_objects.ClientLabel(
+              owner=owner, name=name)
+    return list(results.values())
 
   @utils.Synchronized
   def WriteClientStartupInfo(self, client_id, startup_info):
@@ -313,8 +290,7 @@ class InMemoryDBClientMixin(object):
     history[ts] = startup_info.SerializeToBytes()
 
   @utils.Synchronized
-  def ReadClientStartupInfo(self,
-                            client_id: str) -> Optional[rdf_client.StartupInfo]:
+  def ReadClientStartupInfo(self, client_id):
     """Reads the latest client startup record for a single client."""
     history = self.startup_history.get(client_id, None)
     if not history:
@@ -406,24 +382,18 @@ class InMemoryDBClientMixin(object):
 
   @utils.Synchronized
   def DeleteOldClientStats(
-      self,
-      cutoff_time: rdfvalue.RDFDatetime,
-      batch_size: Optional[int] = None,
-  ) -> Iterator[int]:
-    """Deletes client stats older than the specified cutoff time."""
-    if batch_size is None:
-      # Everything is in memory, read as much as we can.
-      batch_size = sys.maxsize
-
+      self, yield_after_count: int,
+      retention_time: rdfvalue.RDFDatetime) -> Generator[int, None, None]:
+    """Deletes ClientStats older than a given timestamp."""
     deleted_count = 0
 
     for stats_dict in self.client_stats.values():
       for timestamp in list(stats_dict.keys()):
-        if timestamp < cutoff_time:
+        if timestamp < retention_time:
           del stats_dict[timestamp]
           deleted_count += 1
 
-          if deleted_count >= batch_size:
+          if deleted_count >= yield_after_count:
             yield deleted_count
             deleted_count = 0
 
@@ -509,11 +479,3 @@ class InMemoryDBClientMixin(object):
 
     for kw in self.keywords:
       self.keywords[kw].pop(client_id, None)
-
-  def StructuredSearchClients(self, expression: rdf_search.SearchExpression,
-                              sort_order: rdf_search.SortOrder,
-                              continuation_token: bytes,
-                              number_of_results: int) -> db.SearchClientsResult:
-    # Unused arguments
-    del self, expression, sort_order, continuation_token, number_of_results
-    raise NotImplementedError

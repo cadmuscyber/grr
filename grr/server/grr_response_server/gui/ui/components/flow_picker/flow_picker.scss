@@ -1,63 +1,24 @@
-@use '@angular/material' as mat;
-@use '../../material-theme' as c;
-
 :host {
   display: block;
+}
 
-  .mat-form-field {
-    width: 100%;
+.column {
+  display: inline-block;
+  padding: 1em;
+  vertical-align: top;
+}
 
-    &[hidden] {
-      display: none;
-    }
+button {
+  color: #fff;
+  display: block;
+  margin: 4px 0;
+  transition: opacity ease 200ms;
+}
 
-    .mat-form-field-wrapper {
-      margin-bottom: 0;
-      padding-bottom: 0;
-    }
-
-    mat-icon {
-      margin-right: 0.5em;
-      color: mat.get-color-from-palette(c.$foreground, text-light);
-    }
-  }
+.faded {
+  opacity: .5;
 }
 
 mat-form-field {
   width: 100%;
-
-  input:read-only {
-    cursor: default;
-  }
-}
-
-.highlight {
-  font-weight: 900;
-}
-
-.category-title {
-  font-size: 12px;
-}
-
-.flow-title {
-  font-weight: 400;
-  font-size: 14px;
-  height: 19px;
-}
-
-.flow-description {
-  font-weight: 300;
-  font-size: 14px;
-}
-
-.common-flows {
-  h3 {
-    font-size: 13px;
-    margin-bottom: 6px;
-  }
-
-  .row {
-    display: flex;
-    column-gap: 12px;
-  }
 }

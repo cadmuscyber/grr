@@ -5,20 +5,18 @@ goog.module.declareLegacyNamespace();
 
 /**
  * Controller for UserNotificationDialogDirective.
- * @unrestricted
+ *
+ * @param {!angular.Scope} $scope
+ * @constructor
+ * @ngInject
  */
-const UserNotificationDialogController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const UserNotificationDialogController =
+  function($scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @type {string} */
-    this.notificationUrl = 'users/me/notifications';
-  }
+  /** @type {string} */
+  this.notificationUrl = 'users/me/notifications';
 };
 
 
@@ -32,10 +30,11 @@ const UserNotificationDialogController = class {
  */
 exports.UserNotificationDialogDirective = function() {
   return {
-    scope: {close: '&'},
+    scope: {
+      close: '&'
+    },
     restrict: 'E',
-    templateUrl:
-        '/static/angular-components/user/user-notification-dialog.html',
+    templateUrl: '/static/angular-components/user/user-notification-dialog.html',
     controller: UserNotificationDialogController,
     controllerAs: 'controller'
   };

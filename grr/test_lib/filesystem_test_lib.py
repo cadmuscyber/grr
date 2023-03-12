@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 """A test utilities for interacting with filesystem."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import os
@@ -36,14 +39,14 @@ def CreateFile(filepath: Text, content: bytes = b"") -> None:
 
 
 def Command(name, args=None, system=None, message=None):
-  """Executes given command as a subprocess for testing purposes.
+  """Executes given commend as a subprocess for testing purposes.
 
   If the command fails, is not available or is not compatible with the operating
   system a test case that tried to called is skipped.
 
   Args:
     name: A name of the command to execute (e.g. `ls`).
-    args: A list of arguments for the command (e.g. `-l`, `-a`).
+    args: A list of arguments for the commend (e.g. `-l`, `-a`).
     system: An operating system that the command should be compatible with.
     message: A message to skip the test with in case of a failure.
 

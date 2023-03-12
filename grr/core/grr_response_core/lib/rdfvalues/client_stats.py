@@ -1,6 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Stats-related client rdfvalues."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 
 from grr_response_core.lib import rdfvalue

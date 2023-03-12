@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Virtual filesystem module based on pyfsntfs."""
 
 import stat
@@ -129,7 +130,6 @@ class NTFSFile(vfs_base.VFSHandler):
     return self._Stat(self.fd, self.data_stream, self.pathspec.Copy())
 
   def Read(self, length: int) -> bytes:
-    self._CheckIsFile()
     self.data_stream.seek(self.offset)
     data = self.data_stream.read(length)
     self.offset += len(data)
@@ -138,7 +138,7 @@ class NTFSFile(vfs_base.VFSHandler):
   def IsDirectory(self) -> bool:
     return self.fd.has_directory_entries_index()
 
-  def ListFiles(self,  # pytype: disable=signature-mismatch  # overriding-return-type-checks
+  def ListFiles(self,
                 ext_attrs: bool = False) -> Iterable[rdf_client_fs.StatEntry]:
     del ext_attrs  # Unused.
 
@@ -157,7 +157,7 @@ class NTFSFile(vfs_base.VFSHandler):
         pathspec.last.stream_name = data_stream.name
         yield self._Stat(entry, data_stream, pathspec.Copy())
 
-  def ListNames(self) -> Iterable[Text]:  # pytype: disable=signature-mismatch  # overriding-return-type-checks
+  def ListNames(self) -> Iterable[Text]:
     self._CheckIsDirectory()
     for entry in self.fd.sub_file_entries:
       yield entry.name
@@ -166,10 +166,6 @@ class NTFSFile(vfs_base.VFSHandler):
     if not self.IsDirectory():
       raise IOError("{} is not a directory".format(
           self.pathspec.CollapsePath()))
-
-  def _CheckIsFile(self) -> None:
-    if self.IsDirectory():
-      raise IOError("{} is not a file".format(self.pathspec.CollapsePath()))
 
   def _Stat(
       self,
@@ -184,10 +180,8 @@ class NTFSFile(vfs_base.VFSHandler):
         entry.get_access_time())
     st.st_mtime = rdfvalue.RDFDatetimeSeconds.FromDatetime(
         entry.get_modification_time())
-    st.st_btime = rdfvalue.RDFDatetimeSeconds.FromDatetime(
+    st.st_crtime = rdfvalue.RDFDatetimeSeconds.FromDatetime(
         entry.get_creation_time())
-    st.st_ctime = rdfvalue.RDFDatetimeSeconds.FromDatetime(
-        entry.get_entry_modification_time())
     if entry.has_directory_entries_index():
       st.st_mode = stat.S_IFDIR
     else:
@@ -220,7 +214,7 @@ class NTFSFile(vfs_base.VFSHandler):
       # mounts to work out the exact mount point and device we need to
       # open. We then modify the pathspec so we get nested in the raw
       # pathspec.
-      raw_pathspec, corrected_path = client_utils.GetRawDevice(component.path)  # pytype: disable=attribute-error
+      raw_pathspec, corrected_path = client_utils.GetRawDevice(component.path)
 
       # Insert the raw device before the component in the pathspec and correct
       # the path

@@ -1,7 +1,11 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A generic serializer for python dictionaries."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-from collections import abc
+import collections
 import logging
 from typing import List, Text, Union, cast
 
@@ -178,7 +182,7 @@ class Dict(rdf_structs.RDFProtoStruct):
   def __init__(self, initializer=None, **kwargs):
     super().__init__(initializer=None)
 
-    self.dat: Union[List[KeyValue], rdf_structs.RepeatedFieldHelper] = None
+    self.dat = None  # type: Union[List[KeyValue], rdf_structs.RepeatedFieldHelper]
 
     # Support initializing from a mapping
     if isinstance(initializer, dict):
@@ -213,7 +217,7 @@ class Dict(rdf_structs.RDFProtoStruct):
       self._values[key] = KeyValue(
           k=DataBlob().SetValue(key, raise_on_error=raise_on_error),
           v=DataBlob().SetValue(value, raise_on_error=raise_on_error))
-    self.dat = self._values.values()  # pytype: disable=annotation-type-mismatch
+    self.dat = self._values.values()
     return self
 
   def __getitem__(self, key):
@@ -312,22 +316,22 @@ class Dict(rdf_structs.RDFProtoStruct):
       return False
 
   def GetRawData(self):
-    self.dat = self._values.values()  # pytype: disable=annotation-type-mismatch
-    return super().GetRawData()
+    self.dat = self._values.values()
+    return super(Dict, self).GetRawData()
 
   def _CopyRawData(self):
-    self.dat = self._values.values()  # pytype: disable=annotation-type-mismatch
-    return super()._CopyRawData()
+    self.dat = self._values.values()
+    return super(Dict, self)._CopyRawData()
 
   def SetRawData(self, raw_data):
-    super().SetRawData(raw_data)
+    super(Dict, self).SetRawData(raw_data)
     self._values = {}
     for d in self.dat:
       self._values[d.k.GetValue()] = d
 
   def SerializeToBytes(self):
-    self.dat = self._values.values()  # pytype: disable=annotation-type-mismatch
-    return super().SerializeToBytes()
+    self.dat = self._values.values()
+    return super(Dict, self).SerializeToBytes()
 
   def __str__(self) -> Text:
     return str(self.ToDict())
@@ -346,7 +350,7 @@ class AttributedDict(Dict):
     self._StringifyKeys()
 
   def SetRawData(self, raw_data):
-    super().SetRawData(raw_data)
+    super(AttributedDict, self).SetRawData(raw_data)
     self._StringifyKeys()
 
   def __getattr__(self, item):
@@ -370,7 +374,7 @@ class AttributedDict(Dict):
       key = key.decode("utf-8")
 
     if isinstance(key, Text):
-      return super().__setitem__(key, value)
+      return super(AttributedDict, self).__setitem__(key, value)
 
     raise TypeError("Non-string key: {!r}".format(key))
 
@@ -380,7 +384,7 @@ class AttributedDict(Dict):
       key = key.decode("utf-8")
 
     if isinstance(key, Text):
-      return super().__getitem__(key)
+      return super(AttributedDict, self).__getitem__(key)
 
     raise TypeError("Non-string key: {!r}".format(key))
 
@@ -498,10 +502,13 @@ class RDFValueArray(rdf_structs.RDFProtoStruct):
   def __bool__(self):
     return bool(self.content)
 
+  # TODO: Remove after support for Python 2 is dropped.
+  __nonzero__ = __bool__
+
   def Pop(self, index=0):
     return self.content.Pop(index).GetValue()
 
 
 # TODO(user):pytype: Mapping is likely using abc.ABCMeta that provides a
 # "register" method. Type checker doesn't see this, unfortunately.
-abc.Mapping.register(Dict)  # pytype: disable=attribute-error
+collections.Mapping.register(Dict)  # pytype: disable=attribute-error

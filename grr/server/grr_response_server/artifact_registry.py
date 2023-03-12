@@ -1,12 +1,15 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Central registry for artifacts."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import logging
 import os
 import threading
 
-import yaml
 
 from grr_response_core import config
 from grr_response_core.lib import artifact_utils
@@ -16,13 +19,8 @@ from grr_response_core.lib import type_info
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
 from grr_response_core.lib.rdfvalues import client as rdf_client
+from grr_response_core.lib.util.compat import yaml
 from grr_response_server import data_store
-
-# Names of fields that should no longer be used but might occur in old artifact
-# files.
-DEPRECATED_ARTIFACT_FIELDS = frozenset([
-    "labels",
-])
 
 
 class ArtifactRegistrySources(object):
@@ -161,12 +159,10 @@ class ArtifactRegistry(object):
           loaded_artifacts.remove(artifact_obj)
           revalidate = True
 
-  # TODO(hanuszczak): This method should be a stand-alone function as it doesn't
-  # use the `self` parameter at all.
   @utils.Synchronized
   def ArtifactsFromYaml(self, yaml_content):
     """Get a list of Artifacts from yaml."""
-    raw_list = list(yaml.safe_load_all(yaml_content))
+    raw_list = yaml.ParseMany(yaml_content)
 
     # TODO(hanuszczak): I am very sceptical about that "doing the right thing"
     # below. What are the real use cases?
@@ -179,23 +175,6 @@ class ArtifactRegistry(object):
     # Convert json into artifact and validate.
     valid_artifacts = []
     for artifact_dict in raw_list:
-      # Old artifacts might still use deprecated fields, so we have to ignore
-      # such. Here, we simply delete keys from the dictionary as otherwise the
-      # RDF value constructor would raise on unknown fields.
-      for field in DEPRECATED_ARTIFACT_FIELDS:
-        artifact_dict.pop(field, None)
-
-      # Strip operating systems that are supported in ForensicArtifacts, but not
-      # in GRR. The Artifact will still be added to GRR's repository, but the
-      # unsupported OS will be removed. This can result in artifacts with 0
-      # supported_os entries. For end-users, there might still be value in
-      # seeing the artifact, even if the artifact's OS is not supported.
-      if "supported_os" in artifact_dict:
-        artifact_dict["supported_os"] = [
-            os for os in artifact_dict["supported_os"]
-            if os not in rdf_artifacts.Artifact.IGNORE_OS_LIST
-        ]
-
       # In this case we are feeding parameters directly from potentially
       # untrusted yaml/json to our RDFValue class. However, safe_load ensures
       # these are all primitive types as long as there is no other
@@ -361,8 +340,8 @@ class ArtifactRegistry(object):
     for artifact in self._artifacts.values():
 
       # artifact.supported_os = [] matches all OSes
-      if os_name and artifact.supported_os and (os_name
-                                                not in artifact.supported_os):
+      if os_name and artifact.supported_os and (
+          os_name not in artifact.supported_os):
         continue
       if name_list and artifact.name not in name_list:
         continue
@@ -398,7 +377,7 @@ class ArtifactRegistry(object):
     Returns:
       artifact object.
     Raises:
-      ArtifactNotRegisteredError: if artifact doesn't exist in the registry.
+      ArtifactNotRegisteredError: if artifact doesn't exist in the registy.
     """
     self._CheckDirty()
     result = self._artifacts.get(name)
@@ -552,6 +531,11 @@ def ValidateSyntax(rdf_artifact):
     except rdf_artifacts.ConditionError as e:
       detail = "invalid condition '%s'" % condition
       raise rdf_artifacts.ArtifactSyntaxError(rdf_artifact, detail, e)
+
+  for label in rdf_artifact.labels:
+    if label not in rdf_artifact.ARTIFACT_LABELS:
+      raise rdf_artifacts.ArtifactSyntaxError(rdf_artifact,
+                                              "invalid label '%s'" % label)
 
   # Anything listed in provides must be defined in the KnowledgeBase
   valid_provides = rdf_client.KnowledgeBase().GetKbFieldNames()
@@ -715,6 +699,6 @@ def GetArtifactParserDependencies(rdf_artifact):
   factory = parsers.ArtifactParserFactory(str(rdf_artifact.name))
 
   deps = set()
-  for p in factory.AllParserTypes():
+  for p in factory.AllParsers():
     deps.update(p.knowledgebase_dependencies)
   return deps

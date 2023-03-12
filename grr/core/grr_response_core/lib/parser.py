@@ -1,7 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Registry for parsers and abstract classes for basic parser functionality."""
-
-from typing import Any
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.parsers import abstract
@@ -12,8 +14,7 @@ from grr_response_core.lib.rdfvalues import protodict as rdf_protodict
 from grr_response_core.lib.util import precondition
 
 
-# TODO(hanuszczak): Type command parsers.
-class CommandParser(abstract.SingleResponseParser[Any]):
+class CommandParser(abstract.SingleResponseParser):
   """Abstract parser for processing command output.
 
   Must implement the Parse function.
@@ -43,8 +44,22 @@ class CommandParser(abstract.SingleResponseParser[Any]):
       raise abstract.ParseError(message.format(command=cmd, code=return_val))
 
 
-# TODO(hanuszczak): Type WMI query parsers.
-class WMIQueryParser(abstract.MultiResponseParser[Any]):
+# TODO(hanuszczak): This class should be removed - subclasses should implement
+# `MultiFileParser` directly.
+class FileMultiParser(abstract.MultiFileParser):
+  """Abstract parser for processing files output."""
+
+  # TODO(hanuszczak): Make this abstract.
+  def ParseMultiple(self, stats, file_objects, knowledge_base):
+    raise NotImplementedError()
+
+  def ParseFiles(self, knowledge_base, pathspecs, filedescs):
+    # TODO(hanuszczak): See analogous comment in `FileParser`.
+    stat_entries = [rdf_client_fs.StatEntry(pathspec=_) for _ in pathspecs]
+    return self.ParseMultiple(stat_entries, filedescs, knowledge_base)
+
+
+class WMIQueryParser(abstract.MultiResponseParser):
   """Abstract parser for processing WMI query output."""
 
   # TODO(hanuszczak): Make this abstract.
@@ -58,8 +73,7 @@ class WMIQueryParser(abstract.MultiResponseParser[Any]):
     return self.ParseMultiple(responses)
 
 
-# TODO(hanuszczak): Type registry value parsers.
-class RegistryValueParser(abstract.SingleResponseParser[Any]):
+class RegistryValueParser(abstract.SingleResponseParser):
   """Abstract parser for processing Registry values."""
 
   # TODO(hanuszczak): Make this abstract.
@@ -76,8 +90,7 @@ class RegistryValueParser(abstract.SingleResponseParser[Any]):
     return self.Parse(response, knowledge_base)
 
 
-# TODO(hanuszczak): Type registry parsers.
-class RegistryParser(abstract.SingleResponseParser[Any]):
+class RegistryParser(abstract.SingleResponseParser):
   """Abstract parser for processing Registry values."""
 
   # TODO(hanuszczak): Make this abstract.
@@ -91,8 +104,7 @@ class RegistryParser(abstract.SingleResponseParser[Any]):
     return self.Parse(response, knowledge_base)
 
 
-# TODO(hanuszczak): Type registry multi-parsers.
-class RegistryMultiParser(abstract.MultiResponseParser[Any]):
+class RegistryMultiParser(abstract.MultiResponseParser):
   """Abstract parser for processing registry values."""
 
   # TODO(hanuszczak): Make this abstract.
@@ -105,8 +117,7 @@ class RegistryMultiParser(abstract.MultiResponseParser[Any]):
     return self.ParseMultiple(responses, knowledge_base)
 
 
-# TODO(hanuszczak): Type grep parsers.
-class GrepParser(abstract.SingleResponseParser[Any]):
+class GrepParser(abstract.SingleResponseParser):
   """Parser for the results of grep artifacts."""
 
   # TODO(hanuszczak): Make this abstract.
@@ -118,3 +129,27 @@ class GrepParser(abstract.SingleResponseParser[Any]):
     precondition.AssertType(response, rdf_file_finder.FileFinderResult)
 
     return self.Parse(response, knowledge_base)
+
+
+class ArtifactFilesParser(abstract.SingleResponseParser):
+  """Abstract parser for processing artifact files."""
+
+  # TODO(hanuszczak): Make this abstract.
+  def Parse(self, persistence, knowledge_base):
+    """Parse artifact files."""
+
+  def ParseResponse(self, knowledge_base, response):
+    # TODO(hanuszczak): What is the expected type of `response` here?
+    return self.Parse(response, knowledge_base)
+
+
+class ArtifactFilesMultiParser(abstract.MultiResponseParser):
+  """Abstract multi-parser for processing artifact files."""
+
+  # TODO(hanuszczak: Make this abstract.
+  def ParseMultiple(self, stat_entries, knowledge_base):
+    """Parse artifact files."""
+
+  def ParseResponses(self, knowledge_base, responses):
+    precondition.AssertIterableType(responses, rdf_client_fs.StatEntry)
+    return self.ParseMultiple(responses, knowledge_base)

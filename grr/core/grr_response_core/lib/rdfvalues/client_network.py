@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Network-related client rdfvalues."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import binascii
 import ipaddress
@@ -45,21 +49,6 @@ class NetworkAddress(rdf_structs.RDFProtoStruct):
   v4 addresses and our own pure python implementations for IPv6.
   """
   protobuf = jobs_pb2.NetworkAddress
-
-  @classmethod
-  def FromPackedBytes(cls, ip: bytes) -> "NetworkAddress":
-    result = cls()
-    result.packed_bytes = ip
-
-    if len(ip) * 8 == 32:
-      result.address_type = jobs_pb2.NetworkAddress.INET
-    elif len(ip) * 8 == 128:
-      result.address_type = jobs_pb2.NetworkAddress.INET6
-    else:
-      message = f"Unexpected IP address length: {len(ip)}"
-      raise ValueError(message)
-
-    return result
 
   @property
   def human_readable_address(self) -> Text:

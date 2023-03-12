@@ -1,21 +1,15 @@
-/** @externs */
-
 /**
  * @param {string} module
  * @return {Function}
  */
-var minErr = function(module) {
-  return function() {};
-};
+var minErr = function(module) { return function() {}; };
 
 
 /**
  * @param {!angular.JQLite} element
  * @return {string} Returns the string representation of the element.
  */
-var startingTag = function(element) {
-  return '';
-};
+var startingTag = function(element) { return ''; };
 
 
 /**
@@ -317,71 +311,71 @@ ui.router.State;
 
 
 
-/** @unrestricted */
-ui.router.$urlMatcherFactory = class {
-  constructor() {}
-};
+/**
+ * @constructor
+ */
+ui.router.$urlMatcherFactory = function() {};
 
 
 
-/** @unrestricted */
-ui.router.$urlRouterProvider = class {
-  /**
-   * @param {!ui.router.$urlMatcherFactory} $urlMatcherFactory
-   */
-  constructor($urlMatcherFactory) {}
-
-  /**
-   * @param {string|RegExp} url
-   * @param {string|function(...)|Array.<!Object>} route
-   */
-  when(url, route) {}
-
-  /**
-   * @param {string|function(...)} path
-   */
-  otherwise(path) {}
-
-  /**
-   * @param {function(...)} rule
-   */
-  rule(rule) {}
-
-  /**
-   * Defers URL interception.
-   */
-  deferIntercept() {}
-
-  /**
-   * Syncs the $urlRouterProvider with the URL.
-   */
-  sync() {}
-
-  /**
-   * Re-attaches the $urlRouterProvider to listen for changes in the URL.
-   */
-  listen() {}
-};
+/**
+ * @constructor
+ * @param {!ui.router.$urlMatcherFactory} $urlMatcherFactory
+ */
+ui.router.$urlRouterProvider = function($urlMatcherFactory) {};
 
 
+/**
+ * @param {string|RegExp} url
+ * @param {string|function(...)|Array.<!Object>} route
+ */
+ui.router.$urlRouterProvider.prototype.when = function(url, route) {};
 
-/** @unrestricted */
-ui.router.$stateProvider = class {
-  /**
-   * @param {!ui.router.$urlRouterProvider} $urlRouterProvider
-   * @param {!ui.router.$urlMatcherFactory} $urlMatcherFactory
-   * @param {!angular.$locationProvider} $locationProvider
-   */
-  constructor($urlRouterProvider, $urlMatcherFactory, $locationProvider) {}
 
-  /**
-   * @param {!string} name
-   * @param {Object} definition
-   * @return {!ui.router.$stateProvider}
-   */
-  state(name, definition) {}
-};
+/**
+ * @param {string|function(...)} path
+ */
+ui.router.$urlRouterProvider.prototype.otherwise = function(path) {};
 
+
+/**
+ * @param {function(...)} rule
+ */
+ui.router.$urlRouterProvider.prototype.rule = function(rule) {};
+
+
+/**
+ * Defers URL interception.
+ */
+ui.router.$urlRouterProvider.prototype.deferIntercept = function() {};
+
+/**
+ * Syncs the $urlRouterProvider with the URL.
+ */
+ui.router.$urlRouterProvider.prototype.sync = function() {};
+
+/**
+ * Re-attaches the $urlRouterProvider to listen for changes in the URL.
+ */
+ui.router.$urlRouterProvider.prototype.listen = function() {};
+
+
+/**
+ * @constructor
+ * @param {!ui.router.$urlRouterProvider} $urlRouterProvider
+ * @param {!ui.router.$urlMatcherFactory} $urlMatcherFactory
+ * @param {!angular.$locationProvider} $locationProvider
+ */
+ui.router.$stateProvider = function(
+    $urlRouterProvider, $urlMatcherFactory, $locationProvider) {};
+
+
+/**
+ * @param {!string} name
+ * @param {Object} definition
+ * @return {!ui.router.$stateProvider}
+ */
+ui.router.$stateProvider.prototype.state = function(name, definition) {};
 
 
 /**

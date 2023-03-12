@@ -1,10 +1,11 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for the artifact libraries."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import os
-from typing import IO
-from typing import Iterable
-from typing import Iterator
 
 from absl import app
 
@@ -12,7 +13,6 @@ from grr_response_core.lib import artifact_utils
 from grr_response_core.lib import parsers
 from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
 from grr_response_core.lib.rdfvalues import client as rdf_client
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import test_base as rdf_test_base
 from grr_response_server import artifact_registry as ar
 from grr.test_lib import artifact_test_lib
@@ -23,7 +23,7 @@ from grr.test_lib import test_lib
 class ArtifactHandlingTest(test_lib.GRRBaseTest):
 
   def setUp(self):
-    super().setUp()
+    super(ArtifactHandlingTest, self).setUp()
     self.test_artifacts_dir = os.path.join(self.base_path, "artifacts")
     self.test_artifacts_file = os.path.join(self.test_artifacts_dir,
                                             "test_artifacts.json")
@@ -35,6 +35,12 @@ class ArtifactHandlingTest(test_lib.GRRBaseTest):
 
     for artifact in registry.GetArtifacts():
       ar.Validate(artifact)
+
+    art_obj = registry.GetArtifact("TestCmdArtifact")
+    art_obj.labels.append("BadLabel")
+
+    self.assertRaises(rdf_artifacts.ArtifactDefinitionError, ar.Validate,
+                      art_obj)
 
   @artifact_test_lib.PatchCleanArtifactRegistry
   def testAddFileSource(self, registry):
@@ -115,7 +121,7 @@ class ArtifactHandlingTest(test_lib.GRRBaseTest):
 
     results_names = registry.GetArtifactNames(
         os_name="Darwin", provides=["users.username"])
-    self.assertIn("UsersDirectory", results_names)
+    self.assertIn("MacOSUsers", results_names)
 
   @artifact_test_lib.PatchCleanArtifactRegistry
   def testSearchDependencies(self, registry):
@@ -372,18 +378,12 @@ class Parser1(parsers.SingleResponseParser):
     raise NotImplementedError()
 
 
-class Parser2(parsers.MultiFileParser[None]):
+class Parser2(parsers.MultiFileParser):
 
   supported_artifacts = ["artifact"]
   knowledgebase_dependencies = ["sid", "desktop"]
 
-  def ParseFiles(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspecs: Iterable[rdf_paths.PathSpec],
-      filedescs: Iterable[IO[bytes]],
-  ) -> Iterator[None]:
-    del knowledge_base, pathspecs, filedescs  # Unused.
+  def ParseFiles(self, knowledge_base, pathspecs, filedescs):
     raise NotImplementedError()
 
 

@@ -1,14 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 # Copyright 2012 Google Inc. All Rights Reserved.
 """Parser for OSX launchd jobs."""
 
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import re
-from typing import Iterator
 
-from grr_response_core.lib import parsers
-from grr_response_core.lib import rdfvalue
+from grr_response_core.lib import parser
 from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import standard as rdf_standard
@@ -38,7 +40,7 @@ class OSXLaunchdJobDict(object):
     """
     self.launchdjobs = launchdjobs
 
-    self._filter_regexes = [
+    self.blacklist_regex = [
         re.compile(r"^0x[a-z0-9]+\.anonymous\..+$"),
         re.compile(r"^0x[a-z0-9]+\.mach_init\.(crash_inspector|Inspector)$"),
     ]
@@ -57,33 +59,30 @@ class OSXLaunchdJobDict(object):
     Returns:
       True if the item should be filtered (dropped)
     """
-    for regex in self._filter_regexes:
+    for regex in self.blacklist_regex:
       if regex.match(launchditem.get("Label", "")):
         return True
     return False
 
 
-class DarwinPersistenceMechanismsParser(
-    parsers.SingleResponseParser[rdf_standard.PersistenceFile]):
+class DarwinPersistenceMechanismsParser(parser.ArtifactFilesParser):
   """Turn various persistence objects into PersistenceFiles."""
   output_types = [rdf_standard.PersistenceFile]
   supported_artifacts = ["DarwinPersistenceMechanisms"]
 
-  def ParseResponse(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      response: rdfvalue.RDFValue,
-  ) -> Iterator[rdf_standard.PersistenceFile]:
+  def Parse(self, persistence, knowledge_base):
     """Convert persistence collector output to downloadable rdfvalues."""
     pathspec = None
 
-    if isinstance(response, rdf_client.OSXServiceInformation):
-      if response.program:
+    if isinstance(persistence, rdf_client.OSXServiceInformation):
+      if persistence.program:
         pathspec = rdf_paths.PathSpec(
-            path=response.program, pathtype=rdf_paths.PathSpec.PathType.UNSET)
-      elif response.args:
+            path=persistence.program,
+            pathtype=rdf_paths.PathSpec.PathType.UNSET)
+      elif persistence.args:
         pathspec = rdf_paths.PathSpec(
-            path=response.args[0], pathtype=rdf_paths.PathSpec.PathType.UNSET)
+            path=persistence.args[0],
+            pathtype=rdf_paths.PathSpec.PathType.UNSET)
 
     if pathspec is not None:
       yield rdf_standard.PersistenceFile(pathspec=pathspec)

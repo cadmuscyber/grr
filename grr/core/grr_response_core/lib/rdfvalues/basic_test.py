@@ -1,5 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Basic rdfvalue tests."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import datetime
 import time
@@ -9,6 +14,7 @@ from absl import app
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import test_base as rdf_test_base
+from grr_response_core.lib.util import compatibility
 from grr.test_lib import test_lib
 
 
@@ -210,7 +216,7 @@ class RDFURNTest(rdf_test_base.RDFValueTestMixin, test_lib.GRRBaseTest):
 
   def testSerialization(self, sample=None):
     sample = self.GenerateSample("aff4:/")
-    super().testSerialization(sample=sample)
+    super(RDFURNTest, self).testSerialization(sample=sample)
 
 
 class RDFDatetimeTest(rdf_test_base.RDFValueTestMixin, test_lib.GRRBaseTest):
@@ -231,8 +237,9 @@ class RDFDatetimeTest(rdf_test_base.RDFValueTestMixin, test_lib.GRRBaseTest):
     self.assertEqual(date1.AsMicrosecondsSinceEpoch(), 1320142980000000)
 
     self.assertEqual(
-        time.strftime("%Y-%m-%d %H:%M:%S",
-                      time.gmtime(date1.AsSecondsSinceEpoch())), time_string)
+        compatibility.FormatTime("%Y-%m-%d %H:%M:%S",
+                                 time.gmtime(date1.AsSecondsSinceEpoch())),
+        time_string)
 
     # We always stringify the date in UTC timezone.
     self.assertEqual(str(date1), time_string)

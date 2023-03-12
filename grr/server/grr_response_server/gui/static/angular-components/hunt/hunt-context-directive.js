@@ -1,51 +1,49 @@
 goog.module('grrUi.hunt.huntContextDirective');
 goog.module.declareLegacyNamespace();
 
-const apiService = goog.requireType('grrUi.core.apiService');
-
 
 
 /**
  * Controller for HuntContextDirective.
- * @unrestricted
+ *
+ * @constructor
+ * @param {!angular.Scope} $scope
+ * @param {!grrUi.core.apiService.ApiService} grrApiService
+ * @ngInject
  */
-const HuntContextController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @param {!apiService.ApiService} grrApiService
-   * @ngInject
-   */
-  constructor($scope, grrApiService) {
-    /** @private {!apiService.ApiService} */
-    this.grrApiService_ = grrApiService;
+const HuntContextController = function(
+    $scope, grrApiService) {
 
-    /** @export {Object} */
-    this.context;
-    /** @export {Object} */
-    this.state;
+  /** @private {!grrUi.core.apiService.ApiService} */
+  this.grrApiService_ = grrApiService;
 
-    $scope.$watch('huntId', this.onHuntIdChange_.bind(this));
-  }
+  /** @export {Object} */
+  this.context;
+  /** @export {Object} */
+  this.state;
 
-  /**
-   * Handles huntId attribute changes.
-   *
-   * @param {?string} huntId
-   * @private
-   */
-  onHuntIdChange_(huntId) {
-    if (!angular.isString(huntId)) {
-      return;
-    }
-
-    var url = '/hunts/' + huntId + '/context';
-    this.grrApiService_.get(url).then(function success(response) {
-      this.context = response.data['context'];
-      this.state = response.data['state'];
-    }.bind(this));
-  }
+  $scope.$watch('huntId', this.onHuntIdChange_.bind(this));
 };
 
+
+
+/**
+ * Handles huntId attribute changes.
+ *
+ * @param {?string} huntId
+ * @private
+ */
+HuntContextController.prototype.onHuntIdChange_ = function(huntId) {
+  if (!angular.isString(huntId)) {
+    return;
+  }
+
+  var url = '/hunts/' + huntId + '/context';
+  this.grrApiService_.get(url).then(function success(response) {
+    this.context = response.data['context'];
+    this.state = response.data['state'];
+  }.bind(this));
+};
 
 
 /**
@@ -57,7 +55,9 @@ const HuntContextController = class {
  */
 exports.HuntContextDirective = function() {
   return {
-    scope: {huntId: '='},
+    scope: {
+      huntId: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/hunt/hunt-context.html',
     controller: HuntContextController,

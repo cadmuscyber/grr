@@ -5,44 +5,42 @@ goog.module.declareLegacyNamespace();
 
 /**
  * Controller for HuntClientsDirective.
- * @unrestricted
+ *
+ * @constructor
+ * @param {!angular.Scope} $scope
+ * @ngInject
  */
-const HuntClientsController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @ngInject
-   */
-  constructor($scope) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const HuntClientsController = function($scope) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @export {string} */
-    this.huntClientsUrl;
+  /** @export {string} */
+  this.huntClientsUrl;
 
-    /** @export {string} */
-    this.clientType = 'completed';
+  /** @export {string} */
+  this.clientType = 'completed';
 
-    this.scope_.$watchGroup(
-        ['huntId', 'controller.clientType'],
-        this.onHuntIdOrClientTypeChange_.bind(this));
-  }
-
-  /**
-   * Handles huntId attribute changes.
-   *
-   * @private
-   */
-  onHuntIdOrClientTypeChange_() {
-    var huntId = this.scope_['huntId'];
-
-    if (!angular.isString(huntId) || !angular.isString(this.clientType)) {
-      return;
-    }
-
-    this.huntClientsUrl = '/hunts/' + huntId + '/clients/' + this.clientType;
-  }
+  this.scope_.$watchGroup(['huntId', 'controller.clientType'],
+                          this.onHuntIdOrClientTypeChange_.bind(this));
 };
 
+
+
+/**
+ * Handles huntId attribute changes.
+ *
+ * @private
+ */
+HuntClientsController.prototype.onHuntIdOrClientTypeChange_ = function() {
+  var huntId = this.scope_['huntId'];
+
+  if (!angular.isString(huntId) ||
+      !angular.isString(this.clientType)) {
+    return;
+  }
+
+  this.huntClientsUrl = '/hunts/' + huntId + '/clients/' + this.clientType;
+};
 
 
 /**
@@ -53,7 +51,9 @@ const HuntClientsController = class {
  */
 exports.HuntClientsDirective = function() {
   return {
-    scope: {huntId: '='},
+    scope: {
+      huntId: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/hunt/hunt-clients.html',
     controller: HuntClientsController,

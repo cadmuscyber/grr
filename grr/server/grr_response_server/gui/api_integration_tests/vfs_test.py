@@ -1,14 +1,20 @@
 #!/usr/bin/env python
+# Lint as: python3
+# -*- encoding: utf-8 -*-
 """Tests for API client and VFS-related API calls."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import os
 import threading
 import time
-from unittest import mock
 import zipfile
 
 from absl import app
+
+import mock
 
 from grr_api_client import errors
 from grr_response_core.lib import rdfvalue
@@ -32,7 +38,7 @@ class ApiClientLibVfsTest(api_integration_test_lib.ApiIntegrationTest):
   """Tests VFS operations part of GRR Python API client library."""
 
   def setUp(self):
-    super().setUp()
+    super(ApiClientLibVfsTest, self).setUp()
     self.client_id = self.SetupClient(0)
     fixture_test_lib.ClientFixture(self.client_id)
 
@@ -283,7 +289,7 @@ class ApiClientLibVfsTest(api_integration_test_lib.ApiIntegrationTest):
 
   def testFileFinderIndicatesCollectedSizeAfterCollection(self):
     client_ref = self.api.Client(client_id=self.client_id)
-    # TODO(user): for symlink-related test scenarios, this should require
+    # TODO(user): for symlink-related test scenarions, this should require
     # follow_links to be True. However, unlike the ClientFileFinder test
     # below, this one doesn't care about this setting. Fix the
     # FileFinder/ClientFileFinder behavior to match each other.

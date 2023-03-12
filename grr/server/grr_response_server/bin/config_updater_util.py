@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Utilities for modifying the GRR server configuration."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import argparse
-import datetime
 import getpass
 import os
 import re
@@ -10,7 +14,7 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Optional, Text, Generator
+from typing import Optional, Text
 from urllib import parse as urlparse
 
 import MySQLdb
@@ -18,19 +22,19 @@ from MySQLdb.constants import CR as mysql_conn_errors
 from MySQLdb.constants import ER as general_mysql_errors
 import pkg_resources
 
-from google.protobuf import text_format
+# pylint: disable=unused-import,g-bad-import-order
+from grr_response_server import server_plugins
+# pylint: enable=g-bad-import-order,unused-import
+
 from grr_api_client import errors as api_errors
 from grr_api_client import root as api_root
 from grr_response_client_builder import repacking
 from grr_response_core import config as grr_config
-from grr_response_core.lib import package
+from grr_response_core.lib.util import compatibility
+from grr_response_server import access_control
 from grr_response_server import maintenance_utils
 from grr_response_server import server_startup
 from grr_response_server.bin import config_updater_keys_util
-from fleetspeak.src.config.proto.fleetspeak_config import config_pb2
-from fleetspeak.src.server.grpcservice.proto.fleetspeak_grpcservice import grpcservice_pb2
-from fleetspeak.src.server.proto.fleetspeak_server import server_pb2
-from fleetspeak.src.server.proto.fleetspeak_server import services_pb2
 
 try:
   # Importing readline enables the raw_input calls to have history etc.
@@ -39,7 +43,6 @@ except ImportError:
   # readline is not bundled with Python on Windows. Simply ignoring failing
   # import then.
   pass
-
 
 # These control retry behavior when checking that GRR can connect to
 # MySQL during config initialization.
@@ -126,17 +129,6 @@ def RetryBoolQuestion(question_text, default_bool):
                        default_val)[0].upper() == "Y"
 
 
-def RetryIntQuestion(question_text: str, default_int: int) -> int:
-  return int(RetryQuestion(question_text, "^[0-9]+$", str(default_int)))
-
-
-def GetPassword(question_text: str) -> str:
-  # TODO(hanuszczak): Incorrect type specification for `getpass`.
-  # pytype: disable=wrong-arg-types
-  return getpass.getpass(prompt=question_text)
-  # pytype: enable=wrong-arg-types
-
-
 def ConfigureHostnames(config, external_hostname: Optional[Text] = None):
   """This configures the hostnames stored in the config."""
   if not external_hostname:
@@ -187,16 +179,11 @@ def CheckMySQLConnection(db_options):
     try:
       connection_options = dict(
           host=db_options["Mysql.host"],
+          port=db_options["Mysql.port"],
           db=db_options["Mysql.database_name"],
           user=db_options["Mysql.database_username"],
           passwd=db_options["Mysql.database_password"],
           charset="utf8")
-
-      if "Mysql.port" in db_options:
-        connection_options["port"] = db_options["Mysql.port"]
-
-      if "Mysql.unix_socket" in db_options:
-        connection_options["unix_socket"] = db_options["Mysql.unix_socket"]
 
       ssl_enabled = "Mysql.client_key_path" in db_options
       if ssl_enabled:
@@ -277,10 +264,13 @@ def ConfigureMySQLDatastore(config):
     db_options["Mysql.username"] = RetryQuestion(
         "MySQL Username", "[A-Za-z0-9-@]+$", config["Mysql.database_username"])
     db_options["Mysql.database_username"] = db_options["Mysql.username"]
-    db_options["Mysql.password"] = GetPassword(
-        "Please enter password for database user %s: " %
+    # TODO(hanuszczak): Incorrect type specification for `getpass`.
+    # pytype: disable=wrong-arg-types
+    db_options["Mysql.password"] = getpass.getpass(
+        prompt="Please enter password for database user %s: " %
         db_options["Mysql.username"])
     db_options["Mysql.database_password"] = db_options["Mysql.password"]
+    # pytype: enable=wrong-arg-types
 
     use_ssl = RetryBoolQuestion("Configure SSL connections for MySQL?", False)
     if use_ssl:
@@ -311,288 +301,41 @@ def ConfigureMySQLDatastore(config):
     config.Set(option, value)
 
 
-class FleetspeakConfig:
-  """Wraps the bundled fleetspeak configuration."""
-
-  def __init__(self):
-
-    self.use_fleetspeak: bool = False
-    self.external_hostname: str = None
-    self.admin_port = 4444
-    self.grr_port = 11111
-    self.https_port = 4443
-    self.mysql_username: str = None
-    self.mysql_password: str = None
-    self.mysql_host: str = None
-    self.mysql_port = 3306
-    self.mysql_database: str = None
-    self.mysql_unix_socket: str = None
-    self.config_dir = package.ResourcePath(
-        "fleetspeak-server-bin", "fleetspeak-server-bin/etc/fleetspeak-server")
-    self._fleetspeak_config_command_path = package.ResourcePath(
-        "fleetspeak-server-bin",
-        "fleetspeak-server-bin/usr/bin/fleetspeak-config")
-
-  def Prompt(self, config):
-    """Sets up the in-memory configuration interactively."""
-
-    if self._IsFleetspeakPresent():
-      self.use_fleetspeak = RetryBoolQuestion(
-          "Use Fleetspeak (next generation communication "
-          "framework)?", True)
-    else:
-      self.use_fleetspeak = False
-      print("Fleetspeak (next generation "
-            "communication framework) seems to be missing.")
-      print("Skipping Fleetspeak configuration.\n")
-
-    if self.use_fleetspeak:
-      try:
-        self.external_hostname = socket.gethostname()
-      except (OSError, IOError):
-        self.external_hostname = ""
-        print("Sorry, we couldn't guess your hostname.\n")
-
-      self.external_hostname = RetryQuestion(
-          "Please enter your hostname e.g. "
-          "grr.example.com", "^[\\.A-Za-z0-9-]+$", self.external_hostname)
-
-      self.https_port = RetryIntQuestion("Fleetspeak public HTTPS port",
-                                         self.https_port)
-
-      self._PromptMySQL(config)
-
-  def Write(self, config):
-    if self.use_fleetspeak:
-      self._WriteEnabled(config)
-    else:
-      self._WriteDisabled(config)
-
-  def RotateKey(self):
-    now_str = datetime.datetime.now().isoformat()
-    # Move the old server keys
-    for cert_file in ("server_cert.pem", "server_cert_key.pem"):
-      old_file = f"old_{now_str}_{cert_file}"
-      os.rename(self._ConfigPath(cert_file), self._ConfigPath(old_file))
-    # Run fleetspeak-config to regenerate them
-    subprocess.check_call([
-        self._fleetspeak_config_command_path, "-config",
-        self._ConfigPath("fleetspeak_config.config")
-    ])
-
-  def _ConfigPath(self, *path_components: str) -> str:
-    return os.path.join(self.config_dir, *path_components)
-
-  def _IsFleetspeakPresent(self) -> bool:
-    """Returns True, if a fleetspeak server is available on this system."""
-    if not os.path.exists(self._ConfigPath()):
-      return False
-    if not os.path.exists(self._fleetspeak_config_command_path):
-      return False
-    return True
-
-  def _PromptMySQLOnce(self, config):
-    """Prompt the MySQL configuration once."""
-    self.mysql_host = RetryQuestion("Fleetspeak MySQL Host",
-                                    "^[\\.A-Za-z0-9-]+$", self.mysql_host or
-                                    config["Mysql.host"])
-    self.mysql_port = RetryIntQuestion(
-        "Fleetspeak MySQL Port (0 for local socket)", self.mysql_port or
-        0) or None
-
-    if self.mysql_port is None:
-      # golang's mysql connector needs the socket specified explicitly.
-      self.mysql_unix_socket = RetryQuestion(
-          "Fleetspeak MySQL local socket path", ".+",
-          self._FindMysqlUnixSocket() or "")
-
-    self.mysql_database = RetryQuestion("Fleetspeak MySQL Database",
-                                        "^[A-Za-z0-9-]+$",
-                                        self.mysql_database or "fleetspeak")
-    self.mysql_username = RetryQuestion(
-        "Fleetspeak MySQL Username", "[A-Za-z0-9-@]+$", self.mysql_username or
-        config["Mysql.database_username"])
-
-    self.mysql_password = GetPassword(
-        f"Please enter password for database user {self.mysql_username}: ")
-
-  def _PromptMySQL(self, config):
-    """Prompts the MySQL configuration, retrying if the configuration is invalid."""
-    while True:
-      self._PromptMySQLOnce(config)
-      if self._CheckMySQLConnection():
-        print("Successfully connected to MySQL with the given configuration.")
-        return
-      else:
-        print("Error: Could not connect to MySQL with the given configuration.")
-        retry = RetryBoolQuestion("Do you want to retry MySQL configuration?",
-                                  True)
-        if not retry:
-          raise ConfigInitError()
-
-  def _WriteDisabled(self, config):
-
-    config.Set("Server.fleetspeak_enabled", False)
-    config.Set("Client.fleetspeak_enabled", False)
-    config.Set("ClientBuilder.fleetspeak_bundled", False)
-    config.Set("Server.fleetspeak_server", "")
-
-    if self._IsFleetspeakPresent():
-      with open(self._ConfigPath("disabled"), "w") as f:
-        f.write("The existence of this file disables the "
-                "fleetspeak-server.service systemd unit.\n")
-
-  def _WriteEnabled(self, config):
-    """Applies the in-memory configuration for the use_fleetspeak case."""
-
-    service_config = services_pb2.ServiceConfig(name="GRR", factory="GRPC")
-    grpc_config = grpcservice_pb2.Config(
-        target="localhost:{}".format(self.grr_port), insecure=True)
-    service_config.config.Pack(grpc_config)
-    server_conf = server_pb2.ServerConfig(services=[service_config])
-    server_conf.broadcast_poll_time.seconds = 1
-
-    with open(self._ConfigPath("server.services.config"), "w") as f:
-      f.write(text_format.MessageToString(server_conf))
-
-    cp = config_pb2.Config()
-    cp.configuration_name = "Fleetspeak"
-    if self.mysql_unix_socket:
-      cp.components_config.mysql_data_source_name = (
-          "{user}:{password}@unix({socket})/{db}".format(
-              user=self.mysql_username,
-              password=self.mysql_password,
-              socket=self.mysql_unix_socket,
-              db=self.mysql_database))
-    else:
-      cp.components_config.mysql_data_source_name = (
-          "{user}:{password}@tcp({host}:{port})/{db}".format(
-              user=self.mysql_username,
-              password=self.mysql_password,
-              host=self.mysql_host,
-              port=self.mysql_port,
-              db=self.mysql_database))
-    cp.components_config.https_config.listen_address = "{}:{}".format(
-        self.external_hostname, self.https_port)
-    cp.components_config.https_config.disable_streaming = False
-    cp.components_config.admin_config.listen_address = "localhost:{}".format(
-        self.admin_port)
-    cp.public_host_port.append(cp.components_config.https_config.listen_address)
-    cp.server_component_configuration_file = self._ConfigPath(
-        "server.components.config")
-    cp.trusted_cert_file = self._ConfigPath("trusted_cert.pem")
-    cp.trusted_cert_key_file = self._ConfigPath("trusted_cert_key.pem")
-    cp.server_cert_file = self._ConfigPath("server_cert.pem")
-    cp.server_cert_key_file = self._ConfigPath("server_cert_key.pem")
-    cp.linux_client_configuration_file = self._ConfigPath("linux_client.config")
-    cp.windows_client_configuration_file = self._ConfigPath(
-        "windows_client.config")
-    cp.darwin_client_configuration_file = self._ConfigPath(
-        "darwin_client.config")
-
-    with open(self._ConfigPath("fleetspeak_config.config"), "w") as f:
-      f.write(text_format.MessageToString(cp))
-
-    subprocess.check_call([
-        self._fleetspeak_config_command_path, "-config",
-        self._ConfigPath("fleetspeak_config.config")
-    ])
-
-    # These modules don't exist on Windows, so importing locally.
-    # pylint: disable=g-import-not-at-top
-    import grp
-    import pwd
-    # pylint: enable=g-import-not-at-top
-
-    if (os.geteuid() == 0 and pwd.getpwnam("fleetspeak") and
-        grp.getgrnam("fleetspeak") and
-        os.path.exists("/etc/fleetspeak-server")):
-      subprocess.check_call(
-          ["chown", "-R", "fleetspeak:fleetspeak", "/etc/fleetspeak-server"])
-
-    try:
-      os.unlink(self._ConfigPath("disabled"))
-    except FileNotFoundError:
-      pass
-
-    config.Set("Server.fleetspeak_enabled", True)
-    config.Set("Client.fleetspeak_enabled", True)
-    config.Set("ClientBuilder.fleetspeak_bundled", True)
-    config.Set(
-        "Target:Linux", {
-            "ClientBuilder.fleetspeak_client_config":
-                cp.linux_client_configuration_file
-        })
-    config.Set(
-        "Target:Windows", {
-            "ClientBuilder.fleetspeak_client_config":
-                cp.windows_client_configuration_file
-        })
-    config.Set(
-        "Target:Darwin", {
-            "ClientBuilder.fleetspeak_client_config":
-                cp.darwin_client_configuration_file
-        })
-    config.Set("Server.fleetspeak_server",
-               cp.components_config.admin_config.listen_address)
-    config.Set("FleetspeakFrontend Context",
-               {"Server.fleetspeak_message_listen_address": grpc_config.target})
-
-  def _CheckMySQLConnection(self):
-    """Checks the MySQL configuration by attempting a connection."""
-    db_options = {
-        "Mysql.host": self.mysql_host,
-        "Mysql.database_name": self.mysql_database,
-        "Mysql.database_username": self.mysql_username,
-        "Mysql.database_password": self.mysql_password,
-    }
-    if self.mysql_port is not None:
-      db_options["Mysql.port"] = self.mysql_port
-    if self.mysql_unix_socket is not None:
-      db_options["Mysql.unix_socket"] = self.mysql_unix_socket
-    # In Python, localhost is automatically mapped to connecting via the UNIX
-    # domain socket.
-    # However, for Go we require a TCP connection at the moment.
-    # So if the host is localhost, try to connect to 127.0.0.1 to force TCP.
-    if db_options["Mysql.host"] == "localhost" and "Mysql.port" in db_options:
-      db_options_localhost = dict(db_options)
-      db_options_localhost["Mysql.host"] = "127.0.0.1"
-      if CheckMySQLConnection(db_options_localhost):
-        return True
-    return CheckMySQLConnection(db_options)
-
-  def _ListUnixSockets(self) -> Generator[str, None, None]:
-    """Returns paths of all active UNIX sockets."""
-    # Example /proc/net/unix:
-    #
-    # Num       RefCount Protocol Flags    Type St Inode Path
-    # [...]
-    # 0000000000000000: 00000002 00000000 00010000 0001 01 42013 \
-    #    /run/mysqld/mysqld.sock
-    # [...]
-    hex_digit = "[0-9a-fA-F]"
-    regex = re.compile(f"^{hex_digit}+: ({hex_digit}+ +){{6}}(.*)$")
-    with open("/proc/net/unix") as f:
-      for line in f:
-        line = line.strip("\n")
-        match = regex.match(line)
-        if match:
-          yield match.group(2)
-
-  def _FindMysqlUnixSocket(self) -> Optional[str]:
-    for socket_path in self._ListUnixSockets():
-      if "mysql" in socket_path:
-        return socket_path
-    return None
-
-
 def ConfigureDatastore(config):
   """Guides the user through configuration of the datastore."""
   print("\n\n-=GRR Datastore=-\n"
         "For GRR to work each GRR server has to be able to communicate with\n"
         "the datastore. To do this we need to configure a datastore.\n")
 
-  ConfigureMySQLDatastore(config)
+  existing_datastore = grr_config.CONFIG.Get("Datastore.implementation")
+
+  if not existing_datastore or existing_datastore == "FakeDataStore":
+    ConfigureMySQLDatastore(config)
+    return
+
+  print("Found existing settings:\n  REL_DB MySQL database")
+  if existing_datastore == "SqliteDataStore":
+    set_up_mysql = RetryBoolQuestion(
+        "The SQLite datastore is no longer supported. Would you like to\n"
+        "set up a MySQL datastore? Answering 'no' will abort config "
+        "initialization.", True)
+    if set_up_mysql:
+      print("\nPlease note that no data will be migrated from SQLite to "
+            "MySQL.\n")
+      ConfigureMySQLDatastore(config)
+    else:
+      raise ConfigInitError()
+  elif existing_datastore == "MySQLAdvancedDataStore":
+    set_up_mysql = RetryBoolQuestion(
+        "The MySQLAdvancedDataStore is no longer supported. Would you like to\n"
+        "set up a new MySQL datastore? Answering 'no' will abort config "
+        "initialization.", True)
+    if set_up_mysql:
+      print("\nPlease note that no data will be migrated from the old data "
+            "store.\n")
+      ConfigureMySQLDatastore(config)
+    else:
+      raise ConfigInitError()
 
 
 def ConfigureUrls(config, external_hostname: Optional[Text] = None):
@@ -728,21 +471,8 @@ def FinalizeConfigInit(config,
     repacking.TemplateRepacker().RepackAllTemplates(upload=True)
   print("\nGRR Initialization complete! You can edit the new configuration "
         "in %s.\n" % config["Config.writeback"])
-  if prompt and os.geteuid() == 0:
-    restart = RetryBoolQuestion(
-        "Restart service for the new configuration "
-        "to take effect?", True)
-    if restart:
-      for service in ("grr-server", "fleetspeak-server"):
-        try:
-          print(f"Restarting service: {service}.")
-          subprocess.check_call(["service", service, "restart"])
-        except subprocess.CalledProcessError as e:
-          print(f"Failed to restart: {service}.")
-          print(e, file=sys.stderr)
-  else:
-    print("Please restart the service for the new configuration to take "
-          "effect.\n")
+  print("Please restart the service for the new configuration to take "
+        "effect.\n")
 
 
 def Initialize(config=None,
@@ -753,7 +483,7 @@ def Initialize(config=None,
   """Initialize or update a GRR configuration."""
 
   print("Checking write access on config %s" % config["Config.writeback"])
-  if not os.access(config.parser.config_path, os.W_OK):
+  if not os.access(config.parser.filename, os.W_OK):
     raise IOError("Config not writeable (need sudo?)")
 
   print("\nStep 0: Importing Configuration from previous installation.")
@@ -771,8 +501,6 @@ def Initialize(config=None,
 
   print("\nStep 1: Setting Basic Configuration Parameters")
   print("We are now going to configure the server using a bunch of questions.")
-  fs_config = FleetspeakConfig()
-  fs_config.Prompt(config)
   ConfigureDatastore(config)
   ConfigureUrls(config, external_hostname=external_hostname)
   ConfigureEmails(config)
@@ -790,7 +518,6 @@ def Initialize(config=None,
   else:
     config_updater_keys_util.GenerateKeys(config)
 
-  fs_config.Write(config)
   FinalizeConfigInit(
       config,
       admin_password=admin_password,
@@ -799,23 +526,19 @@ def Initialize(config=None,
       prompt=True)
 
 
-def InitializeNoPrompt(
-    config=None,
-    external_hostname: Optional[Text] = None,
-    admin_password: Optional[Text] = None,
-    mysql_hostname: Optional[Text] = None,
-    mysql_port: Optional[int] = None,
-    mysql_username: Optional[Text] = None,
-    mysql_password: Optional[Text] = None,
-    mysql_db: Optional[Text] = None,
-    mysql_client_key_path: Optional[Text] = None,
-    mysql_client_cert_path: Optional[Text] = None,
-    mysql_ca_cert_path: Optional[Text] = None,
-    redownload_templates: bool = False,
-    repack_templates: bool = True,
-    use_fleetspeak: bool = False,
-    mysql_fleetspeak_db: Optional[Text] = None,
-):
+def InitializeNoPrompt(config=None,
+                       external_hostname: Optional[Text] = None,
+                       admin_password: Optional[Text] = None,
+                       mysql_hostname: Optional[Text] = None,
+                       mysql_port: Optional[int] = None,
+                       mysql_username: Optional[Text] = None,
+                       mysql_password: Optional[Text] = None,
+                       mysql_db: Optional[Text] = None,
+                       mysql_client_key_path: Optional[Text] = None,
+                       mysql_client_cert_path: Optional[Text] = None,
+                       mysql_ca_cert_path: Optional[Text] = None,
+                       redownload_templates: bool = False,
+                       repack_templates: bool = True):
   """Initialize GRR with no prompts.
 
   Args:
@@ -832,8 +555,6 @@ def InitializeNoPrompt(
     mysql_ca_cert_path: The path name of the CA certificate file.
     redownload_templates: Indicates whether templates should be re-downloaded.
     repack_templates: Indicates whether templates should be re-packed.
-    use_fleetspeak: Whether to use Fleetspeak.
-    mysql_fleetspeak_db: Name of the MySQL database to use for Fleetspeak.
 
   Raises:
     ValueError: if required flags are not provided, or if the config has
@@ -857,7 +578,7 @@ def InitializeNoPrompt(
     raise ValueError("--noprompt set, but --mysql_password was not provided.")
 
   print("Checking write access on config %s" % config.parser)
-  if not os.access(config.parser.config_path, os.W_OK):
+  if not os.access(config.parser.filename, os.W_OK):
     raise IOError("Config not writeable (need sudo?)")
 
   config_dict = {}
@@ -898,24 +619,19 @@ def InitializeNoPrompt(
   for key, value in config_dict.items():
     config.Set(key, value)
   config_updater_keys_util.GenerateKeys(config)
-
-  fs_config = FleetspeakConfig()
-  fs_config.use_fleetspeak = use_fleetspeak
-  fs_config.external_hostname = external_hostname
-  fs_config.mysql_username = mysql_username  # pytype: disable=annotation-type-mismatch  # attribute-variable-annotations
-  fs_config.mysql_password = mysql_password
-  fs_config.mysql_host = mysql_hostname  # pytype: disable=annotation-type-mismatch  # attribute-variable-annotations
-  if mysql_port:
-    fs_config.mysql_port = mysql_port
-  fs_config.mysql_database = mysql_fleetspeak_db  # pytype: disable=annotation-type-mismatch  # attribute-variable-annotations
-  fs_config.Write(config)
-
   FinalizeConfigInit(
       config,
       admin_password=admin_password,
       redownload_templates=redownload_templates,
       repack_templates=repack_templates,
       prompt=False)
+
+
+def GetToken():
+  # Extend for user authorization
+  # SetUID is required to create and write to various aff4 paths when updating
+  # config.
+  return access_control.ACLToken(username="GRRConsole").SetUID()
 
 
 def UploadSignedBinary(source_path,
@@ -951,7 +667,7 @@ def UploadSignedBinary(source_path,
       upload_subdirectory,
       os.path.basename(source_path),
   ])
-  binary = root_api.GrrBinary(binary_type, binary_path)
+  binary = root_api.GrrBinary(int(binary_type), binary_path)
 
   with open(source_path, "rb") as fd:
     binary.Upload(
@@ -1032,7 +748,11 @@ def _GetUserTypeAndPassword(username, password=None, is_admin=False):
   else:
     user_type = api_root.GrrUser.USER_TYPE_STANDARD
   if password is None:
-    password = GetPassword("Please enter password for user '%s':" % username)
+    # TODO
+    # pytype: disable=wrong-arg-types
+    password = getpass.getpass(prompt="Please enter password for user '%s':" %
+                               username)
+    # pytype: enable=wrong-arg-types
   return user_type, password
 
 
@@ -1070,8 +790,11 @@ def SwitchToRelDB(config):
   else:
     username = RetryQuestion("MySQL Username", "[A-Za-z0-9-@]+$",
                              config["Mysql.database_username"])
-    password = GetPassword("Please enter password for database user %s: " %
-                           username)
+    # TODO(hanuszczak): Incorrect type specification for `getpass`.
+    # pytype: disable=wrong-arg-types
+    password = getpass.getpass(
+        prompt="Please enter password for database user %s: " % username)
+    # pytype: enable=wrong-arg-types
 
   config.Set("Mysql.username", username)
   config.Set("Mysql.password", password)
@@ -1100,7 +823,7 @@ def ArgparseBool(raw_value):
   """
   if not isinstance(raw_value, str):
     raise argparse.ArgumentTypeError("Unexpected type: %s. Expected a string." %
-                                     type(raw_value).__name__)
+                                     compatibility.GetName(type(raw_value)))
 
   if raw_value.lower() == "true":
     return True

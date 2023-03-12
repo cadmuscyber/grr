@@ -209,7 +209,7 @@
 
   { "name": "NoProvides",
     "sources": [
-      { "type": "PATH",
+      { "type": "DIRECTORY",
         "attributes": { "paths": ["/"] }
       }
     ],
@@ -219,7 +219,7 @@
 
   { "name": "TooManyProvides",
     "sources": [
-      { "type": "PATH",
+      { "type": "DIRECTORY",
         "attributes": { "paths": ["/"] }
       }
     ],

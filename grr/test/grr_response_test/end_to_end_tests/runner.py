@@ -1,5 +1,11 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Helper for running end-to-end tests."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
+import collections
 import getpass
 import inspect
 import logging
@@ -49,8 +55,8 @@ class E2ETestRunner(object):
                api_endpoint="",
                api_user="",
                api_password="",
-               run_only_tests=None,
-               skip_tests=None,
+               whitelisted_tests=None,
+               blacklisted_tests=None,
                manual_tests=None,
                upload_test_binaries=True,
                api_retry_period_secs=30.0,
@@ -59,10 +65,10 @@ class E2ETestRunner(object):
     # TODO(hanuszczak): Use the `precondition` module for validation here.
     if not api_endpoint:
       raise ValueError("GRR api_endpoint is required.")
-    if isinstance(run_only_tests, str):
-      raise ValueError("run_only_tests should be a list.")
-    if isinstance(skip_tests, str):
-      raise ValueError("skip_tests should be a list.")
+    if isinstance(whitelisted_tests, str):
+      raise ValueError("whitelisted_tests should be a list.")
+    if isinstance(blacklisted_tests, str):
+      raise ValueError("blacklisted_tests should be a list.")
     if isinstance(manual_tests, str):
       raise ValueError("manual_tests should be a list.")
     if max_test_attempts < 1:
@@ -71,8 +77,8 @@ class E2ETestRunner(object):
     self._api_endpoint = api_endpoint
     self._api_user = api_user
     self._api_password = api_password
-    self._run_only_tests = set(run_only_tests or set())
-    self._skip_tests = set(skip_tests or set())
+    self._whitelisted_tests = set(whitelisted_tests or set())
+    self._blacklisted_tests = set(blacklisted_tests or set())
     self._manual_tests = set(manual_tests or [])
     self._upload_test_binaries = upload_test_binaries
     self._api_retry_period_secs = api_retry_period_secs
@@ -147,7 +153,7 @@ class E2ETestRunner(object):
     test_base.init_fn = lambda: (self._grr_api, client)
     unittest_runner = unittest.TextTestRunner()
 
-    results = dict()
+    results = collections.OrderedDict()
     applicable_tests = self._GetApplicableTests(client)
     if not applicable_tests:
       raise E2ETestError("Can't find applicable tests for the client.")
@@ -258,20 +264,20 @@ class E2ETestRunner(object):
       test_suite = unittest.TestLoader().loadTestsFromTestCase(test_class)
       for test in test_suite:
         test_name = "%s.%s" % (test_class.__name__, test._testMethodName)
-        if (self._run_only_tests and
-            test_class.__name__ not in self._run_only_tests and
-            test_name not in self._run_only_tests):
-          logging.debug("Skipping %s for %s per --run_only_tests", test_name,
+        if (self._whitelisted_tests and
+            test_class.__name__ not in self._whitelisted_tests and
+            test_name not in self._whitelisted_tests):
+          logging.debug("%s not in whitelist. Skipping for %s.", test_name,
                         client.client_id)
           continue
-        elif (test_class.__name__ in self._skip_tests or
-              test_name in self._skip_tests):
-          logging.debug("Skipping %s for %s per --skip_tests.", test_name,
-                        client.client_id)
+        elif (test_class.__name__ in self._blacklisted_tests or
+              test_name in self._blacklisted_tests):
+          logging.debug("%s is explicitly blacklisted. Skipping for %s.",
+                        test_name, client.client_id)
           continue
         else:
           applicable_tests[test_name] = test
-    return dict(sorted(applicable_tests.items()))
+    return collections.OrderedDict(sorted(applicable_tests.items()))
 
   def _RetryTest(self, test_name, test, unittest_runner):
     """Runs the given test with the given test runner, retrying on failure."""
@@ -280,8 +286,6 @@ class E2ETestRunner(object):
     millis_elapsed = None
     while num_attempts < self._max_test_attempts:
       start_time = time.time()
-      logging.info("Starting %s (attempt %d out of %d).", test_name,
-                   num_attempts + 1, self._max_test_attempts)
       result = unittest_runner.run(test)
       millis_elapsed = int((time.time() - start_time) * 1000)
       num_attempts += 1
@@ -294,9 +298,6 @@ class E2ETestRunner(object):
                        self._api_retry_period_secs)
           time.sleep(self._api_retry_period_secs)
         continue
-      else:
-        logging.info("%s (attempt %d) finished successfully.", test_name,
-                     num_attempts)
 
       if num_attempts > 1 and self._appveyor_messages_endpoint:
         appveyor_msg = "Flaky test %s passed after %d attempts." % (

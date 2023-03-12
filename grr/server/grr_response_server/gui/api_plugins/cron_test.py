@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This module contains tests for cron-related API handlers."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -62,20 +66,21 @@ class CronJobsTestMixin(object):
                     periodicity="1d",
                     lifetime="7d",
                     description="",
-                    enabled=True):
+                    enabled=True,
+                    token=None):
     args = rdf_cronjobs.CreateCronJobArgs(
         flow_name=flow_name,
         description=description,
         frequency=periodicity,
         lifetime=lifetime)
-    return cronjobs.CronManager().CreateJob(args, enabled=enabled)
+    return cronjobs.CronManager().CreateJob(args, enabled=enabled, token=token)
 
 
 class ApiCreateCronJobHandlerTest(api_test_lib.ApiCallHandlerTest):
   """Test for ApiCreateCronJobHandler."""
 
   def setUp(self):
-    super().setUp()
+    super(ApiCreateCronJobHandlerTest, self).setUp()
     self.handler = cron_plugin.ApiCreateCronJobHandler()
 
   def testAddForemanRulesHuntRunnerArgumentIsNotRespected(self):
@@ -84,7 +89,7 @@ class ApiCreateCronJobHandlerTest(api_test_lib.ApiCallHandlerTest):
         hunt_runner_args=rdf_hunts.HuntRunnerArgs(
             # Default is True.
             add_foreman_rules=False))
-    result = self.handler.Handle(args, context=self.context)
+    result = self.handler.Handle(args, token=self.token)
     self.assertTrue(
         result.args.hunt_cron_action.hunt_runner_args.add_foreman_rules)
 
@@ -94,21 +99,21 @@ class ApiDeleteCronJobHandlerTest(api_test_lib.ApiCallHandlerTest,
   """Test delete cron job handler."""
 
   def setUp(self):
-    super().setUp()
+    super(ApiDeleteCronJobHandlerTest, self).setUp()
     self.handler = cron_plugin.ApiDeleteCronJobHandler()
 
     self.cron_job_id = self.CreateCronJob(
-        flow_name=file_finder.FileFinder.__name__)
+        flow_name=file_finder.FileFinder.__name__, token=self.token)
 
   def testDeletesCronFromCollection(self):
-    jobs = list(cronjobs.CronManager().ListJobs())
+    jobs = list(cronjobs.CronManager().ListJobs(token=self.token))
     self.assertLen(jobs, 1)
     self.assertEqual(jobs[0], self.cron_job_id)
 
     args = cron_plugin.ApiDeleteCronJobArgs(cron_job_id=self.cron_job_id)
-    self.handler.Handle(args, context=self.context)
+    self.handler.Handle(args, token=self.token)
 
-    jobs = list(cronjobs.CronManager().ListJobs())
+    jobs = list(cronjobs.CronManager().ListJobs(token=self.token))
     self.assertEmpty(jobs)
 
 
@@ -116,7 +121,7 @@ class ApiGetCronJobHandlerTest(api_test_lib.ApiCallHandlerTest):
   """Tests the ApiGetCronJobHandler."""
 
   def setUp(self):
-    super().setUp()
+    super(ApiGetCronJobHandlerTest, self).setUp()
     self.handler = cron_plugin.ApiGetCronJobHandler()
 
   def testHandler(self):

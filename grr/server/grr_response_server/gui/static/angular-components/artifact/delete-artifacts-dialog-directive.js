@@ -1,63 +1,56 @@
 goog.module('grrUi.artifact.deleteArtifactsDialogDirective');
 goog.module.declareLegacyNamespace();
 
-const apiService = goog.requireType('grrUi.core.apiService');
-const artifactDescriptorsService = goog.requireType('grrUi.artifact.artifactDescriptorsService');
-
 
 
 /**
  * Controller for DeleteArtifactsDialogController.
- * @unrestricted
+ *
+ * @constructor
+ * @param {!angular.Scope} $scope
+ * @param {!angular.$q} $q
+ * @param {!grrUi.core.apiService.ApiService} grrApiService
+ * @param {!grrUi.artifact.artifactDescriptorsService.ArtifactDescriptorsService} grrArtifactDescriptorsService
+ * @ngInject
  */
-const DeleteArtifactsDialogController = class {
-  /**
-   * @param {!angular.Scope} $scope
-   * @param {!angular.$q} $q
-   * @param {!apiService.ApiService} grrApiService
-   * @param {!artifactDescriptorsService.ArtifactDescriptorsService}
-   *     grrArtifactDescriptorsService
-   * @ngInject
-   */
-  constructor($scope, $q, grrApiService, grrArtifactDescriptorsService) {
-    /** @private {!angular.Scope} */
-    this.scope_ = $scope;
+const DeleteArtifactsDialogController = function(
+    $scope, $q, grrApiService, grrArtifactDescriptorsService) {
+  /** @private {!angular.Scope} */
+  this.scope_ = $scope;
 
-    /** @private {!apiService.ApiService} */
-    this.grrApiService_ = grrApiService;
+  /** @private {!grrUi.core.apiService.ApiService} */
+  this.grrApiService_ = grrApiService;
 
-    /**
-     * @private {!artifactDescriptorsService.ArtifactDescriptorsService}
-     */
-    this.grrArtifactDescriptorsService_ = grrArtifactDescriptorsService;
+  /** @private {!grrUi.artifact.artifactDescriptorsService.ArtifactDescriptorsService} */
+  this.grrArtifactDescriptorsService_ = grrArtifactDescriptorsService;
 
-    /** @private {!angular.$q} */
-    this.q_ = $q;
-  }
-
-  /**
-   * Sends /artifacts/delete request to the server.
-   *
-   * @return {!angular.$q.Promise} A promise indicating success or failure.
-   * @export
-   */
-  proceed() {
-    var deferred = this.q_.defer();
-
-    this.grrApiService_.delete('/artifacts', {names: this.scope_['names']})
-        .then(
-            function success() {
-              deferred.resolve('Artifacts were deleted successfully.');
-              this.grrArtifactDescriptorsService_.clearCache();
-            }.bind(this),
-            function failure(response) {
-              deferred.reject(response.data.message);
-            }.bind(this));
-
-    return deferred.promise;
-  }
+  /** @private {!angular.$q} */
+  this.q_ = $q;
 };
 
+
+
+/**
+ * Sends /artifacts/delete request to the server.
+ *
+ * @return {!angular.$q.Promise} A promise indicating success or failure.
+ * @export
+ */
+DeleteArtifactsDialogController.prototype.proceed = function() {
+  var deferred = this.q_.defer();
+
+  this.grrApiService_.delete(
+      '/artifacts', { names: this.scope_['names'] }).then(
+        function success() {
+          deferred.resolve('Artifacts were deleted successfully.');
+          this.grrArtifactDescriptorsService_.clearCache();
+        }.bind(this),
+        function failure(response) {
+          deferred.reject(response.data.message);
+        }.bind(this));
+
+  return deferred.promise;
+};
 
 
 /**
@@ -67,7 +60,9 @@ const DeleteArtifactsDialogController = class {
  */
 exports.DeleteArtifactsDialogDirective = function() {
   return {
-    scope: {names: '='},
+    scope: {
+      names: '='
+    },
     restrict: 'E',
     templateUrl: '/static/angular-components/artifact/' +
         'delete-artifacts-dialog.html',

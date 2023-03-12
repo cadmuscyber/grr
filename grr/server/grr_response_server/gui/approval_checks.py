@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Approvals checking logic."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core import config
 from grr_response_core.lib import rdfvalue
@@ -67,6 +71,7 @@ def CheckClientApprovalRequest(approval_request):
   if not client_approval_auth.CLIENT_APPROVAL_AUTH_MGR.IsActive():
     return True
 
+  token = access_control.ACLToken(username=approval_request.requestor_username)
   approvers = set(g.grantor_username for g in approval_request.grants)
 
   labels = sorted(
@@ -74,7 +79,7 @@ def CheckClientApprovalRequest(approval_request):
       key=lambda l: l.name)
   for label in labels:
     client_approval_auth.CLIENT_APPROVAL_AUTH_MGR.CheckApproversForLabel(
-        rdfvalue.RDFURN(approval_request.subject_id),
+        token, rdfvalue.RDFURN(approval_request.subject_id),
         approval_request.requestor_username, approvers, label.name)
 
   return True

@@ -1,6 +1,10 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This file defines valid configuration contexts."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import config_lib
 
@@ -32,7 +36,6 @@ POOL_CLIENT_CONTEXT = config_lib.DEFINE_context("PoolClient Context")
 WORKER_CONTEXT = config_lib.DEFINE_context("Worker Context")
 FS_FRONTEND_CONTEXT = config_lib.DEFINE_context("FleetspeakFrontend Context")
 BENCHMARK_CONTEXT = config_lib.DEFINE_context("Benchmark Context")
-GRRAFANA_CONTEXT = config_lib.DEFINE_context("GRRafana Context")
 
 # Client building contexts.
 CLIENT_BUILD_CONTEXT = config_lib.DEFINE_context("ClientBuilder Context")
@@ -43,7 +46,6 @@ TARGET_LINUX = config_lib.DEFINE_context("Target:Linux")
 TARGET_LINUX_DEB = config_lib.DEFINE_context("Target:LinuxDeb")
 TARGET_LINUX_RPM = config_lib.DEFINE_context("Target:LinuxRpm")
 TARGET_WINDOWS = config_lib.DEFINE_context("Target:Windows")
-TARGET_WINDOWS_MSI = config_lib.DEFINE_context("Target:WindowsMsi")
 
 # Running from the command line.
 COMMAND_LINE_CONTEXT = config_lib.DEFINE_context("Commandline Context")

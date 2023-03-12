@@ -1,16 +1,22 @@
 #!/usr/bin/env python
+# Lint as: python3
 """These are filesystem related flows."""
-import fnmatch
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
+
 import os
 import re
 import stat
-from typing import Iterable, Union
+
 
 from grr_response_core.lib.rdfvalues import artifacts as rdf_artifacts
 from grr_response_core.lib.rdfvalues import client_action as rdf_client_action
 from grr_response_core.lib.rdfvalues import client_fs as rdf_client_fs
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
+from grr_response_core.lib.util.compat import fnmatch
 from grr_response_proto import flows_pb2
 from grr_response_server import data_store
 from grr_response_server import flow_base
@@ -110,7 +116,7 @@ class ListDirectory(flow_base.FlowBase):
 
     # TODO(hanuszczak): Support for old clients ends on 2021-01-01.
     # This conditional should be removed after that date.
-    if not self.client_version or self.client_version >= 3221:
+    if self.client_version >= 3221:
       stub = server_stubs.GetFileStat
       request = rdf_client_action.GetFileStatRequest(
           pathspec=self.args.pathspec, follow_symlink=True)
@@ -118,13 +124,13 @@ class ListDirectory(flow_base.FlowBase):
       stub = server_stubs.StatFile
       request = rdf_client_action.ListDirRequest(pathspec=self.args.pathspec)
 
-    self.CallClient(stub, request, next_state=self.Stat.__name__)
+    self.CallClient(stub, request, next_state=compatibility.GetName(self.Stat))
 
     # We use data to pass the path to the callback:
     self.CallClient(
         server_stubs.ListDirectory,
         pathspec=self.args.pathspec,
-        next_state=self.List.__name__)
+        next_state=compatibility.GetName(self.List))
 
   def Stat(self, responses):
     """Save stat information on the directory."""
@@ -160,7 +166,7 @@ class ListDirectory(flow_base.FlowBase):
   def NotifyAboutEnd(self):
     """Sends a notification that this flow is done."""
     if not self.state.urn:
-      super().NotifyAboutEnd()
+      super(ListDirectory, self).NotifyAboutEnd()
       return
 
     st = self.state.stat
@@ -177,7 +183,7 @@ class ListDirectory(flow_base.FlowBase):
         path_components=path_components)
 
     notification.Notify(
-        self.creator,
+        self.token.username,
         rdf_objects.UserNotification.Type.TYPE_VFS_LIST_DIRECTORY_COMPLETED,
         "Listed {0}".format(full_path),
         rdf_objects.ObjectReference(
@@ -210,7 +216,7 @@ class RecursiveListDirectory(flow_base.FlowBase):
     self.CallClient(
         server_stubs.ListDirectory,
         pathspec=self.args.pathspec,
-        next_state=self.ProcessDirectory.__name__)
+        next_state=compatibility.GetName(self.ProcessDirectory))
 
   def ProcessDirectory(self, responses):
     """Recursively list the directory, and add to the timeline."""
@@ -244,7 +250,7 @@ class RecursiveListDirectory(flow_base.FlowBase):
           self.CallClient(
               server_stubs.ListDirectory,
               pathspec=stat_response.pathspec,
-              next_state=self.ProcessDirectory.__name__)
+              next_state=compatibility.GetName(self.ProcessDirectory))
           self.state.dir_count += 1
           if self.state.dir_count % 100 == 0:  # Log every 100 directories
             self.Log("Reading %s. (%d nodes, %d directories done)",
@@ -281,7 +287,7 @@ class RecursiveListDirectory(flow_base.FlowBase):
             path_components=components[3:])
 
     notification.Notify(
-        self.creator, rdf_objects.UserNotification.Type
+        self.token.username, rdf_objects.UserNotification.Type
         .TYPE_VFS_RECURSIVE_LIST_DIRECTORY_COMPLETED,
         status_text % (self.state.file_count, self.state.dir_count),
         rdf_objects.ObjectReference(
@@ -292,9 +298,6 @@ class RecursiveListDirectory(flow_base.FlowBase):
     del responses
     status_text = "Recursive Directory Listing complete %d nodes, %d dirs"
     self.Log(status_text, self.state.file_count, self.state.dir_count)
-
-
-_PathNode = dict[str, Union[bool, dict[bytes, "_PathNode"]]]
 
 
 class GlobArgs(rdf_structs.RDFProtoStruct):
@@ -317,8 +320,7 @@ class GlobLogic(object):
                    pathtype="OS",
                    root_path=None,
                    process_non_regular_files=False,
-                   collect_ext_attrs=False,
-                   implementation_type=None):
+                   collect_ext_attrs=False):
     """Starts the Glob.
 
     This is the main entry point for this flow mixin.
@@ -335,7 +337,6 @@ class GlobLogic(object):
         regular ones.
       collect_ext_attrs: Whether to gather information about file extended
         attributes.
-      implementation_type: The implementation type to use for create pathspecs.
     """
     patterns = []
 
@@ -344,7 +345,6 @@ class GlobLogic(object):
       return
 
     self.state.pathtype = pathtype
-    self.state.implementation_type = implementation_type
     self.state.root_path = root_path
     self.state.process_non_regular_files = process_non_regular_files
     self.state.collect_ext_attrs = collect_ext_attrs
@@ -356,6 +356,11 @@ class GlobLogic(object):
     for path in paths:
       patterns.extend(
           path.Interpolate(knowledge_base=self.client_knowledge_base))
+
+    # Sort the patterns so that if there are files whose paths conflict with
+    # directory paths, the files get handled after the conflicting directories
+    # have been added to the component tree.
+    patterns.sort(key=len, reverse=True)
 
     # Expand each glob pattern into a list of components. A component is either
     # a wildcard or a literal component.
@@ -369,22 +374,24 @@ class GlobLogic(object):
     # Note: The component tree contains serialized pathspecs in dicts.
     for pattern in patterns:
       # The root node.
-      node = self.state.component_tree
+      curr_node = self.state.component_tree
 
       components = self._ConvertGlobIntoPathComponents(pattern)
       for i, curr_component in enumerate(components):
-        node = node["children"].setdefault(
-            curr_component.SerializeToBytes(), self._NewNode()
-        )
-        if i == len(components) - 1:
-          # If this is the last path component, then it has been explicitly
-          # requested for collection. Mark it as such in the path trie.
-          node["collect"] = True
+        is_last_component = i == len(components) - 1
+        next_node = curr_node.get(curr_component.SerializeToBytes(), {})
+        if is_last_component and next_node:
+          # There is a conflicting directory already existing in the tree.
+          # Replace the directory node with a node representing this file.
+          curr_node[curr_component.SerializeToBytes()] = {}
+        else:
+          curr_node = curr_node.setdefault(curr_component.SerializeToBytes(),
+                                           {})
 
-    root_path = next(iter(self.state.component_tree["children"].keys()))
+    root_path = next(iter(self.state.component_tree.keys()))
     self.CallStateInline(
         messages=[None],
-        next_state=self._ProcessEntry.__name__,
+        next_state=compatibility.GetName(self._ProcessEntry),
         request_data=dict(component_path=[root_path]))
 
   def GlobReportMatch(self, stat_response):
@@ -397,13 +404,6 @@ class GlobLogic(object):
 
   # Maximum number of files to inspect in a single directory
   FILE_MAX_PER_DIR = 1000000
-
-  def _PathSpecForClient(self,
-                         pathspec: rdf_paths.PathSpec) -> rdf_paths.PathSpec:
-    if self.state.implementation_type:
-      pathspec = pathspec.Copy()
-      pathspec.implementation_type = self.state.implementation_type
-    return pathspec
 
   def _ConvertGlobIntoPathComponents(self, pattern):
     r"""Converts a glob pattern into a list of pathspec components.
@@ -461,25 +461,10 @@ class GlobLogic(object):
     return components
 
   def Start(self, **_):
-    super().Start()
-    self.state.component_tree = self._NewNode()
+    super(GlobLogic, self).Start()
+    self.state.component_tree = {}
 
-  def _NewNode(self) -> _PathNode:
-    """Create a new node to be used in the path trie (component_tree).
-
-    We represent the trie node as a primitive dict so that its storage in the
-    persistent state dict is somewhat simplified. The node dict holds two keys:
-      - collect: boolean, whether or not the path leading to this node should be
-          collected; and
-      - children: dict[bytes, node dict], the collection of the node's
-          children, as a mapping of 'serialized path component -> child node'.
-
-    Returns:
-      A new node to be used in the component_tree.
-    """
-    return {"collect": False, "children": {}}
-
-  def _FindNode(self, component_path: Iterable[bytes]) -> _PathNode:
+  def _FindNode(self, component_path):
     """Find the node in the component_tree from component_path.
 
     Args:
@@ -492,7 +477,7 @@ class GlobLogic(object):
     # Find the node that the component path is referring to.
     node = self.state.component_tree
     for component in component_path:
-      node = node["children"][component]
+      node = node[component]
 
     return node
 
@@ -539,11 +524,11 @@ class GlobLogic(object):
       base_node = self._FindNode(base_path)
       for response in stat_responses:
         matching_components = []
-        for next_path_comp in base_node["children"]:
-          pathspec = rdf_paths.PathSpec.FromSerializedBytes(next_path_comp)
+        for next_node in base_node:
+          pathspec = rdf_paths.PathSpec.FromSerializedBytes(next_node)
 
           if self._MatchPath(pathspec, response):
-            matching_path = base_path + [next_path_comp]
+            matching_path = base_path + [next_node]
             matching_components.append(matching_path)
 
         if matching_components:
@@ -566,13 +551,13 @@ class GlobLogic(object):
 
       node = self._FindNode(component_path)
 
-      if node["collect"]:
+      if not node:
+        # Node is empty representing a leaf node - we found a hit - report it.
         self.GlobReportMatch(response)
-      if not node["children"]:
         return
 
       # There are further components in the tree - iterate over them.
-      for component_str, next_node in node["children"].items():
+      for component_str, next_node in node.items():
         component = rdf_paths.PathSpec.FromSerializedBytes(component_str)
         next_component = component_path + [component_str]
 
@@ -608,7 +593,7 @@ class GlobLogic(object):
           else:
             pathspec = component
 
-          if next_node["collect"]:
+          if not next_node:
             # Check for the existence of the last node.
             if (response is None or
                 (response and (response.st_mode == 0 or
@@ -621,21 +606,20 @@ class GlobLogic(object):
 
               # TODO(hanuszczak): Support for old clients ends on 2021-01-01.
               # This conditional should be removed after that date.
-              if not self.client_version or self.client_version >= 3221:
+              if self.client_version >= 3221:
                 stub = server_stubs.GetFileStat
                 request = rdf_client_action.GetFileStatRequest(
-                    pathspec=self._PathSpecForClient(pathspec),
+                    pathspec=pathspec,
                     collect_ext_attrs=self.state.collect_ext_attrs,
                     follow_symlink=True)
               else:
                 stub = server_stubs.StatFile
-                request = rdf_client_action.ListDirRequest(
-                    pathspec=self._PathSpecForClient(pathspec))
+                request = rdf_client_action.ListDirRequest(pathspec=pathspec)
 
               self.CallClient(
                   stub,
                   request,
-                  next_state=self._ProcessEntry.__name__,
+                  next_state=compatibility.GetName(self._ProcessEntry),
                   request_data=dict(component_path=next_component))
           else:
             # There is no need to go back to the client for intermediate
@@ -643,7 +627,7 @@ class GlobLogic(object):
             # calling this state inline.
             self.CallStateInline(
                 [rdf_client_fs.StatEntry(pathspec=pathspec)],
-                next_state=self._ProcessEntry.__name__,
+                next_state=compatibility.GetName(self._ProcessEntry),
                 request_data=dict(component_path=next_component))
 
       if recursions_to_get or regexes_to_get:
@@ -661,7 +645,7 @@ class GlobLogic(object):
                                                 ])) + "$"
 
           findspec = rdf_client_fs.FindSpec(
-              pathspec=self._PathSpecForClient(base_pathspec),
+              pathspec=base_pathspec,
               cross_devs=True,
               max_depth=depth,
               path_regex=path_regex)
@@ -670,22 +654,20 @@ class GlobLogic(object):
           self.CallClient(
               server_stubs.Find,
               findspec,
-              next_state=self._ProcessEntry.__name__,
+              next_state=compatibility.GetName(self._ProcessEntry),
               request_data=dict(base_path=component_path))
 
         if regexes_to_get:
           path_regex = "(?i)^" + "$|^".join(
               set([c.path for c in regexes_to_get])) + "$"
           findspec = rdf_client_fs.FindSpec(
-              pathspec=self._PathSpecForClient(base_pathspec),
-              max_depth=1,
-              path_regex=path_regex)
+              pathspec=base_pathspec, max_depth=1, path_regex=path_regex)
 
           findspec.iterator.number = self.FILE_MAX_PER_DIR
           self.CallClient(
               server_stubs.Find,
               findspec,
-              next_state=self._ProcessEntry.__name__,
+              next_state=compatibility.GetName(self._ProcessEntry),
               request_data=dict(base_path=component_path))
 
 
@@ -708,23 +690,16 @@ class Glob(GlobLogic, flow_base.FlowBase):
     interpolate each component. Finally, we generate a cartesian product of all
     combinations.
     """
-    super().Start()
-
-    if self.args.HasField("implementation_type"):
-      implementation_type = self.args.implementation_type
-    else:
-      implementation_type = None
-
+    super(Glob, self).Start()
     self.GlobForPaths(
         self.args.paths,
         pathtype=self.args.pathtype,
         root_path=self.args.root_path,
-        process_non_regular_files=self.args.process_non_regular_files,
-        implementation_type=implementation_type)
+        process_non_regular_files=self.args.process_non_regular_files)
 
   def GlobReportMatch(self, stat_response):
     """Called when we've found a matching StatEntry."""
-    super().GlobReportMatch(stat_response)
+    super(Glob, self).GlobReportMatch(stat_response)
 
     self.SendReply(stat_response)
 
@@ -777,10 +752,11 @@ class DiskVolumeInfo(flow_base.FlowBase):
             # collectors.ArtifactCollectorFlow.__name__,
             "ArtifactCollectorFlow",
             artifact_list=["WindowsEnvironmentVariableSystemRoot"],
-            next_state=self.StoreSystemRoot.__name__)
+            next_state=compatibility.GetName(self.StoreSystemRoot))
         return
 
-    self.CallStateInline(next_state=self.CollectVolumeInfo.__name__)
+    self.CallStateInline(
+        next_state=compatibility.GetName(self.CollectVolumeInfo))
 
   def StoreSystemRoot(self, responses):
     if not responses.success or not responses.First():
@@ -798,7 +774,8 @@ class DiskVolumeInfo(flow_base.FlowBase):
     else:
       self.Log("Bad result for systemdrive: %s", responses.First())
 
-    self.CallStateInline(next_state=self.CollectVolumeInfo.__name__)
+    self.CallStateInline(
+        next_state=compatibility.GetName(self.CollectVolumeInfo))
 
   def CollectVolumeInfo(self, responses):
     del responses
@@ -811,14 +788,14 @@ class DiskVolumeInfo(flow_base.FlowBase):
           # collectors.ArtifactCollectorFlow.__name__,
           "ArtifactCollectorFlow",
           artifact_list=["WMILogicalDisks"],
-          next_state=self.ProcessWindowsVolumes.__name__,
+          next_state=compatibility.GetName(self.ProcessWindowsVolumes),
           dependencies=deps)
     else:
       self.CallClient(
           server_stubs.StatFS,
           rdf_client_action.StatFSRequest(
               path_list=self.args.path_list, pathtype=self.args.pathtype),
-          next_state=self.ProcessVolumes.__name__)
+          next_state=compatibility.GetName(self.ProcessVolumes))
 
   def ProcessWindowsVolumes(self, responses):
     if not responses.success:

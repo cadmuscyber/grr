@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """System cron flows tests."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -19,7 +23,7 @@ class SystemCronJobTest(test_lib.GRRBaseTest):
   """Test system cron jobs."""
 
   def setUp(self):
-    super().setUp()
+    super(SystemCronJobTest, self).setUp()
 
     one_hour_ping = rdfvalue.RDFDatetime.Now() - rdfvalue.Duration.From(
         1, rdfvalue.HOURS)
@@ -40,9 +44,6 @@ class SystemCronJobTest(test_lib.GRRBaseTest):
     # These clients shouldn't be analyzed by any of the stats cronjobs.
     self.SetupClientsWithIndices(
         range(22, 24), system="Linux", ping=ancient_ping)
-
-    data_store.REL_DB.WriteGRRUser("GRR")
-    data_store.REL_DB.WriteGRRUser("jim")
 
     for i in range(0, 10):
       client_id = "C.1%015x" % i

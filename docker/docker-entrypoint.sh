@@ -8,7 +8,7 @@ set -e
 
 run_component() {
   COMPONENT=$1; shift
-  grr_server --component "${COMPONENT}" "$@"
+  grr_server --component "${COMPONENT}" --disallow_missing_config_definitions "$@"
 }
 
 initialize() {

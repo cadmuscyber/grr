@@ -3,8 +3,14 @@
 
 The module contains classes that interact with VFS.
 """
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import io
-from typing import Optional, Text, List, Iterator, Callable
+from typing import Text, List, Iterator, Callable
 
 from grr_api_client import client
 from grr_api_client import errors as api_errors
@@ -24,10 +30,10 @@ class VfsFile(io.BufferedIOBase):
   Currently this file is readable only, not seekable and not writable. Read
   operations are buffered.
   """
-  _buffer_pos: int = None
+  _buffer_pos = None  # type: int
 
   def __init__(self, fetch: Callable[[int], Iterator[bytes]]) -> None:
-    super().__init__()
+    super(VfsFile, self).__init__()
     self._data = fetch(0)
     self._buffer = b''
     self._buffer_pos = 0
@@ -110,7 +116,7 @@ class VfsFile(io.BufferedIOBase):
     self._ensure_not_closed()
     return self._pos
 
-  def truncate(self, size: Optional[int] = None) -> None:
+  def truncate(self, size: int = None) -> None:
     raise io.UnsupportedOperation()
 
   def writable(self) -> bool:
@@ -122,7 +128,7 @@ class VfsFile(io.BufferedIOBase):
   def writelines(self, lines: List[Text]) -> None:
     raise io.UnsupportedOperation()
 
-  def detach(self) -> None:  # pytype: disable=signature-mismatch  # overriding-return-type-checks
+  def detach(self) -> None:
     raise io.UnsupportedOperation()
 
   def readable(self) -> bool:
@@ -280,8 +286,6 @@ def get_vfs_path(path: Text, path_type: jobs_pb2.PathSpec.PathType) -> Text:
     return 'fs/os{}'.format(path)
   elif path_type == jobs_pb2.PathSpec.TSK:
     return 'fs/tsk{}'.format(path)
-  elif path_type == jobs_pb2.PathSpec.NTFS:
-    return 'fs/ntfs{}'.format(path)
   elif path_type == jobs_pb2.PathSpec.REGISTRY:
     return 'registry{}'.format(path)
   raise errors.UnsupportedPathTypeError(path_type)

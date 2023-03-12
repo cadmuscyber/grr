@@ -1,31 +1,27 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Simple parsers for cron type files."""
 
-
-from typing import IO
-from typing import Iterator
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import crontab
 
+
 from grr_response_core.lib import parsers
-from grr_response_core.lib.rdfvalues import client as rdf_client
 from grr_response_core.lib.rdfvalues import cronjobs as rdf_cronjobs
-from grr_response_core.lib.rdfvalues import paths as rdf_paths
 
 
-class CronTabParser(parsers.SingleFileParser[rdf_cronjobs.CronTabFile]):
+class CronTabParser(parsers.SingleFileParser):
   """Parser for crontab files."""
 
   output_types = [rdf_cronjobs.CronTabFile]
   supported_artifacts = ["LinuxCronTabs", "MacOSCronTabs"]
 
-  def ParseFile(
-      self,
-      knowledge_base: rdf_client.KnowledgeBase,
-      pathspec: rdf_paths.PathSpec,
-      filedesc: IO[bytes],
-  ) -> Iterator[rdf_cronjobs.CronTabFile]:
+  def ParseFile(self, knowledge_base, pathspec, filedesc):
     del knowledge_base  # Unused.
+    del pathspec  # Unused.
 
     entries = []
 
@@ -43,7 +39,9 @@ class CronTabParser(parsers.SingleFileParser[rdf_cronjobs.CronTabFile]):
               command=str(job.command),
               comment=str(job.comment)))
 
-    yield rdf_cronjobs.CronTabFile(
-        # We're interested in the nominal file path, not the full Pathspec.
-        path=pathspec.last.path,
-        jobs=entries)
+    try:
+      source_urn = filedesc.urn
+    except AttributeError:
+      source_urn = None
+
+    yield rdf_cronjobs.CronTabFile(aff4path=source_urn, jobs=entries)

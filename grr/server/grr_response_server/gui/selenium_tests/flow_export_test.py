@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Test the flow export."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from absl import app
 
@@ -12,7 +16,7 @@ from grr.test_lib import test_lib
 class TestFlowExport(gui_test_lib.GRRSeleniumTest):
 
   def setUp(self):
-    super().setUp()
+    super(TestFlowExport, self).setUp()
 
     self.client_id = self.SetupClient(0)
     self.RequestAndGrantClientApproval(self.client_id)
@@ -23,7 +27,7 @@ class TestFlowExport(gui_test_lib.GRRSeleniumTest):
         gui_test_lib.FlowWithOneStatEntryResult.__name__,
         client_mock=self.action_mock,
         client_id=self.client_id,
-        creator=self.test_username)
+        token=self.token)
 
     self.Open("/#/clients/%s/flows" % self.client_id)
     self.Click("css=td:contains('FlowWithOneStatEntryResult')")
@@ -47,7 +51,7 @@ class TestFlowExport(gui_test_lib.GRRSeleniumTest):
         gui_test_lib.RecursiveTestFlow.__name__,
         self.action_mock,
         client_id=self.client_id,
-        creator=self.test_username)
+        token=self.token)
 
     self.Open("/#/clients/%s/flows" % self.client_id)
     self.Click("css=td:contains('RecursiveTestFlow')")
@@ -61,7 +65,7 @@ class TestFlowExport(gui_test_lib.GRRSeleniumTest):
         gui_test_lib.FlowWithOneNetworkConnectionResult.__name__,
         self.action_mock,
         client_id=self.client_id,
-        creator=self.test_username)
+        token=self.token)
 
     self.Open("/#/clients/%s/flows" % self.client_id)
     self.Click("css=td:contains('FlowWithOneNetworkConnectionResult')")

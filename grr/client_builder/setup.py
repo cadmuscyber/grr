@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 """Setup configuration for the grr-response-client-builder package."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-import configparser
 import os
 import shutil
 
+import configparser
 from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.sdist import sdist
@@ -21,7 +24,7 @@ def get_config():
     if not os.path.exists(ini_path):
       raise RuntimeError("Couldn't find version.ini")
 
-  config = configparser.ConfigParser()
+  config = configparser.SafeConfigParser()
   config.read(ini_path)
   return config
 
@@ -41,7 +44,9 @@ class Sdist(sdist):
         os.path.join(THIS_DIRECTORY, "../../version.ini"), sdist_version_ini)
 
 
-data_files = ["version.ini"]
+# TODO: Clean up str() call after Python 2 support is
+# dropped ('data_files' elements have to be bytes in Python 2).
+data_files = [str("version.ini")]
 
 setup_args = dict(
     name="grr-response-client-builder",
@@ -60,14 +65,12 @@ setup_args = dict(
     cmdclass={"sdist": Sdist},
     packages=find_packages(),
     include_package_data=True,
-    python_requires=">=3.9",
+    python_requires=">=3.6",
     install_requires=[
-        "distro==1.7.0",
+        "distro==1.4.0",
         "grr-response-client==%s" % VERSION.get("Version", "packagedepends"),
         "grr-response-core==%s" % VERSION.get("Version", "packagedepends"),
-        "fleetspeak-client-bin==0.1.11",
-        "olefile==0.46",
-        "PyInstaller==5.2",
+        "pyinstaller==3.5",
     ],
 
     # Data files used by GRR. Access these via the config_lib "resource" filter.

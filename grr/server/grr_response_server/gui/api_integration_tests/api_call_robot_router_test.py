@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """API E2E tests for ApiCallRobotRouter."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import io
 import os
@@ -7,8 +11,8 @@ import zipfile
 
 from absl import app
 
-from grr_api_client import errors
 from grr_response_core.lib.rdfvalues import file_finder as rdf_file_finder
+from grr_response_core.lib.util import compatibility
 from grr_response_server.flows.general import file_finder
 from grr_response_server.flows.general import processes
 from grr_response_server.gui import api_auth_manager
@@ -20,7 +24,8 @@ from grr.test_lib import flow_test_lib
 from grr.test_lib import test_lib
 
 
-ROBOT_ROUTER_NAME = api_call_robot_router.ApiCallRobotRouter.__name__
+ROBOT_ROUTER_NAME = compatibility.GetName(
+    api_call_robot_router.ApiCallRobotRouter)
 
 
 class ApiCallRobotRouterE2ETest(api_integration_test_lib.ApiIntegrationTest):
@@ -36,7 +41,7 @@ router_params:
     enabled: True
   get_flow_files_archive:
     enabled: True
-    include_only_path_globs:
+    path_globs_whitelist:
       - "/**/*.plist"
 users:
   - "%s"
@@ -57,20 +62,20 @@ users:
     api_auth_manager.InitializeApiAuthManager()
 
   def setUp(self):
-    super().setUp()
+    super(ApiCallRobotRouterE2ETest, self).setUp()
     self.client_id = self.SetupClient(0)
 
   def testCreatingArbitraryFlowDoesNotWork(self):
     self.InitRouterConfig(self.__class__.FILE_FINDER_ROUTER_CONFIG %
-                          self.test_username)
+                          self.token.username)
 
     client_ref = self.api.Client(client_id=self.client_id)
-    with self.assertRaises(errors.AccessForbiddenError):
+    with self.assertRaises(RuntimeError):
       client_ref.CreateFlow(name=processes.ListProcesses.__name__)
 
   def testFileFinderWorkflowWorks(self):
     self.InitRouterConfig(self.__class__.FILE_FINDER_ROUTER_CONFIG %
-                          self.test_username)
+                          self.token.username)
 
     client_ref = self.api.Client(client_id=self.client_id)
 
@@ -109,7 +114,7 @@ users:
     zip_fd = zipfile.ZipFile(zip_stream)
 
     # Now check that the archive has only "test.plist" file, as it's the
-    # only file that matches the includelist (see FILE_FINDER_ROUTER_CONFIG).
+    # only file that matches the whitelist (see FILE_FINDER_ROUTER_CONFIG).
     # There should be 3 items in the archive: the hash of the "test.plist"
     # file, the symlink to this hash and the MANIFEST file.
     namelist = zip_fd.namelist()
@@ -131,17 +136,17 @@ users:
 
   def testCheckingArbitraryFlowStateDoesNotWork(self):
     self.InitRouterConfig(self.__class__.FILE_FINDER_ROUTER_CONFIG %
-                          self.test_username)
+                          self.token.username)
     flow_id = flow_test_lib.StartFlow(
         flow_cls=file_finder.FileFinder, client_id=self.client_id)
 
     flow_ref = self.api.Client(client_id=self.client_id).Flow(flow_id)
-    with self.assertRaises(errors.AccessForbiddenError):
+    with self.assertRaises(RuntimeError):
       flow_ref.Get()
 
   def testNoThrottlingDoneByDefault(self):
     self.InitRouterConfig(self.__class__.FILE_FINDER_ROUTER_CONFIG %
-                          self.test_username)
+                          self.token.username)
 
     args = rdf_file_finder.FileFinderArgs(
         action=rdf_file_finder.FileFinderAction(action_type="STAT"),
@@ -168,7 +173,7 @@ users:
 
   def testFileFinderThrottlingByFlowCountWorks(self):
     self.InitRouterConfig(self.__class__.FILE_FINDER_THROTTLED_ROUTER_CONFIG %
-                          self.test_username)
+                          self.token.username)
 
     args = []
     for p in ["tests.plist", "numbers.txt", "numbers.txt.ver2"]:
@@ -187,13 +192,12 @@ users:
         name=file_finder.FileFinder.__name__, args=args[1])
     self.assertEqual(flow_obj.data.state, flow_obj.data.RUNNING)
 
-    with self.assertRaisesRegex(errors.ResourceExhaustedError,
-                                "2 flows run since"):
+    with self.assertRaisesRegex(RuntimeError, "2 flows run since"):
       client_ref.CreateFlow(name=file_finder.FileFinder.__name__, args=args[2])
 
   def testFileFinderThrottlingByDuplicateIntervalWorks(self):
     self.InitRouterConfig(self.__class__.FILE_FINDER_THROTTLED_ROUTER_CONFIG %
-                          self.test_username)
+                          self.token.username)
 
     args = rdf_file_finder.FileFinderArgs(
         action=rdf_file_finder.FileFinderAction(action_type="STAT"),
@@ -221,7 +225,7 @@ users:
 
   def testFileFinderMaxFileSizeOverrideWorks(self):
     self.InitRouterConfig(self.__class__.FILE_FINDER_MAX_SIZE_OVERRIDE_CONFIG %
-                          self.test_username)
+                          self.token.username)
 
     args = rdf_file_finder.FileFinderArgs(
         action=rdf_file_finder.FileFinderAction(action_type="DOWNLOAD"),

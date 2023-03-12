@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Implementation of various cryptographic types."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import binascii
 import hashlib
@@ -29,6 +33,7 @@ from grr_response_core.lib import type_info
 from grr_response_core.lib import utils
 from grr_response_core.lib.rdfvalues import standard as rdf_standard
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_core.lib.util import precondition
 from grr_response_core.lib.util import random
 from grr_response_core.lib.util import text
@@ -513,7 +518,13 @@ class RSAPrivateKey(rdfvalue.RDFPrimitive):
   def __str__(self) -> Text:
     digest = hashlib.sha256(self.AsPEM()).hexdigest()
 
-    return "%s (%s)" % ((self.__class__).__name__, digest)
+    # TODO: `hexdigest` returns a unicode object in Python 3, but
+    # bytes object in Python 2. Once support for Python 2 is dropped, this can
+    # be safely removed.
+    if compatibility.PY2:
+      digest = digest.decode("ascii")  # pytype: disable=attribute-error
+
+    return "%s (%s)" % (compatibility.GetName(self.__class__), digest)
 
   # TODO(user): this should return a string, since PEM format
   # base64-encodes data and thus is ascii-compatible.

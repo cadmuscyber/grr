@@ -1,11 +1,13 @@
 #!/usr/bin/env python
+# Lint as: python3
 """A module with definition of factory."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from typing import Callable
-from typing import Dict
 from typing import Generic
 from typing import Iterator
-from typing import Optional
 from typing import Text
 from typing import Type
 from typing import TypeVar
@@ -14,13 +16,6 @@ from grr_response_core.lib.util import precondition
 
 
 T = TypeVar("T")
-
-
-class _FactoryEntry(Generic[T]):
-
-  def __init__(self, cls: Type[T], constructor: Callable[[], T]):
-    self.cls = cls
-    self.constructor = constructor
 
 
 class Factory(Generic[T]):
@@ -42,35 +37,27 @@ class Factory(Generic[T]):
     Args:
       cls: The type of produced instances.
     """
-    self._cls: Type[T] = cls
-    self._entries: Dict[str, _FactoryEntry[T]] = {}
+    self._cls = cls
+    self._constructors = {}
 
-  def Register(self,
-               name: Text,
-               cls: Type[T],
-               constructor: Optional[Callable[[], T]] = None):
+  def Register(self, name: Text, constructor: Callable[[], T]):
     """Registers a new constructor in the factory.
 
     Args:
       name: A name associated with given constructor.
-      cls: The type to register under the name.
-      constructor: Optional, a custom function that creates an instance of the
-        cls type. If None, the class constructor is used.
+      constructor: A constructor function that creates instances.
 
     Raises:
       ValueError: If there already is a constructor associated with given name.
     """
     precondition.AssertType(name, Text)
 
-    if name in self._entries:
+    if name in self._constructors:
       message = "Duplicated constructors %r and %r for name '%s'"
-      message %= (constructor, self._entries[name], name)
+      message %= (constructor, self._constructors[name], name)
       raise ValueError(message)
 
-    if constructor is None:
-      constructor = cls  # Use class constructor if no custom function is given.
-
-    self._entries[name] = _FactoryEntry(cls, constructor)
+    self._constructors[name] = constructor
 
   def Unregister(self, name: Text):
     """Unregisters a constructor.
@@ -84,7 +71,7 @@ class Factory(Generic[T]):
     precondition.AssertType(name, Text)
 
     try:
-      del self._entries[name]
+      del self._constructors[name]
     except KeyError:
       raise ValueError("Constructor with name '%s' is not registered" % name)
 
@@ -100,31 +87,26 @@ class Factory(Generic[T]):
     precondition.AssertType(name, Text)
 
     try:
-      constructor = self._entries[name].constructor
+      constructor = self._constructors[name]
     except KeyError:
       message = "No constructor for name '%s' has been registered"
       message %= name
       raise ValueError(message)
 
-    return constructor()
+    instance = constructor()
+    if not isinstance(instance, self._cls):
+      message = ("Constructor %r for name '%s' returned instance of type %r "
+                 "(expected %r)")
+      message %= (constructor, name, type(instance), self._cls)
+      raise TypeError(message)
+
+    return instance
 
   def CreateAll(self) -> Iterator[T]:
     """Creates instances using all registered constructors."""
     for name in self.Names():
       yield self.Create(name)
 
-  def GetType(self, name: Text) -> Type[T]:
-    """Returns the class registered under the given name."""
-    try:
-      return self._entries[name].cls
-    except KeyError:
-      raise ValueError(f"No class has been registered for name {name}")
-
-  def GetTypes(self) -> Iterator[Type[T]]:
-    """Yields all classes that have been registered."""
-    for name in self.Names():
-      yield self.GetType(name)
-
   def Names(self) -> Iterator[Text]:
     """Yields all names that have been registered with this factory."""
-    return iter(self._entries.keys())
+    return iter(self._constructors.keys())

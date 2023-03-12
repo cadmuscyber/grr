@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Lint as: python3
 """These are windows specific installers.
 
 NOTE: Subprocess module is broken on windows in that pipes are not handled
@@ -12,9 +13,10 @@ https://launchpadlibrarian.net/134750748/pyqtgraph_subprocess.patch
 We also set shell=True because that seems to avoid having an extra cmd.exe
 window pop up.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-import contextlib
-import datetime
 import errno
 import itertools
 import logging
@@ -23,8 +25,7 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Callable, Iterable
-from absl import flags
+
 import pywintypes
 import win32process
 import win32service
@@ -36,23 +37,12 @@ from grr_response_client.windows import regconfig
 from grr_response_core import config
 
 
-SERVICE_RESTART_DELAY_MSEC = 120 * 1000
-SERVICE_RESET_FAIL_COUNT_DELAY_SEC = 86400
-
-
-flags.DEFINE_string(
-    "interpolate_fleetspeak_service_config", "",
-    "If set, only interpolate a fleetspeak service config. "
-    "The value is a path to a file to interpolate (rewrite).")
-
-
 def _StartService(service_name):
   """Starts a Windows service with the given name.
 
   Args:
     service_name: string The name of the service to be started.
   """
-  logging.info("Trying to start service %s.", service_name)
   try:
     win32serviceutil.StartService(service_name)
     logging.info("Service '%s' started.", service_name)
@@ -64,14 +54,6 @@ def _StartService(service_name):
       logging.exception("Encountered error trying to start '%s':", service_name)
 
 
-def _StartServices(service_names: Iterable[str]) -> None:
-  for service_name in service_names:
-    _StartService(service_name)
-
-
-STOPPED_SERVICES = []
-
-
 def _StopService(service_name, service_binary_name=None):
   """Stops a Windows service with the given name.
 
@@ -80,7 +62,6 @@ def _StopService(service_name, service_binary_name=None):
     service_binary_name: string If given, also kill this binary as a best effort
       fallback solution.
   """
-  logging.info("Trying to stop service %s.", service_name)
   # QueryServiceStatus returns: scvType, svcState, svcControls, err,
   # svcErr, svcCP, svcWH
   try:
@@ -98,7 +79,6 @@ def _StopService(service_name, service_binary_name=None):
       break
     elif status != win32service.SERVICE_STOP_PENDING:
       try:
-        STOPPED_SERVICES.append(service_name)
         win32serviceutil.StopService(service_name)
       except pywintypes.error:
         logging.exception("Unable to stop service '%s':", service_name)
@@ -126,8 +106,6 @@ def _StopService(service_name, service_binary_name=None):
 
 
 def _RemoveService(service_name):
-  """Removes the service `service_name`."""
-  logging.info("Trying to remove service %s.", service_name)
   try:
     win32serviceutil.RemoveService(service_name)
     logging.info("Service '%s' removed.", service_name)
@@ -137,44 +115,6 @@ def _RemoveService(service_name):
                     service_name)
     else:
       logging.exception("Unable to remove service '%s':", service_name)
-
-
-def _CreateService(service_name: str, description: str,
-                   command_line: str) -> None:
-  """Creates a Windows service."""
-  logging.info("Creating service '%s'.", service_name)
-
-  with contextlib.ExitStack() as stack:
-    hscm = win32service.OpenSCManager(None, None,
-                                      win32service.SC_MANAGER_ALL_ACCESS)
-    stack.callback(win32service.CloseServiceHandle, hscm)
-    hs = win32service.CreateService(hscm, service_name, service_name,
-                                    win32service.SERVICE_ALL_ACCESS,
-                                    win32service.SERVICE_WIN32_OWN_PROCESS,
-                                    win32service.SERVICE_AUTO_START,
-                                    win32service.SERVICE_ERROR_NORMAL,
-                                    command_line, None, 0, None, None, None)
-    stack.callback(win32service.CloseServiceHandle, hs)
-    service_failure_actions = {
-        "ResetPeriod":
-            SERVICE_RESET_FAIL_COUNT_DELAY_SEC,
-        "RebootMsg":
-            u"",
-        "Command":
-            u"",
-        "Actions": [
-            (win32service.SC_ACTION_RESTART, SERVICE_RESTART_DELAY_MSEC),
-            (win32service.SC_ACTION_RESTART, SERVICE_RESTART_DELAY_MSEC),
-            (win32service.SC_ACTION_RESTART, SERVICE_RESTART_DELAY_MSEC),
-        ]
-    }
-    win32service.ChangeServiceConfig2(
-        hs, win32service.SERVICE_CONFIG_FAILURE_ACTIONS,
-        service_failure_actions)
-    win32service.ChangeServiceConfig2(hs,
-                                      win32service.SERVICE_CONFIG_DESCRIPTION,
-                                      description)
-  logging.info("Successfully created service '%s'.", service_name)
 
 
 def _OpenRegkey(key_path):
@@ -203,9 +143,6 @@ def _StopPreviousService():
 
   _StopService(service_name=config.CONFIG["Client.fleetspeak_service_name"])
 
-
-def _DeleteGrrFleetspeakService():
-  """Deletes GRR's fleetspeak service entry from the registry."""
   # Delete GRR's Fleetspeak config from the registry so Fleetspeak
   # doesn't try to restart GRR unless/until installation completes
   # successfully.
@@ -222,78 +159,6 @@ def _DeleteGrrFleetspeakService():
       raise
 
 
-def _FileRetryLoop(path: str, f: Callable[[], None]) -> None:
-  """If `path` exists, calls `f` in a retry loop."""
-  if not os.path.exists(path):
-    return
-  attempts = 0
-  while True:
-    try:
-      f()
-      return
-    except OSError as e:
-      attempts += 1
-      if e.errno == errno.EACCES and attempts < 10:
-        # The currently installed GRR process may stick around for a few
-        # seconds after the service is terminated (keeping the contents of
-        # the installation directory locked).
-        logging.warning(
-            "Encountered permission-denied error while trying to process "
-            "'%s'. Retrying...",
-            path,
-            exc_info=True)
-        time.sleep(3)
-      else:
-        raise
-
-
-def _RmTree(path: str) -> None:
-  _FileRetryLoop(path, lambda: shutil.rmtree(path))
-
-
-def _Rename(src: str, dst: str) -> None:
-  _FileRetryLoop(src, lambda: os.rename(src, dst))
-
-
-def _RmTreePseudoTransactional(path: str) -> None:
-  """Removes `path`.
-
-  Makes sure that either `path` is gone or that it is still present as
-  it was.
-
-  Args:
-    path: The path to remove.
-  """
-  suffix = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-  temp_path = f"{path}_orphaned_{suffix}"
-  logging.info("Trying to rename %s -> %s.", path, temp_path)
-
-  # Assuming there was a `path`:
-  # _Rename succeeds -> `path` is gone, we can proceed with the install.
-  # _Rename fails -> we know that we still have `path` as it was.
-
-  _Rename(path, temp_path)
-
-  try:
-    logging.info("Trying to remove %s.", temp_path)
-    _RmTree(temp_path)
-  except:  # pylint: disable=bare-except
-    logging.warning("Failed to remove %s. Ignoring.", temp_path, exc_info=True)
-
-
-def _IsReinstall() -> bool:
-  result = os.path.exists(config.CONFIG["Client.install_path"])
-  logging.info("Checking if this is a re-install: %s.", result)
-  return result
-
-
-def _ClearInstallPath() -> None:
-  install_path = config.CONFIG["Client.install_path"]
-  logging.info("Clearing install path %s.", install_path)
-  _RmTreePseudoTransactional(install_path)
-  os.makedirs(install_path)
-
-
 def _CopyToSystemDir():
   """Copies the binaries from the temporary unpack location.
 
@@ -305,6 +170,25 @@ def _CopyToSystemDir():
   install_path = config.CONFIG["Client.install_path"]
   logging.info("Installing binaries %s -> %s", executable_directory,
                config.CONFIG["Client.install_path"])
+  if os.path.exists(install_path):
+    attempts = 0
+    while True:
+      try:
+        shutil.rmtree(install_path)
+        break
+      except OSError as e:
+        attempts += 1
+        if e.errno == errno.EACCES and attempts < 10:
+          # The currently installed GRR process may stick around for a few
+          # seconds after the service is terminated (keeping the contents of
+          # the installation directory locked).
+          logging.warning(
+              "Encountered permission-denied error while trying to empty out "
+              "'%s'. Retrying...", install_path)
+          time.sleep(3)
+        else:
+          raise e
+  os.makedirs(install_path)
 
   # Recursively copy the temp directory to the installation directory.
   for root, dirs, files in os.walk(executable_directory):
@@ -391,48 +275,21 @@ def _DeleteLegacyConfigOptions(registry_key_uri):
         raise
 
 
-def _IsFleetspeakBundled():
-  return os.path.exists(
-      os.path.join(config.CONFIG["Client.install_path"],
-                   "fleetspeak-client.exe"))
+def Run():
+  """Installs the windows client binary."""
+  _CheckForWow64()
+  _StopPreviousService()
+  _CopyToSystemDir()
 
-
-def _InstallBundledFleetspeak():
-  fleetspeak_client = os.path.join(config.CONFIG["Client.install_path"],
-                                   "fleetspeak-client.exe")
-  fleetspeak_config = os.path.join(config.CONFIG["Client.install_path"],
-                                   "fleetspeak-client.config")
-  _RemoveService(config.CONFIG["Client.fleetspeak_service_name"])
-  _CreateService(
-      service_name=config.CONFIG["Client.fleetspeak_service_name"],
-      description="Fleetspeak communication agent.",
-      command_line=f"\"{fleetspeak_client}\" -config \"{fleetspeak_config}\"")
-
-
-def _MaybeInterpolateFleetspeakServiceConfig():
-  """Interpolates the fleetspeak service config if present."""
-  fleetspeak_unsigned_config_path = os.path.join(
-      config.CONFIG["Client.install_path"],
-      config.CONFIG["Client.fleetspeak_unsigned_config_fname"])
-  template_path = f"{fleetspeak_unsigned_config_path}.in"
-  if not os.path.exists(template_path):
+  if not config.CONFIG["Client.fleetspeak_enabled"]:
+    _InstallNanny()
     return
-  _InterpolateFleetspeakServiceConfig(template_path,
-                                      fleetspeak_unsigned_config_path)
 
+  # Remove the Nanny service for the legacy GRR since it will
+  # not be needed any more.
+  _RemoveService(config.CONFIG["Nanny.service_name"])
+  _DeleteLegacyConfigOptions(config.CONFIG["Config.writeback"])
 
-def _InterpolateFleetspeakServiceConfig(src_path: str, dst_path: str) -> None:
-  with open(src_path, "r") as src:
-    src_data = src.read()
-  with open(dst_path, "w") as dst:
-    interpolated = config.CONFIG.InterpolateValue(src_data)
-    interpolated = interpolated.replace("\\", "\\\\")
-    interpolated = interpolated.rstrip("\n")
-    dst.write(interpolated)
-
-
-def _WriteGrrFleetspeakService():
-  logging.info("Writing GRR fleetspeak service registry key.")
   # Write the Fleetspeak config to the registry.
   key_path = config.CONFIG["Client.fleetspeak_unsigned_services_regkey"]
   regkey = _OpenRegkey(key_path)
@@ -442,71 +299,6 @@ def _WriteGrrFleetspeakService():
   winreg.SetValueEx(regkey, config.CONFIG["Client.name"], 0, winreg.REG_SZ,
                     fleetspeak_unsigned_config_path)
 
-
-def _Run():
-  """Installs the windows client binary."""
-
-  if flags.FLAGS.interpolate_fleetspeak_service_config:
-    _InterpolateFleetspeakServiceConfig(
-        flags.FLAGS.interpolate_fleetspeak_service_config,
-        flags.FLAGS.interpolate_fleetspeak_service_config)
-    fs_service = config.CONFIG["Client.fleetspeak_service_name"]
-    _StopService(service_name=fs_service)
-    _StartService(service_name=fs_service)
-    return
-
-  _CheckForWow64()
-  is_reinstall = _IsReinstall()
-  was_bundled_fleetspeak = _IsFleetspeakBundled() if is_reinstall else False
-  _StopPreviousService()
-  try:
-    _ClearInstallPath()
-  except:
-    # We've failed to remove and old installation, but it's still there.
-    # Bring back the services that we've stopped previously.
-    _StartServices(STOPPED_SERVICES)
-    raise
-  if is_reinstall:
-    # If the install path existed before, we have deleted the current, working
-    # GRR installation.
-    # We have to delete the fleetspeak service entry as well.
-    _DeleteGrrFleetspeakService()
-    if was_bundled_fleetspeak:
-      _RemoveService(config.CONFIG["Client.fleetspeak_service_name"])
-    _RemoveService(config.CONFIG["Nanny.service_name"])
-
-  # At this point we have a "clean state".
-  # The old installation is not present and not running any more.
-
-  try:
-    _CopyToSystemDir()
-    _MaybeInterpolateFleetspeakServiceConfig()
-  except:
-    _StartServices(STOPPED_SERVICES)
-    raise
-
-  if not config.CONFIG["Client.fleetspeak_enabled"]:
-    logging.info("Fleetspeak not enabled, installing nanny.")
-    _InstallNanny()
-    return
-
-  # Remove the Nanny service for the legacy GRR since it will
-  # not be needed any more.
-  _RemoveService(config.CONFIG["Nanny.service_name"])
-  _DeleteLegacyConfigOptions(config.CONFIG["Config.writeback"])
-
-  _WriteGrrFleetspeakService()
-
   fs_service = config.CONFIG["Client.fleetspeak_service_name"]
   _StopService(service_name=fs_service)
-  if _IsFleetspeakBundled():
-    _InstallBundledFleetspeak()
   _StartService(service_name=fs_service)
-
-
-def Run():
-  try:
-    _Run()
-  except:
-    logging.error("The installer failed with an exception.", exc_info=True)
-    raise

@@ -1,11 +1,16 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Invoke the fingerprint client action on a file."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 from grr_response_core.lib import rdfvalue
 from grr_response_core.lib.rdfvalues import client_action as rdf_client_action
 from grr_response_core.lib.rdfvalues import crypto as rdf_crypto
 from grr_response_core.lib.rdfvalues import paths as rdf_paths
 from grr_response_core.lib.rdfvalues import structs as rdf_structs
+from grr_response_core.lib.util import compatibility
 from grr_response_proto import flows_pb2
 from grr_response_server import data_store
 from grr_response_server import flow_base
@@ -60,7 +65,7 @@ class FingerprintFileLogic(object):
     self.CallClient(
         self.fingerprint_file_mixin_client_action,
         request,
-        next_state=self._ProcessFingerprint.__name__,
+        next_state=compatibility.GetName(self._ProcessFingerprint),
         request_data=request_data)
 
   def _ProcessFingerprint(self, responses):
@@ -102,7 +107,7 @@ class FingerprintFile(FingerprintFileLogic, flow_base.FlowBase):
 
   def Start(self):
     """Issue the fingerprinting request."""
-    super().Start()
+    super(FingerprintFile, self).Start()
 
     self.FingerprintFile(self.args.pathspec)
 
@@ -112,6 +117,6 @@ class FingerprintFile(FingerprintFileLogic, flow_base.FlowBase):
 
   def End(self, responses):
     """Finalize the flow."""
-    super().End(responses)
+    super(FingerprintFile, self).End(responses)
 
     self.Log("Finished fingerprinting %s", self.args.pathspec.path)

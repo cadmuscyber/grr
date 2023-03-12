@@ -1,5 +1,9 @@
 #!/usr/bin/env python
+# Lint as: python3
 """Tests for the streaming utility classes."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import abc
 import functools
@@ -145,7 +149,7 @@ class StreamerTestMixin(metaclass=abc.ABCMeta):
 class StreamFilePathTest(StreamerTestMixin, absltest.TestCase):
 
   def setUp(self):
-    super().setUp()
+    super(StreamFilePathTest, self).setUp()
     self.temp_filepath = temp.TempFilePath()
     self.addCleanup(lambda: os.remove(self.temp_filepath))
 
@@ -161,20 +165,6 @@ class StreamMemoryTest(StreamerTestMixin, absltest.TestCase):
   def Stream(self, streamer, data):
     process = StubProcess(data)
     return functools.partial(streamer.StreamMemory, process)
-
-
-class StreamRangesTest(StreamerTestMixin, absltest.TestCase):
-
-  def Stream(self, streamer, data):
-    available_data = len(data)
-
-    def Result(amount=available_data, offset=0):
-      amount = min(amount, available_data - offset)
-      for chunk in streamer.StreamRanges(offset, amount):
-        chunk.data = data[chunk.offset:chunk.offset + chunk.amount]
-        yield chunk
-
-    return Result
 
 
 class ReaderTestMixin(metaclass=abc.ABCMeta):
@@ -225,7 +215,7 @@ class ReaderTestMixin(metaclass=abc.ABCMeta):
 class FileReaderTest(ReaderTestMixin, absltest.TestCase):
 
   def setUp(self):
-    super().setUp()
+    super(FileReaderTest, self).setUp()
     self.temp_filepath = temp.TempFilePath()
     self.addCleanup(lambda: os.remove(self.temp_filepath))
 

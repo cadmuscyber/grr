@@ -1,11 +1,15 @@
 #!/usr/bin/env python
+# Lint as: python3
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
 import collections
 import itertools
-from unittest import mock
 
 from absl import app
 from absl.testing import absltest
+import mock
 import psutil
 
 from grr_response_client import client_stats

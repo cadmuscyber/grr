@@ -1,15 +1,19 @@
 #!/usr/bin/env python
+# Lint as: python3
 """This is the setup.py file for the GRR client.
 
 This is just a meta-package which pulls in the minimal requirements to create a
 full grr server.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import unicode_literals
 
-import configparser
 import itertools
 import os
 import shutil
 import subprocess
+import sys
 
 from setuptools import find_packages
 from setuptools import setup
@@ -17,6 +21,15 @@ from setuptools.command.develop import develop
 from setuptools.command.sdist import sdist
 
 GRR_NO_MAKE_UI_FILES_VAR = "GRR_NO_MAKE_UI_FILES"
+
+
+# TODO: Fix this import once support for Python 2 is dropped.
+# pylint: disable=g-import-not-at-top
+if sys.version_info.major == 2:
+  import ConfigParser as configparser
+else:
+  import configparser
+# pylint: enable=g-import-not-at-top
 
 
 def find_data_files(source, ignore_dirs=None):
@@ -55,7 +68,7 @@ def get_config():
     if not os.path.exists(ini_path):
       raise RuntimeError("Couldn't find version.ini")
 
-  config = configparser.ConfigParser()
+  config = configparser.SafeConfigParser()
   config.read(ini_path)
   return config
 
@@ -76,7 +89,9 @@ class Develop(develop):
   """Build developer version (pip install -e)."""
 
   user_options = develop.user_options + [
-      ("no-make-ui-files", None, "Don't build UI JS/CSS bundles."),
+      # TODO: This has to be `bytes` on Python 2. Remove this `str`
+      # call once support for Python 2 is dropped.
+      (str("no-make-ui-files"), None, "Don't build UI JS/CSS bundles."),
   ]
 
   def initialize_options(self):
@@ -99,7 +114,9 @@ class Sdist(sdist):
   """Build sdist."""
 
   user_options = sdist.user_options + [
-      ("no-make-ui-files", None, "Don't build UI JS/CSS bundles."),
+      # TODO: This has to be `bytes` on Python 2. Remove this `str`
+      # call once support for Python 2 is dropped.
+      (str("no-make-ui-files"), None, "Don't build UI JS/CSS bundles."),
   ]
 
   def initialize_options(self):
@@ -134,7 +151,9 @@ data_files = list(
         find_data_files(
             "grr_response_server/gui/local/static",
             ignore_dirs=IGNORE_GUI_DIRS),
-        ["version.ini"],
+        # TODO: This has to be `bytes` on Python 2. Remove this
+        # `str` call once support for Python 2 is dropped.
+        [str("version.ini")],
     ))
 
 setup_args = dict(
@@ -166,32 +185,25 @@ setup_args = dict(
             "grr_response_server.distro_entry:Worker",
             "grr_admin_ui = "
             "grr_response_server.distro_entry:AdminUI",
-            "fleetspeak_server = "
-            "grr_response_server.distro_entry:FleetspeakServer",
         ]
     },
     install_requires=[
-        "google-api-python-client==1.9.3",
-        "google-auth==1.18.0",
+        "google-api-python-client==1.7.11",
+        "google-auth==1.6.3",
+        "google-cloud-bigquery==1.20.0",
         "grr-api-client==%s" % VERSION.get("Version", "packagedepends"),
         "grr-response-client-builder==%s" %
         VERSION.get("Version", "packagedepends"),
         "grr-response-core==%s" % VERSION.get("Version", "packagedepends"),
-        "ipython==7.15.0",
-        "Jinja2==2.11.3",
-        # TODO: This should be 2.1
-        # If the version of MarkupSafe with Jinja2 dependency is greater than
-        # 2.0.1 an issue occurs. Therefore, we are currently fixing the version
-        # to 2.0.1, but it will be fixed later when the issue is resolved.
-        "MarkupSafe==2.0.1",
-        "pexpect==4.8.0",
+        "Jinja2==2.10.3",
+        "pexpect==4.7.0",
         "portpicker==1.3.1",
-        "prometheus_client==0.8.0",
+        "prometheus_client==0.7.1",
         "pyjwt==1.7.1",
-        "pyOpenSSL==19.1.0",  # https://github.com/google/grr/issues/704
-        "python-crontab==2.5.1",
-        "python-debian==0.1.37",
-        "Werkzeug==2.1.2",
+        "pyopenssl==19.0.0",  # https://github.com/google/grr/issues/704
+        "python-crontab==2.3.9",
+        "python-debian==0.1.36",
+        "Werkzeug==0.16.0",
     ],
     extras_require={
         # This is an optional component. Install to get MySQL data
@@ -201,11 +213,17 @@ setup_args = dict(
         # incompatibilities between the system mysqlclient/mariadbclient and the
         # Python library otherwise. Thus, this version has to be equal to the
         # python-mysqldb version of the system we support. This is currently
-        # Ubuntu Bionic, see https://packages.ubuntu.com/bionic/python-mysqldb
+        # Ubuntu Xenial, see https://packages.ubuntu.com/xenial/python-mysqldb
+        #
+        # NOTE: the Xenial-provided 1.3.7 version is not properly Python 3
+        # compatible. Versions 1.3.13 or later are API-compatible with 1.3.7
+        # when running on Python 2 and work correctly on Python 3. However,
+        # they don't have Python 2 wheels released, which makes GRR packaging
+        # for Python 2 much harder if one of these versions is used.
+        #
+        # TODO(user): Find a way to use the latest mysqlclient version
+        # in GRR server DEB.
         "mysqldatastore": ["mysqlclient==1.3.10"],
-        # TODO: We currently release fleetspeak-server-bin packages
-        # for Linux only.
-        ":sys_platform==\"linux\"": ["fleetspeak-server-bin==0.1.11",],
     },
     data_files=data_files)
 
